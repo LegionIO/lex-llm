@@ -6,9 +6,33 @@ VCR.configure do |config|
   config.hook_into :webmock
   config.configure_rspec_metadata!
 
+  placeholder_values = {
+    '<AWS_REGION>' => ENV.fetch('AWS_REGION', 'us-west-2'),
+    '<GOOGLE_CLOUD_LOCATION>' => ENV.fetch('GOOGLE_CLOUD_LOCATION', 'global'),
+    '<GOOGLE_CLOUD_PROJECT>' => ENV.fetch('GOOGLE_CLOUD_PROJECT', 'test-project'),
+    '<GPUSTACK_API_BASE>' => ENV.fetch('GPUSTACK_API_BASE', 'http://localhost:11444/v1'),
+    '<OLLAMA_API_BASE>' => ENV.fetch('OLLAMA_API_BASE', 'http://localhost:11434/v1')
+  }
+
+  normalize_uri_placeholders = lambda do |uri|
+    normalized_uri = placeholder_values.reduce(uri.to_s) do |normalized, (placeholder, value)|
+      placeholder_name = Regexp.escape(placeholder.delete_prefix('<').delete_suffix('>'))
+      normalized
+        .gsub(/#{Regexp.escape(placeholder)}/i, value)
+        .gsub(/%3C#{placeholder_name}%3E/i, value)
+    end
+    normalized_uri.gsub(/bedrock-runtime\.[^.]+\.amazonaws\.com/i,
+                        'bedrock-runtime.<AWS_REGION>.amazonaws.com')
+  end
+
+  config.register_request_matcher :uri_with_sensitive_placeholders do |first_request, second_request|
+    normalize_uri_placeholders.call(first_request.uri) == normalize_uri_placeholders.call(second_request.uri)
+  end
+
   # Don't record new HTTP interactions when running in CI
   config.default_cassette_options = {
-    record: ENV['CI'] ? :none : :once
+    record: ENV['CI'] ? :none : :once,
+    match_requests_on: %i[method uri_with_sensitive_placeholders]
   }
 
   # Create new cassette directory if it doesn't exist

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'base64'
+require 'digest/sha1'
 require 'event_stream_parser'
 require 'faraday'
 require 'faraday/multipart'
@@ -33,6 +34,8 @@ loader.inflector.inflect(
 )
 loader.ignore("#{__dir__}/tasks")
 loader.ignore("#{__dir__}/generators")
+loader.ignore("#{__dir__}/lex_llm.rb")
+loader.ignore("#{__dir__}/legion")
 loader.ignore("#{__dir__}/ruby_llm/railtie.rb")
 loader.setup
 
