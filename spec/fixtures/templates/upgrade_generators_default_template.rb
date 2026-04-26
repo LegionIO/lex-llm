@@ -14,7 +14,7 @@ after_bundle do
     end
 
     ActiveSupport.on_load :active_record do
-      include LexLLM::ActiveRecord::ActsAs
+      ::ActiveRecord::Base.include LexLLM::ActiveRecord::ActsAs
     end
   RUBY
 
