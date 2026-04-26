@@ -77,10 +77,10 @@ module LexLLM
 
         return if initializer_content.include?('config.use_new_acts_as')
 
-        inject_into_file initializer_path, before: /^end/ do
-          lines = ["\n  # Enable the new Rails-like API", '  config.use_new_acts_as = true']
+        inject_into_file initializer_path, after: /^LexLLM\.configure do \|config\|\n/ do
+          lines = ['  # Enable the new Rails-like API', '  config.use_new_acts_as = true']
           lines << "  config.model_registry_class = \"#{model_model_name}\"" if model_model_name != 'Model'
-          lines << "\n"
+          lines << ''
           lines.join("\n")
         end
       end
