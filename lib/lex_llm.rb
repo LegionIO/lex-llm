@@ -15,33 +15,33 @@ require 'time'
 require 'ruby_llm/schema'
 require 'zeitwerk'
 
-loader = Zeitwerk::Loader.for_gem
-loader.inflector.inflect(
-  'azure' => 'Azure',
-  'UI' => 'UI',
-  'api' => 'API',
-  'bedrock' => 'Bedrock',
-  'deepseek' => 'DeepSeek',
-  'gpustack' => 'GPUStack',
-  'llm' => 'LLM',
-  'mistral' => 'Mistral',
-  'openai' => 'OpenAI',
-  'openrouter' => 'OpenRouter',
-  'pdf' => 'PDF',
-  'perplexity' => 'Perplexity',
-  'lex_llm' => 'LexLLM',
-  'vertexai' => 'VertexAI',
-  'xai' => 'XAI'
-)
-loader.ignore("#{__dir__}/tasks")
-loader.ignore("#{__dir__}/generators")
-loader.ignore("#{__dir__}/lex_llm.rb")
-loader.ignore("#{__dir__}/legion")
-loader.ignore("#{__dir__}/lex_llm/railtie.rb")
-loader.setup
-
 # Shared LegionIO LLM provider framework.
 module LexLLM
+  loader = Zeitwerk::Loader.for_gem
+  loader.inflector.inflect(
+    'azure' => 'Azure',
+    'UI' => 'UI',
+    'api' => 'API',
+    'bedrock' => 'Bedrock',
+    'deepseek' => 'DeepSeek',
+    'gpustack' => 'GPUStack',
+    'llm' => 'LLM',
+    'mistral' => 'Mistral',
+    'openai' => 'OpenAI',
+    'openrouter' => 'OpenRouter',
+    'pdf' => 'PDF',
+    'perplexity' => 'Perplexity',
+    'lex_llm' => 'LexLLM',
+    'vertexai' => 'VertexAI',
+    'xai' => 'XAI'
+  )
+  loader.ignore("#{__dir__}/tasks")
+  loader.ignore("#{__dir__}/generators")
+  loader.ignore("#{__dir__}/lex_llm.rb")
+  loader.ignore("#{__dir__}/legion")
+  loader.ignore("#{__dir__}/lex_llm/railtie.rb")
+  loader.setup
+
   Schema = ::RubyLLM::Schema unless const_defined?(:Schema, false)
 
   class Error < StandardError; end
