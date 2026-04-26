@@ -5,7 +5,7 @@ plugins:
 
 AllCops:
   NewCops: enable
-  TargetRubyVersion: 3.1
+  TargetRubyVersion: 3.4
   Exclude:
     - docs/**/*
     - vendor/**/*
@@ -30,7 +30,7 @@ Performance/RedundantBlockCall:
   Enabled: false # TODO: temporarily disabled to avoid potential breaking change
 Performance/StringInclude:
   Exclude:
-    - lib/ruby_llm/providers/**/capabilities.rb
+    - lib/lex_llm/providers/**/capabilities.rb
 Performance/UnfreezeString:
   Exclude:
     - spec/**/*

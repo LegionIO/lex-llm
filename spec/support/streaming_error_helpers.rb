@@ -12,7 +12,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 529,
-      expected_error: RubyLLM::OverloadedError
+      expected_error: LexLLM::OverloadedError
     },
     openai: {
       url: 'https://api.openai.com/v1/chat/completions',
@@ -25,7 +25,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     },
     gemini: {
       url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse',
@@ -37,7 +37,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 529,
-      expected_error: RubyLLM::OverloadedError
+      expected_error: LexLLM::OverloadedError
     },
     deepseek: {
       url: 'https://api.deepseek.com/chat/completions',
@@ -50,7 +50,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     },
     xai: {
       url: 'https://api.x.ai/v1/chat/completions',
@@ -63,7 +63,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     },
     openrouter: {
       url: 'https://openrouter.ai/api/v1/chat/completions',
@@ -76,11 +76,11 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     },
     ollama: {
       url: lambda {
-        base = RubyLLM.config.ollama_api_base.to_s
+        base = LexLLM.config.ollama_api_base.to_s
         "#{base.sub(%r{/+\z}, '')}/chat/completions"
       },
       error_response: {
@@ -92,7 +92,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     },
     bedrock: {
       url: %r{\Ahttps://bedrock-runtime\.us-west-2\.amazonaws\.com/model/.+/converse-stream\z},
@@ -103,11 +103,11 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     },
     gpustack: {
       url: lambda {
-        base = RubyLLM.config.gpustack_api_base.to_s
+        base = LexLLM.config.gpustack_api_base.to_s
         "#{base.sub(%r{/+\z}, '')}/chat/completions"
       },
       error_response: {
@@ -119,7 +119,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     },
     perplexity: {
       url: 'https://api.perplexity.ai/chat/completions',
@@ -132,7 +132,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     },
     mistral: {
       url: 'https://api.mistral.ai/v1/chat/completions',
@@ -145,7 +145,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     },
     vertexai: {
       url: lambda {
@@ -160,11 +160,11 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 529,
-      expected_error: RubyLLM::OverloadedError
+      expected_error: LexLLM::OverloadedError
     },
     azure: {
       url: lambda {
-        provider = RubyLLM::Providers::Azure.new(RubyLLM.config)
+        provider = LexLLM::Providers::Azure.new(LexLLM.config)
         base = provider.api_base.to_s.sub(/\?.*\z/, '').sub(%r{/+\z}, '')
         path = provider.completion_url
         next path if path.start_with?('http')
@@ -181,7 +181,7 @@ module StreamingErrorHelpers
         }
       },
       chunk_status: 500,
-      expected_error: RubyLLM::ServerError
+      expected_error: LexLLM::ServerError
     }
   }.freeze
 

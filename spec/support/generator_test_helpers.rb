@@ -10,11 +10,12 @@ module GeneratorTestHelpers
 
   def self.create_test_app(name, template:, template_path:)
     template_file = File.join(template_path, template)
-    ruby_llm_path = File.expand_path('../..', __dir__)
+    lex_llm_path = File.expand_path('../..', __dir__)
     root_bundle_gemfile = ENV['BUNDLE_GEMFILE'] || Bundler.default_gemfile.to_s
 
     root_env = {
-      'RUBYLLM_PATH' => ruby_llm_path,
+      'LEX_LLM_PATH' => lex_llm_path,
+      'RUBYLLM_PATH' => lex_llm_path,
       'BUNDLE_GEMFILE' => root_bundle_gemfile
     }
     root_env['BUNDLE_PATH'] = ENV['BUNDLE_PATH'] if ENV.key?('BUNDLE_PATH')

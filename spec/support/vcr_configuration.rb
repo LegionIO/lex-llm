@@ -23,6 +23,8 @@ VCR.configure do |config|
     end
     normalized_uri.gsub(/bedrock-runtime\.[^.]+\.amazonaws\.com/i,
                         'bedrock-runtime.<AWS_REGION>.amazonaws.com')
+                  .gsub(%r{https://(?:ruby|lex)llm\.services\.ai\.azure\.com}i,
+                        'https://<AZURE_API_BASE>')
   end
 
   config.register_request_matcher :uri_with_sensitive_placeholders do |first_request, second_request|

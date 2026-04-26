@@ -1,0 +1,158 @@
+# frozen_string_literal: true
+
+require 'rails_helper'
+require 'stringio'
+
+RSpec.describe LexLLM::ActiveRecord::ActsAs do
+  include_context 'with configured LexLLM'
+
+  let(:image_path) { File.expand_path('../../fixtures/ruby.png', __dir__) }
+  let(:pdf_path) { File.expand_path('../../fixtures/sample.pdf', __dir__) }
+  let(:model) { 'gpt-4.1-nano' }
+
+  def uploaded_file(path, type)
+    filename = File.basename(path)
+    extension = File.extname(filename)
+    name = File.basename(filename, extension)
+
+    tempfile = Tempfile.new([name, extension])
+    tempfile.binmode
+
+    # Copy content from the real file to the Tempfile
+    File.open(path, 'rb') do |real_file_io|
+      tempfile.write(real_file_io.read)
+    end
+
+    tempfile.rewind # Prepare Tempfile for reading from the beginning
+
+    ActionDispatch::Http::UploadedFile.new(
+      tempfile: tempfile,
+      filename: File.basename(tempfile.path),
+      type: type
+    )
+  end
+
+  def attachment_io(path)
+    StringIO.new(File.binread(path))
+  end
+
+  describe 'attachment handling' do
+    it 'converts ActiveStorage attachments to LexLLM Content' do
+      chat = Chat.create!(model: model)
+
+      message = chat.messages.create!(role: 'user', content: 'Check this out')
+      message.attachments.attach(
+        io: attachment_io(image_path),
+        filename: 'ruby.png',
+        content_type: 'image/png'
+      )
+
+      llm_message = message.to_llm
+      expect(llm_message.content).to be_a(LexLLM::Content)
+      expect(llm_message.content.attachments.first.mime_type).to eq('image/png')
+    end
+
+    it 'handles multiple attachments' do
+      chat = Chat.create!(model: model)
+
+      image_upload = uploaded_file(image_path, 'image/png')
+      pdf_upload = uploaded_file(pdf_path, 'application/pdf')
+
+      response = chat.ask('Analyze these', with: [image_upload, pdf_upload])
+
+      user_message = chat.messages.find_by(role: 'user')
+      expect(user_message.attachments.count).to eq(2)
+      expect(response.content).to be_present
+    end
+
+    it 'handles attachments in ask method' do
+      chat = Chat.create!(model: model)
+
+      image_upload = uploaded_file(image_path, 'image/png')
+
+      response = chat.ask('What do you see?', with: image_upload)
+
+      user_message = chat.messages.find_by(role: 'user')
+      expect(user_message.attachments.count).to eq(1)
+      expect(response.content).to be_present
+    end
+
+    it 'ignores leading blank multipart attachment entries for create_user_message' do
+      chat = Chat.create!(model: model)
+      image_upload = uploaded_file(image_path, 'image/png')
+
+      expect do
+        chat.create_user_message('What do you see?', with: ['', image_upload])
+      end.not_to raise_error
+
+      user_message = chat.messages.find_by(role: 'user')
+      expect(user_message.attachments.count).to eq(1)
+    end
+
+    it 'reuses an existing ActiveStorage::Blob without re-uploading' do
+      chat = Chat.create!(model: model)
+
+      existing_blob = ActiveStorage::Blob.create_and_upload!(
+        io: attachment_io(image_path),
+        filename: 'ruby.png',
+        content_type: 'image/png'
+      )
+
+      expect do
+        chat.create_user_message('What do you see?', with: existing_blob)
+      end.not_to change(ActiveStorage::Blob, :count)
+
+      user_message = chat.messages.find_by(role: 'user')
+      expect(user_message.attachments.count).to eq(1)
+      expect(user_message.attachments.first.blob_id).to eq(existing_blob.id)
+    end
+  end
+
+  describe 'attachment types' do
+    it 'handles images' do
+      chat = Chat.create!(model: model)
+      message = chat.messages.create!(role: 'user', content: 'Image test')
+
+      message.attachments.attach(
+        io: attachment_io(image_path),
+        filename: 'test.png',
+        content_type: 'image/png'
+      )
+
+      llm_message = message.to_llm
+      attachment = llm_message.content.attachments.first
+      expect(attachment.type).to eq(:image)
+    end
+
+    it 'handles videos' do
+      video_path = File.expand_path('../../fixtures/ruby.mp4', __dir__)
+      chat = Chat.create!(model: model)
+      message = chat.messages.create!(role: 'user', content: 'Video test')
+
+      message.attachments.attach(
+        io: attachment_io(video_path),
+        filename: 'test.mp4',
+        content_type: 'video/mp4'
+      )
+
+      llm_message = message.to_llm
+      attachment = llm_message.content.attachments.first
+      expect(attachment.type).to eq(:video)
+    end
+
+    it 'handles PDFs' do
+      chat = Chat.create!(model: model)
+      message = chat.messages.create!(role: 'user', content: 'PDF test')
+
+      message.attachments.attach(
+        io: attachment_io(pdf_path),
+        filename: 'test.pdf',
+        content_type: 'application/pdf'
+      )
+
+      llm_message = message.to_llm
+      attachment = llm_message.content.attachments.first
+      expect(attachment.type).to eq(:pdf)
+    end
+  end
+end

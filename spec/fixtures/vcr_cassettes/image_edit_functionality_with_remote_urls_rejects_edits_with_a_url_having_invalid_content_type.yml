@@ -2,7 +2,7 @@
 http_interactions:
 - request:
     method: get
-    uri: https://rubyllm.com/assets/images/logotype.svg
+    uri: https://legionio.dev/favicon.svg
     body:
       encoding: US-ASCII
       string: ''

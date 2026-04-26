@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'lex_llm'
+require 'legion/extensions/llm'
 
 RSpec.describe Legion::Extensions::Llm::Transport::FleetLane do
   describe '.queue_options' do

@@ -2,7 +2,7 @@
 http_interactions:
 - request:
     method: get
-    uri: https://rubyllm.com/some-asset-that-does-not-exist.png
+    uri: https://legionio.dev/some-asset-that-does-not-exist.png
     body:
       encoding: US-ASCII
       string: ''

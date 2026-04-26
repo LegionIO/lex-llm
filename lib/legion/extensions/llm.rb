@@ -1,22 +1,22 @@
 # frozen_string_literal: true
 
-require 'ruby_llm'
+require 'lex_llm'
 require 'legion/extensions/llm/transport/fleet_lane'
 
 module Legion
   module Extensions
     # Legion-native namespace for the shared LLM provider framework.
     module Llm
-      VERSION = RubyLLM::VERSION unless const_defined?(:VERSION, false)
+      VERSION = LexLLM::VERSION unless const_defined?(:VERSION, false)
 
       # Provider-neutral value objects exposed under the Legion extension namespace.
       module Types
-        ModelOffering = RubyLLM::Routing::ModelOffering unless const_defined?(:ModelOffering, false)
+        ModelOffering = LexLLM::Routing::ModelOffering unless const_defined?(:ModelOffering, false)
       end
 
       # Shared routing helpers exposed under the Legion extension namespace.
       module Routing
-        LaneKey = RubyLLM::Routing::LaneKey unless const_defined?(:LaneKey, false)
+        LaneKey = LexLLM::Routing::LaneKey unless const_defined?(:LaneKey, false)
       end
 
       def self.default_settings

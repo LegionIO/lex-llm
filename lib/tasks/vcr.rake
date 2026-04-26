@@ -13,7 +13,7 @@ def record_all_cassettes(cassette_dir)
 end
 
 def record_for_providers(providers, cassette_dir)
-  all_providers = RubyLLM::Provider.providers.keys.map(&:to_s)
+  all_providers = LexLLM::Provider.providers.keys.map(&:to_s)
 
   if providers.empty?
     puts "Please specify providers or 'all'. Example: rake vcr:record[openai,anthropic]"
@@ -103,7 +103,7 @@ namespace :vcr do
   desc 'Record VCR cassettes (rake vcr:record[all] or vcr:record[openai,anthropic])'
   task :record, :providers do |_, args|
     require 'fileutils'
-    require 'ruby_llm'
+    require 'lex_llm'
 
     providers = args.extras.unshift(args[:providers]).compact.map(&:downcase)
     cassette_dir = 'spec/fixtures/vcr_cassettes'

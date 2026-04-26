@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require 'dotenv/load'
-require 'ruby_llm'
+require 'lex_llm'
 require 'json'
 require 'json-schema'
 require 'fileutils'
@@ -12,7 +12,7 @@ task models: ['models:update', 'models:docs', 'models:aliases']
 namespace :models do
   desc 'Update available models from providers (API keys needed)'
   task :update do
-    puts 'Configuring RubyLLM...'
+    puts 'Configuring LexLLM...'
     configure_from_env
     refresh_models
     display_model_stats
@@ -38,7 +38,7 @@ namespace :aliases do
 end
 
 def configure_from_env
-  RubyLLM.configure do |config|
+  LexLLM.configure do |config|
     config.anthropic_api_key = ENV.fetch('ANTHROPIC_API_KEY', nil)
     config.azure_api_base = ENV.fetch('AZURE_API_BASE', nil)
     config.azure_api_key = ENV.fetch('AZURE_API_KEY', nil)
@@ -64,11 +64,11 @@ def configure_bedrock(config)
 end
 
 def refresh_models
-  existing_models = RubyLLM::Models.read_from_json
+  existing_models = LexLLM::Models.read_from_json
   initial_count = existing_models.size
   puts "Refreshing models (#{initial_count} cached)..."
 
-  models = RubyLLM.models.refresh!
+  models = LexLLM.models.refresh!
 
   if models.all.empty? && initial_count.zero?
     puts 'Error: Failed to fetch models.'
@@ -97,14 +97,14 @@ def sorted_models_data(models)
 end
 
 def validate_models!(models)
-  schema_path = RubyLLM::Models.schema_file
+  schema_path = LexLLM::Models.schema_file
   models_data = models.all.map(&:to_h)
 
   validation_errors = JSON::Validator.fully_validate(schema_path, models_data)
 
   unless validation_errors.empty?
     # Save failed models for inspection
-    failed_path = File.expand_path('../ruby_llm/models.failed.json', __dir__)
+    failed_path = File.expand_path('../lex_llm/models.failed.json', __dir__)
     File.write(failed_path, JSON.pretty_generate(models_data))
 
     puts 'ERROR: Models validation failed:'
@@ -122,7 +122,7 @@ def display_model_stats
   puts "\nModel count:"
   provider_counts = @models.all.group_by(&:provider).transform_values(&:count)
 
-  RubyLLM::Provider.providers.each do |sym, provider_class|
+  LexLLM::Provider.providers.each do |sym, provider_class|
     name = provider_class.name
     count = provider_counts[sym.to_s] || 0
     status = status(sym)
@@ -133,10 +133,10 @@ def display_model_stats
 end
 
 def status(provider_sym)
-  provider_class = RubyLLM::Provider.providers[provider_sym]
+  provider_class = LexLLM::Provider.providers[provider_sym]
   if provider_class.local?
     ' (LOCAL - SKIP)'
-  elsif provider_class.configured?(RubyLLM.config)
+  elsif provider_class.configured?(LexLLM.config)
     ' (OK)'
   else
     ' (NOT CONFIGURED)'
@@ -144,7 +144,7 @@ def status(provider_sym)
 end
 
 def generate_models_markdown
-  models = RubyLLM.models.all
+  models = LexLLM.models.all
   total_models = models.count
   provider_count = models.map(&:provider).uniq.count
   generated_on = Time.now.utc.strftime('%Y-%m-%d')
@@ -179,7 +179,7 @@ def generate_models_markdown
 
     ```ruby
     # Plain Ruby
-    RubyLLM.models.refresh!
+    LexLLM.models.refresh!
 
     # Rails
     Model.refresh!
@@ -202,8 +202,8 @@ def generate_models_markdown
 end
 
 def generate_provider_sections
-  RubyLLM::Provider.providers.filter_map do |provider, provider_class|
-    models = RubyLLM.models.by_provider(provider)
+  LexLLM::Provider.providers.filter_map do |provider, provider_class|
+    models = LexLLM.models.by_provider(provider)
     next if models.none?
 
     <<~PROVIDER
@@ -216,10 +216,10 @@ end
 
 def generate_capability_sections
   capabilities = {
-    'Function Calling' => RubyLLM.models.select(&:function_calling?),
-    'Structured Output' => RubyLLM.models.select(&:structured_output?),
-    'Streaming' => RubyLLM.models.select { |m| m.capabilities.include?('streaming') },
-    'Batch Processing' => RubyLLM.models.select { |m| m.capabilities.include?('batch') }
+    'Function Calling' => LexLLM.models.select(&:function_calling?),
+    'Structured Output' => LexLLM.models.select(&:structured_output?),
+    'Streaming' => LexLLM.models.select { |m| m.capabilities.include?('streaming') },
+    'Batch Processing' => LexLLM.models.select { |m| m.capabilities.include?('batch') }
   }
 
   capabilities.filter_map do |capability, models|
@@ -236,7 +236,7 @@ end
 def generate_modality_sections # rubocop:disable Metrics/PerceivedComplexity
   sections = []
 
-  vision_models = RubyLLM.models.select { |m| (m.modalities.input || []).include?('image') }
+  vision_models = LexLLM.models.select { |m| (m.modalities.input || []).include?('image') }
   if vision_models.any?
     sections << <<~SECTION
       ### Vision Models (#{vision_models.count})
@@ -247,7 +247,7 @@ def generate_modality_sections # rubocop:disable Metrics/PerceivedComplexity
     SECTION
   end
 
-  audio_models = RubyLLM.models.select { |m| (m.modalities.input || []).include?('audio') }
+  audio_models = LexLLM.models.select { |m| (m.modalities.input || []).include?('audio') }
   if audio_models.any?
     sections << <<~SECTION
       ### Audio Input Models (#{audio_models.count})
@@ -258,7 +258,7 @@ def generate_modality_sections # rubocop:disable Metrics/PerceivedComplexity
     SECTION
   end
 
-  pdf_models = RubyLLM.models.select { |m| (m.modalities.input || []).include?('pdf') }
+  pdf_models = LexLLM.models.select { |m| (m.modalities.input || []).include?('pdf') }
   if pdf_models.any?
     sections << <<~SECTION
       ### PDF Models (#{pdf_models.count})
@@ -269,7 +269,7 @@ def generate_modality_sections # rubocop:disable Metrics/PerceivedComplexity
     SECTION
   end
 
-  embedding_models = RubyLLM.models.select { |m| (m.modalities.output || []).include?('embeddings') }
+  embedding_models = LexLLM.models.select { |m| (m.modalities.output || []).include?('embeddings') }
   if embedding_models.any?
     sections << <<~SECTION
       ### Embedding Models (#{embedding_models.count})
@@ -350,7 +350,7 @@ end
 def generate_aliases # rubocop:disable Metrics/PerceivedComplexity
   models = Hash.new { |h, k| h[k] = [] }
 
-  RubyLLM.models.all.each do |model|
+  LexLLM.models.all.each do |model|
     models[model.provider] << model.id
   end
 
@@ -467,7 +467,7 @@ def generate_aliases # rubocop:disable Metrics/PerceivedComplexity
   end
 
   sorted_aliases = aliases.sort.to_h
-  File.write(RubyLLM::Aliases.aliases_file, JSON.pretty_generate(sorted_aliases))
+  File.write(LexLLM::Aliases.aliases_file, JSON.pretty_generate(sorted_aliases))
 
   puts "Generated #{sorted_aliases.size} aliases"
 end
@@ -529,7 +529,7 @@ def find_best_bedrock_model(anthropic_model, bedrock_models) # rubocop:disable M
   return nil if matching_models.empty?
 
   begin
-    model_info = RubyLLM.models.find(anthropic_model)
+    model_info = LexLLM.models.find(anthropic_model)
     target_context = model_info.context_window
   rescue StandardError
     target_context = nil
