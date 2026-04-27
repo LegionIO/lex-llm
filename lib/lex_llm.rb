@@ -22,6 +22,7 @@ module LexLLM
     'UI' => 'UI',
     'api' => 'API',
     'llm' => 'LLM',
+    'open_ai_compatible' => 'OpenAICompatible',
     'pdf' => 'PDF',
     'lex_llm' => 'LexLLM'
   )

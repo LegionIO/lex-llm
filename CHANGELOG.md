@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 - 2026-04-27
+
+- Add a shared OpenAI-compatible provider adapter for `lex-llm-openai`, `lex-llm-vllm`, `lex-llm-mlx`, and other compatible servers.
+
 ## 0.1.1 - 2026-04-27
 
 - Remove fork-carried concrete provider implementations and VCR-backed provider specs from the base gem.
