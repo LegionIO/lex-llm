@@ -1,1 +1,1 @@
-# Dummy app to test RubyLLM
+# Dummy app to test LexLLM

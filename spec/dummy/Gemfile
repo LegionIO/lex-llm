@@ -2,8 +2,8 @@
 
 source 'https://rubygems.org'
 
+gem 'lex-llm', path: '../..', require: 'lex_llm'
 gem 'rails', '>= 6.0'
-gem 'ruby_llm', path: '../..'
 gem 'sqlite3'
 
 # For testing

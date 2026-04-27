@@ -1,13 +1,20 @@
 # frozen_string_literal: true
 
-gem 'ruby_llm', path: ENV['RUBYLLM_PATH'] || '../../../..'
+gem 'lex-llm', path: ENV['LEX_LLM_PATH'] || '../../../..', require: 'lex_llm'
 
 after_bundle do
   migration_version = "[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]"
 
-  file 'config/initializers/ruby_llm.rb', <<~RUBY
-    RubyLLM.configure do |config|
-      config.openai_api_key = ENV.fetch("OPENAI_API_KEY", "test")
+  file 'config/initializers/lex_llm.rb', <<~RUBY
+    require "lex_llm"
+    require "lex_llm/active_record/acts_as"
+
+    LexLLM.configure do |config|
+      config.use_new_acts_as = true
+    end
+
+    ActiveSupport.on_load :active_record do
+      ::ActiveRecord::Base.include LexLLM::ActiveRecord::ActsAs
     end
   RUBY
 
@@ -67,7 +74,7 @@ after_bundle do
 
   rails_command 'db:migrate'
 
-  generate 'ruby_llm:upgrade_to_v1_7', 'chat:Conversation', 'message:ChatMessage'
-  generate 'ruby_llm:upgrade_to_v1_9', 'message:ChatMessage'
-  generate 'ruby_llm:upgrade_to_v1_14'
+  generate 'lex_llm:upgrade_to_v1_7', 'chat:Conversation', 'message:ChatMessage'
+  generate 'lex_llm:upgrade_to_v1_9', 'message:ChatMessage'
+  generate 'lex_llm:upgrade_to_v1_14'
 end

@@ -1,194 +1,279 @@
-<div align="center">
+# lex-llm
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="/docs/assets/images/logotype_dark.svg">
-  <img src="/docs/assets/images/logotype.svg" alt="RubyLLM" height="120" width="250">
-</picture>
+[![CI](https://github.com/LegionIO/lex-llm/actions/workflows/ci.yml/badge.svg)](https://github.com/LegionIO/lex-llm/actions/workflows/ci.yml)
 
-<strong>One *beautiful* Ruby API for GPT, Claude, Gemini, and more.</strong>
+Shared LegionIO framework for LLM provider extensions.
 
-Battle tested at [<picture><source media="(prefers-color-scheme: dark)" srcset="https://chatwithwork.com/logotype-dark.svg"><img src="https://chatwithwork.com/logotype.svg" alt="Chat with Work" height="30" align="absmiddle"></picture>](https://chatwithwork.com) — *Your AI coworker*
+`lex-llm` is the provider-neutral base layer for LegionIO LLM work. It defines the common Ruby API, schema bridge, model metadata, routing structures, request/response helpers, streaming helpers, and Legion extension namespace that concrete provider gems build on.
 
-[![Gem Version](https://badge.fury.io/rb/ruby_llm.svg)](https://badge.fury.io/rb/ruby_llm)
-[![Ruby Style Guide](https://img.shields.io/badge/code_style-rubocop-brightgreen.svg)](https://github.com/rubocop/rubocop)
-[![Gem Downloads](https://img.shields.io/gem/dt/ruby_llm)](https://rubygems.org/gems/ruby_llm)
-[![codecov](https://codecov.io/gh/crmne/ruby_llm/branch/main/graph/badge.svg)](https://codecov.io/gh/crmne/ruby_llm)
+The routing principle is simple: provider is not the routing unit anymore. A concrete model offering is.
 
-<a href="https://trendshift.io/repositories/13640" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13640" alt="crmne%2Fruby_llm | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</div>
+That means Legion can reason about:
 
-> [!NOTE]
-> Using RubyLLM? [Share your story](https://tally.so/r/3Na02p)! Takes 5 minutes.
+- one local Ollama instance with many models
+- multiple remote Ollama or vLLM instances
+- several Bedrock accounts or regions exposing overlapping Anthropic models
+- direct frontier providers such as OpenAI or Anthropic
+- fleet workers on MacBooks, GPU servers, or cloud-side proxy nodes
 
----
+## What This Gem Owns
 
-Build chatbots, AI agents, RAG applications. Works with OpenAI, xAI, Anthropic, Google, AWS, local models, and any OpenAI-compatible API.
+`lex-llm` provides shared primitives only. Provider-specific behavior belongs in provider gems.
 
-## From zero to AI chat app in under two minutes
+This gem owns:
 
-https://github.com/user-attachments/assets/65422091-9338-47da-a303-92b918bd1345
+- `LexLLM`, the shared Ruby API and base provider framework
+- `Legion::Extensions::Llm`, the Legion extension namespace used by autoloading and settings
+- provider-neutral model metadata and capability normalization
+- routing structures such as `LexLLM::Routing::ModelOffering`
+- fleet lane key generation for shared RabbitMQ work lanes
+- common chat, embedding, tool, streaming, ActiveRecord, and schema helpers
+- shared runtime dependencies such as `legion-json`, `legion-settings`, and `legion-logging`
 
-## Why RubyLLM?
+Concrete provider gems should depend on this gem and implement the provider-specific transport, authentication, model discovery, request translation, and response translation.
 
-Every AI provider ships their own bloated client. Different APIs. Different response formats. Different conventions. It's exhausting.
+Expected provider gems include:
 
-RubyLLM gives you one beautiful API for all of them. Same interface whether you're using GPT, Claude, or your local Ollama. Just three dependencies: Faraday, Zeitwerk, and Marcel. That's it.
+- `lex-llm-ollama`
+- `lex-llm-vllm`
+- `lex-llm-anthropic`
+- `lex-llm-openai`
+- `lex-llm-gemini`
+- `lex-llm-mlx`
+- `lex-llm-bedrock`
+- `lex-llm-vertex`
+- `lex-llm-azure`
 
-## Show me the code
+## Install
 
 ```ruby
-# Just ask questions
-chat = RubyLLM.chat
-chat.ask "What's the best way to learn Ruby?"
+gem 'lex-llm'
 ```
 
+Provider extensions should declare `lex-llm` as a gemspec dependency:
+
 ```ruby
-# Analyze any file type
-chat.ask "What's in this image?", with: "ruby_conf.jpg"
-chat.ask "What's happening in this video?", with: "video.mp4"
-chat.ask "Describe this meeting", with: "meeting.wav"
-chat.ask "Summarize this document", with: "contract.pdf"
-chat.ask "Explain this code", with: "app.rb"
+spec.add_dependency 'lex-llm', '>= 0.1.0'
 ```
 
-```ruby
-# Multiple files at once
-chat.ask "Analyze these files", with: ["diagram.png", "report.pdf", "notes.txt"]
-```
+For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.
+
+## Namespaces
+
+This gem exposes two runtime namespaces:
+
+- `LexLLM` for shared Ruby classes, provider primitives, schemas, and helpers
+- `Legion::Extensions::Llm` for LegionIO extension loading and default settings
+
+Provider gems must use nested Legion extension namespaces so LegionIO autoloading can find them consistently.
+
+Example for `lex-llm-ollama`:
 
 ```ruby
-# Stream responses
-chat.ask "Tell me a story about Ruby" do |chunk|
-  print chunk.content
-end
-```
+require 'legion/extensions/llm/ollama'
 
-```ruby
-# Generate images
-RubyLLM.paint "a sunset over mountains in watercolor style"
-```
-
-```ruby
-# Create embeddings
-RubyLLM.embed "Ruby is elegant and expressive"
-```
-
-```ruby
-# Transcribe audio to text
-RubyLLM.transcribe "meeting.wav"
-```
-
-```ruby
-# Moderate content for safety
-RubyLLM.moderate "Check if this text is safe"
-```
-
-```ruby
-# Let AI use your code
-class Weather < RubyLLM::Tool
-  description "Get current weather"
-  param :latitude
-  param :longitude
-
-  def execute(latitude:, longitude:)
-    url = "https://api.open-meteo.com/v1/forecast?latitude=#{latitude}&longitude=#{longitude}&current=temperature_2m,wind_speed_10m"
-    JSON.parse(Faraday.get(url).body)
+module Legion
+  module Extensions
+    module Llm
+      module Ollama
+        def self.default_settings
+          Legion::Extensions::Llm.default_settings.merge(
+            provider_family: :ollama
+          )
+        end
+      end
+    end
   end
 end
-
-chat.with_tool(Weather).ask "What's the weather in Berlin?"
 ```
+
+## Model Offerings
+
+A model offering describes one concrete model made available by one provider instance. It is the base unit for routing, filtering, fleet lane creation, health, policy, and cost decisions.
 
 ```ruby
-# Define an agent with instructions + tools
-class WeatherAssistant < RubyLLM::Agent
-  model "gpt-5-nano"
-  instructions "Be concise and always use tools for weather."
-  tools Weather
-end
+offering = LexLLM::Routing::ModelOffering.new(
+  provider_family: :ollama,
+  instance_id: :macbook_m4_max,
+  transport: :local,
+  tier: :local,
+  model: 'qwen3.6:27b-q4_K_M',
+  usage_type: :inference,
+  capabilities: %i[chat tools vision thinking],
+  limits: {
+    context_window: 32_768,
+    max_output_tokens: 8_192
+  },
+  health: {
+    ready: true,
+    latency_ms: 180
+  },
+  policy_tags: %i[internal_only phi_allowed],
+  metadata: {
+    enabled: true,
+    eligibility: {
+      ac_power: true
+    }
+  }
+)
 
-WeatherAssistant.new.ask "What's the weather in Berlin?"
+offering.eligible_for?(
+  usage_type: :inference,
+  required_capabilities: %i[tools],
+  min_context_window: 16_000,
+  policy_tags: %i[internal_only]
+)
+# => true
 ```
+
+Common offering fields:
+
+- `provider_family`: provider implementation family, such as `:ollama`, `:vllm`, `:bedrock`, `:anthropic`, or `:openai`
+- `instance_id`: concrete provider instance, account, node, region, or local runtime
+- `transport`: `:local`, `:http`, `:rabbitmq`, `:sdk`, or another provider-supported transport
+- `tier`: `:local`, `:private`, `:fleet`, `:cloud`, `:frontier`, or deployment-specific policy tier
+- `model`: provider model name or normalized model alias
+- `usage_type`: `:inference` or `:embedding`
+- `capabilities`: normalized feature flags such as `:chat`, `:tools`, `:json_schema`, `:vision`, `:thinking`, or `:embedding`
+- `limits`: context window, output token limits, rate limits, concurrency limits, and provider-specific bounds
+- `health`: readiness, latency, recent failures, and provider-specific health metadata
+- `policy_tags`: routing and compliance tags such as `:internal_only`, `:phi_allowed`, or `:hipaa`
+- `metadata`: extension-specific metadata; sensitive values are excluded from fleet eligibility fingerprints
+
+## Fleet Lanes
+
+Fleet routing uses shared work lanes derived from model offerings. A lane describes the work required, not the worker that happens to do it.
 
 ```ruby
-# Get structured output
-class ProductSchema < RubyLLM::Schema
-  string :name
-  number :price
-  array :features do
-    string
-  end
-end
-
-response = chat.with_schema(ProductSchema).ask "Analyze this product", with: "product.txt"
+offering.lane_key
+# => "llm.fleet.inference.qwen3-6-27b-q4-k-m.ctx32768"
 ```
 
-## Features
+Embedding lanes omit context size:
 
-* **Chat:** Conversational AI with `RubyLLM.chat`
-* **Vision:** Analyze images and videos
-* **Audio:** Transcribe and understand speech with `RubyLLM.transcribe`
-* **Documents:** Extract from PDFs, CSVs, JSON, any file type
-* **Image generation:** Create images with `RubyLLM.paint`
-* **Embeddings:** Generate embeddings with `RubyLLM.embed`
-* **Moderation:** Content safety with `RubyLLM.moderate`
-* **Tools:** Let AI call your Ruby methods
-* **Agents:** Reusable assistants with `RubyLLM::Agent`
-* **Structured output:** JSON schemas that just work
-* **Streaming:** Real-time responses with blocks
-* **Rails:** ActiveRecord integration with `acts_as_chat`
-* **Async:** Fiber-based concurrency
-* **Model registry:** 800+ models with capability detection and pricing
-* **Extended thinking:** Control, view, and persist model deliberation
-* **Providers:** OpenAI, xAI, Anthropic, Gemini, VertexAI, Bedrock, DeepSeek, Mistral, Ollama, OpenRouter, Perplexity, GPUStack, and any OpenAI-compatible API
-
-## Installation
-
-Add to your Gemfile:
 ```ruby
-gem 'ruby_llm'
+LexLLM::Routing::ModelOffering.new(
+  provider_family: :ollama,
+  instance_id: :gpu_embed_01,
+  transport: :rabbitmq,
+  model: 'nomic-embed-text',
+  usage_type: :embedding,
+  capabilities: %i[embedding]
+).lane_key
+# => "llm.fleet.embed.nomic-embed-text"
 ```
-Then `bundle install`.
 
-Configure your API keys:
+The intent is that any eligible worker can bind to the same lane:
+
+- local MacBook workers
+- GPU servers in a datacenter
+- vLLM workers
+- Ollama workers
+- cloud-side LegionIO workers near Bedrock, Vertex, Azure, or another provider
+
+Busy endpoint workers should not reject/requeue in a hot loop. Endpoint fleet workers can use pull-style scheduling, while server-class workers can use normal consumers with prefetch and consumer priority.
+
+## Default Fleet Settings
+
+`Legion::Extensions::Llm.default_settings` provides defaults that provider extensions inherit and override:
+
 ```ruby
-# config/initializers/ruby_llm.rb
-RubyLLM.configure do |config|
-  config.openai_api_key = ENV['OPENAI_API_KEY']
-end
+Legion::Extensions::Llm.default_settings
+# => {
+#      fleet: {
+#        enabled: false,
+#        scheduler: :basic_get,
+#        consumer_priority: 0,
+#        queue_expires_ms: 60_000,
+#        message_ttl_ms: 120_000,
+#        queue_max_length: 100,
+#        delivery_limit: 3,
+#        consumer_ack_timeout_ms: 300_000,
+#        endpoint: {
+#          enabled: false,
+#          empty_lane_backoff_ms: 250,
+#          idle_backoff_ms: 1_000,
+#          max_consecutive_pulls_per_lane: 0,
+#          accept_when: []
+#        }
+#      }
+#    }
 ```
 
-## Rails
+The defaults are conservative:
+
+- fleet participation is off unless configured
+- endpoint fleet mode is separately disabled by default
+- queue and message TTLs are bounded
+- pull scheduling is the default for endpoint-style workers
+- provider gems can override defaults through `Legion::Settings`
+
+Provider gems can build a complete provider settings hash without duplicating merge logic:
+
+```ruby
+Legion::Extensions::Llm.provider_settings(
+  family: :ollama,
+  instance: {
+    base_url: "http://localhost:11434",
+    fleet: { enabled: true, consumer_priority: 10 }
+  }
+)
+```
+
+## Provider Extension Contract
+
+A provider gem should use `lex-llm` for shared behavior and implement only the provider-specific pieces.
+
+At minimum, a provider extension should define:
+
+- `Legion::Extensions::Llm::<Provider>`
+- provider default settings
+- model discovery or a static model offering registry
+- provider request translation
+- provider response translation
+- health and readiness checks
+- embedding support separately from inference support when the provider exposes both
+
+Provider extensions should avoid duplicating shared classes, schema logic, fleet lane construction, JSON handling, or common request/response objects.
+
+## Schema Status
+
+`lex-llm` still depends on `ruby_llm-schema` because the current schema bridge exposes:
+
+```ruby
+LexLLM::Schema
+```
+
+as:
+
+```ruby
+RubyLLM::Schema
+```
+
+That dependency should stay until LegionIO owns or replaces the schema layer directly.
+
+## Development
+
+Install dependencies:
 
 ```bash
-# Install Rails Integration
-bin/rails generate ruby_llm:install
-bin/rails db:migrate
-bin/rails ruby_llm:load_models # v1.13+
-
-# Add Chat UI (optional)
-bin/rails generate ruby_llm:chat_ui
+bundle install
 ```
 
-```ruby
-class Chat < ApplicationRecord
-  acts_as_chat
-end
+Run lint:
 
-chat = Chat.create! model: "claude-sonnet-4"
-chat.ask "What's in this file?", with: "report.pdf"
+```bash
+bundle exec rubocop -A
 ```
 
-Visit `http://localhost:3000/chats` for a ready-to-use chat interface!
+Run the full test suite:
 
-## Documentation
+```bash
+bundle exec rspec --format json --out tmp/rspec_results.json --format progress --out tmp/rspec_progress.txt
+```
 
-[rubyllm.com](https://rubyllm.com)
+`Gemfile.lock` is intentionally not committed for this repo.
 
-## Contributing
+## Attribution
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-Released under the MIT License.
+`lex-llm` began as a LegionIO fork of RubyLLM. RubyLLM remains credited under the MIT license in `LICENSE`.
