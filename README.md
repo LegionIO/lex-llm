@@ -21,4 +21,4 @@ gem 'lex-llm'
 
 ## Attribution
 
-This gem began as a LegionIO fork of RubyLLM. RubyLLM remains credited under the MIT license; see `LICENSE` and `NOTICE.md`.
+This gem began as a LegionIO fork of RubyLLM. RubyLLM remains credited under the MIT license; see `LICENSE`.
