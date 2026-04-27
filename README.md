@@ -208,6 +208,18 @@ The defaults are conservative:
 - pull scheduling is the default for endpoint-style workers
 - provider gems can override defaults through `Legion::Settings`
 
+Provider gems can build a complete provider settings hash without duplicating merge logic:
+
+```ruby
+Legion::Extensions::Llm.provider_settings(
+  family: :ollama,
+  instance: {
+    base_url: "http://localhost:11434",
+    fleet: { enabled: true, consumer_priority: 10 }
+  }
+)
+```
+
 ## Provider Extension Contract
 
 A provider gem should use `lex-llm` for shared behavior and implement only the provider-specific pieces.

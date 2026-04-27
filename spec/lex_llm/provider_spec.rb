@@ -45,24 +45,9 @@ RSpec.describe LexLLM::Provider do
   end
 
   describe 'provider configuration schema' do
-    it 'keeps requirements as a subset of declared configuration options' do
-      described_class.providers.each_value do |provider_class|
-        missing = provider_class.configuration_requirements - provider_class.configuration_options
-        expect(missing).to be_empty, "#{provider_class.name} is missing options for requirements: #{missing.inspect}"
-      end
-    end
-
-    it 'exposes aggregated provider options through Configuration' do
-      expect(LexLLM::Configuration.options).to include(
-        :openrouter_api_base,
-        :deepseek_api_base,
-        :ollama_api_key
-      )
-
-      expect(LexLLM::Configuration.options).to include(
-        :request_timeout,
-        :model_registry_class
-      )
+    it 'starts with no concrete providers registered by the base gem' do
+      expect(described_class.providers).to eq({})
+      expect(LexLLM::Configuration.options).to include(:request_timeout, :model_registry_class)
     end
   end
 end

@@ -15,8 +15,7 @@ RSpec.describe LexLLM::Generators::ToolGenerator, :generator, type: :generator d
   def run_rails_generate(*args)
     env = {
       'BUNDLE_GEMFILE' => ENV['BUNDLE_GEMFILE'] || Bundler.default_gemfile.to_s,
-      'BUNDLE_IGNORE_CONFIG' => '1',
-      'OPENAI_API_KEY' => ENV.fetch('OPENAI_API_KEY', 'test')
+      'BUNDLE_IGNORE_CONFIG' => '1'
     }
     command = ['bundle', 'exec', 'rails', 'generate', *args]
     GeneratorTestHelpers.run_command(env, command, chdir: app_path)

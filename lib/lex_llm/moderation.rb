@@ -18,7 +18,7 @@ module LexLLM
                       assume_model_exists: false,
                       context: nil)
       config = context&.config || LexLLM.config
-      model ||= config.default_moderation_model || 'omni-moderation-latest'
+      model ||= config.default_moderation_model
       model, provider_instance = Models.resolve(model, provider: provider, assume_exists: assume_model_exists,
                                                        config: config)
       model_id = model.id

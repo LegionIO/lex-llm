@@ -4,6 +4,7 @@ require 'rails_helper'
 
 RSpec.describe LexLLM::Agent do
   include_context 'with configured LexLLM'
+  include_context 'with fake llm provider'
 
   def write_prompt(agent_name, content)
     prompt_dir = Rails.root.join('app/prompts', agent_name)
@@ -20,7 +21,7 @@ RSpec.describe LexLLM::Agent do
 
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       inputs :display_name
       instructions display_name: -> { display_name }
     end
@@ -44,7 +45,7 @@ RSpec.describe LexLLM::Agent do
 
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       instructions
     end
 
@@ -59,7 +60,7 @@ RSpec.describe LexLLM::Agent do
   it 'raises when instructions prompt shorthand file is missing' do
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       instructions
     end
 
@@ -69,7 +70,7 @@ RSpec.describe LexLLM::Agent do
   it 'exposes chat_model record as chat in execution context for .create! and .find' do
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       instructions { "chat-class: #{chat.class.name}" }
     end
 
@@ -91,7 +92,7 @@ RSpec.describe LexLLM::Agent do
 
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       inputs :display_name
       instructions display_name: -> { display_name }
     end
@@ -119,7 +120,7 @@ RSpec.describe LexLLM::Agent do
 
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       inputs :display_name
       instructions display_name: -> { display_name }
     end
@@ -143,7 +144,7 @@ RSpec.describe LexLLM::Agent do
 
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       inputs :display_name
       instructions display_name: -> { display_name }
     end
@@ -167,7 +168,7 @@ RSpec.describe LexLLM::Agent do
 
   it 'raises when .create! is used without chat_model' do
     agent_class = Class.new(LexLLM::Agent) do
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
     end
 
     expect do
@@ -178,7 +179,7 @@ RSpec.describe LexLLM::Agent do
   it 'propagates assume_model_exists from class config when using find' do
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'not-a-real-model', provider: :openai, assume_model_exists: true
+      model 'not-a-real-model', provider: :fake_llm, assume_model_exists: true
       instructions 'Hello'
     end
 
@@ -191,7 +192,7 @@ RSpec.describe LexLLM::Agent do
   it 'propagates assume_model_exists from class config when using sync_instructions! with id' do
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'not-a-real-model', provider: :openai, assume_model_exists: true
+      model 'not-a-real-model', provider: :fake_llm, assume_model_exists: true
       instructions 'Hello'
     end
 
@@ -204,7 +205,7 @@ RSpec.describe LexLLM::Agent do
   it 'propagates assume_model_exists from class config when initializing with a reloaded chat record' do
     agent_class = Class.new(LexLLM::Agent) do
       chat_model Chat
-      model 'not-a-real-model', provider: :openai, assume_model_exists: true
+      model 'not-a-real-model', provider: :fake_llm, assume_model_exists: true
       instructions 'Hello'
     end
 
@@ -217,7 +218,7 @@ RSpec.describe LexLLM::Agent do
 
   it 'raises when .sync_instructions! is used without chat_model' do
     agent_class = Class.new(LexLLM::Agent) do
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
     end
 
     expect do

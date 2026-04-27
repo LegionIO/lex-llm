@@ -181,6 +181,10 @@ module LexLLM
         false
       end
 
+      def resolve_model_id(model_id, config: nil) # rubocop:disable Lint/UnusedMethodArgument
+        model_id
+      end
+
       def configured?(config)
         configuration_requirements.all? { |req| config.send(req) }
       end
@@ -191,6 +195,8 @@ module LexLLM
       end
 
       def resolve(name)
+        return nil if name.nil?
+
         providers[name.to_sym]
       end
 

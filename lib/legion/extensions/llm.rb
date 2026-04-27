@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'lex_llm'
+require 'legion/extensions/llm/provider_settings'
 require 'legion/extensions/llm/transport/fleet_lane'
 
 module Legion
@@ -39,6 +40,10 @@ module Legion
             }
           }
         }
+      end
+
+      def self.provider_settings(...)
+        ProviderSettings.build(...)
       end
     end
   end

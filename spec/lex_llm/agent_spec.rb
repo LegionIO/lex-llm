@@ -4,6 +4,7 @@ require 'spec_helper'
 
 RSpec.describe LexLLM::Agent do
   include_context 'with configured LexLLM'
+  include_context 'with fake llm provider'
 
   it 'builds a configured plain chat via .chat with runtime inputs' do
     tool_class = Class.new(LexLLM::Tool) do
@@ -11,7 +12,7 @@ RSpec.describe LexLLM::Agent do
     end
 
     agent_class = Class.new(LexLLM::Agent) do
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       inputs :display_name
       instructions { "Hello #{display_name}" }
       tools { [tool_class.new] }
@@ -28,7 +29,7 @@ RSpec.describe LexLLM::Agent do
 
   it 'exposes LexLLM::Chat as chat in execution context for .chat' do
     agent_class = Class.new(LexLLM::Agent) do
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       instructions { chat.class.name }
     end
 
@@ -38,7 +39,7 @@ RSpec.describe LexLLM::Agent do
 
   it 'raises when instructions default prompt is missing' do
     agent_class = Class.new(LexLLM::Agent) do
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       instructions
     end
 
@@ -47,7 +48,7 @@ RSpec.describe LexLLM::Agent do
 
   it 'supports inline schema DSL via schema do ... end' do
     agent_class = Class.new(LexLLM::Agent) do
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       schema do
         string :verdict, enum: %w[pass revise]
         string :feedback
@@ -65,7 +66,7 @@ RSpec.describe LexLLM::Agent do
 
   it 'supports runtime-evaluated schema blocks that return a schema value' do
     agent_class = Class.new(LexLLM::Agent) do
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       inputs :strict
 
       schema do
@@ -87,24 +88,22 @@ RSpec.describe LexLLM::Agent do
     expect(loose_chat.schema).to be_nil
   end
 
-  it 'can ask using the first configured chat model' do
-    model_info = CHAT_MODELS.first
-
+  it 'can ask using a registered provider' do
     agent_class = Class.new(LexLLM::Agent) do
-      model model_info[:model], provider: model_info[:provider]
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
       instructions 'Answer questions clearly.'
     end
 
     stub_const('SpecChatAgent', agent_class)
 
-    response = SpecChatAgent.new.ask("What's 2 + 2?")
-    expect(response.content).to include('4')
+    response = SpecChatAgent.new.ask('hello')
+    expect(response.content).to include('fake response to hello')
     expect(response.role).to eq(:assistant)
   end
 
   it 'delegates add_message to the underlying chat interface' do
     agent_class = Class.new(LexLLM::Agent) do
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
     end
 
     agent = agent_class.new
@@ -117,7 +116,7 @@ RSpec.describe LexLLM::Agent do
 
   it 'exposes messages like LexLLM::Chat' do
     agent_class = Class.new(LexLLM::Agent) do
-      model 'gpt-4.1-nano'
+      model 'fake-chat-model', provider: :fake_llm, assume_model_exists: true
     end
 
     agent = agent_class.new

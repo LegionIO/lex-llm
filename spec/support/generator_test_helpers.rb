@@ -15,7 +15,6 @@ module GeneratorTestHelpers
 
     root_env = {
       'LEX_LLM_PATH' => lex_llm_path,
-      'RUBYLLM_PATH' => lex_llm_path,
       'BUNDLE_GEMFILE' => root_bundle_gemfile
     }
     root_env['BUNDLE_PATH'] = ENV['BUNDLE_PATH'] if ENV.key?('BUNDLE_PATH')
@@ -53,27 +52,22 @@ module GeneratorTestHelpers
   end
 
   def within_test_app(app_path, &)
-    api_key = ENV.fetch('OPENAI_API_KEY', 'test')
     bundle_gemfile = ENV['BUNDLE_GEMFILE'] || Bundler.default_gemfile.to_s
     previous_bundle_gemfile = ENV.fetch('BUNDLE_GEMFILE', nil)
     previous_bundle_ignore_config = ENV.fetch('BUNDLE_IGNORE_CONFIG', nil)
-    previous_openai_api_key = ENV.fetch('OPENAI_API_KEY', nil)
 
     ENV['BUNDLE_GEMFILE'] = bundle_gemfile
     ENV['BUNDLE_IGNORE_CONFIG'] = '1'
-    ENV['OPENAI_API_KEY'] = api_key
     Dir.chdir(app_path, &)
   ensure
     ENV['BUNDLE_GEMFILE'] = previous_bundle_gemfile
     ENV['BUNDLE_IGNORE_CONFIG'] = previous_bundle_ignore_config
-    ENV['OPENAI_API_KEY'] = previous_openai_api_key
   end
 
   def run_rails_runner(script)
     env = {
       'BUNDLE_GEMFILE' => ENV['BUNDLE_GEMFILE'] || Bundler.default_gemfile.to_s,
-      'BUNDLE_IGNORE_CONFIG' => '1',
-      'OPENAI_API_KEY' => ENV.fetch('OPENAI_API_KEY', 'test')
+      'BUNDLE_IGNORE_CONFIG' => '1'
     }
     stdout, stderr, status = Open3.capture3(env, 'bundle', 'exec', 'rails', 'runner', script)
     [status.success?, "#{stdout}#{stderr}"]

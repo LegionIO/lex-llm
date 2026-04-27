@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-gem 'lex-llm', path: ENV['LEX_LLM_PATH'] || ENV['RUBYLLM_PATH'] || '../../../..', require: 'lex_llm'
+gem 'lex-llm', path: ENV['LEX_LLM_PATH'] || '../../../..', require: 'lex_llm'
 
 after_bundle do
   migration_version = "[#{Rails::VERSION::MAJOR}.#{Rails::VERSION::MINOR}]"
@@ -10,7 +10,7 @@ after_bundle do
     require "lex_llm/active_record/acts_as"
 
     LexLLM.configure do |config|
-      config.openai_api_key = ENV.fetch("OPENAI_API_KEY", "test")
+      config.use_new_acts_as = true
     end
 
     ActiveSupport.on_load :active_record do

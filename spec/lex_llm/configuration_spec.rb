@@ -20,9 +20,8 @@ RSpec.describe LexLLM::Configuration do
       expect(described_class.options).to include(
         :request_timeout,
         :default_model,
-        :model_registry_file,
-        :openai_api_key,
-        :openrouter_api_base
+        :default_embedding_model,
+        :model_registry_file
       )
     end
   end

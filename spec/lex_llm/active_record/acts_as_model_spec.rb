@@ -5,6 +5,7 @@ require 'tempfile'
 
 RSpec.describe LexLLM::ActiveRecord::ActsAs do
   include_context 'with configured LexLLM'
+  include_context 'with fake llm provider'
 
   describe 'acts_as_model' do
     let(:model_class) do
@@ -132,7 +133,7 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
       end
 
       it 'delegates label formatting' do
-        expect(model.label).to eq('OpenAI - GPT-4')
+        expect(model.label).to eq('openai - GPT-4')
       end
     end
 
@@ -245,14 +246,14 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
         model_class.create!(
           model_id: 'test-gpt',
           name: 'Test GPT',
-          provider: 'openai',
+          provider: 'fake_llm',
           capabilities: ['streaming']
         )
 
         model_class.create!(
-          model_id: 'test-claude',
-          name: 'Test Claude',
-          provider: 'anthropic',
+          model_id: 'test-backup',
+          name: 'Test Backup',
+          provider: 'backup_fake_llm',
           capabilities: ['streaming']
         )
 
@@ -271,12 +272,12 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
 
         # Verify association works
         expect(chat.model).to be_present
-        expect(chat.model.provider).to eq('openai')
+        expect(chat.model.provider).to eq('fake_llm')
 
         # Mock the chat creation to verify parameters
         expect(LexLLM).to receive(:chat).with( # rubocop:disable RSpec/MessageSpies,RSpec/StubbedMock
           model: 'test-gpt',
-          provider: :openai,
+          provider: :fake_llm,
           assume_model_exists: false
         ).and_return(
           instance_double(LexLLM::Chat, reset_messages!: nil, add_message: nil,
@@ -288,13 +289,13 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
       end
 
       it 'uses different provider from model association' do
-        chat = chat_class.create!(model_id: 'test-claude')
+        chat = chat_class.create!(model_id: 'test-backup')
 
-        expect(chat.model.provider).to eq('anthropic')
+        expect(chat.model.provider).to eq('backup_fake_llm')
 
         expect(LexLLM).to receive(:chat).with( # rubocop:disable RSpec/MessageSpies,RSpec/StubbedMock
-          model: 'test-claude',
-          provider: :anthropic,
+          model: 'test-backup',
+          provider: :backup_fake_llm,
           assume_model_exists: false
         ).and_return(
           instance_double(LexLLM::Chat, reset_messages!: nil, add_message: nil,
@@ -310,29 +311,29 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
       end
 
       it 'creates model in database when assume_model_exists is true with provider' do
-        chat = chat_class.new(model_id: 'gpt-1999', provider: 'openai', assume_model_exists: true)
+        chat = chat_class.new(model_id: 'future-chat-model', provider: 'fake_llm', assume_model_exists: true)
         chat.save!
 
         expect(chat.model).to be_present
-        expect(chat.model.model_id).to eq('gpt-1999')
-        expect(chat.model.provider).to eq('openai')
+        expect(chat.model.model_id).to eq('future-chat-model')
+        expect(chat.model.provider).to eq('fake_llm')
 
         # Verify it was created in the database
-        db_model = model_class.find_by(model_id: 'gpt-1999', provider: 'openai')
+        db_model = model_class.find_by(model_id: 'future-chat-model', provider: 'fake_llm')
         expect(db_model).to be_present
-        expect(db_model.name).to eq('Gpt 1999') # Should use model_id as name when not found
+        expect(db_model.name).to eq('Future chat model') # Should use model_id as name when not found
       end
 
       it 'works with assume_model_exists and different provider' do
-        chat = chat_class.new(model_id: 'future-model-2050', provider: 'anthropic', assume_model_exists: true)
+        chat = chat_class.new(model_id: 'future-model-2050', provider: 'backup_fake_llm', assume_model_exists: true)
         chat.save!
 
         expect(chat.model).to be_present
         expect(chat.model.model_id).to eq('future-model-2050')
-        expect(chat.model.provider).to eq('anthropic')
+        expect(chat.model.provider).to eq('backup_fake_llm')
 
         # Verify it was created in the database
-        db_model = model_class.find_by(model_id: 'future-model-2050', provider: 'anthropic')
+        db_model = model_class.find_by(model_id: 'future-model-2050', provider: 'backup_fake_llm')
         expect(db_model).to be_present
       end
 

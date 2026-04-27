@@ -158,7 +158,7 @@ RSpec.describe LexLLM::Model::Info do
 
   describe '#label' do
     it 'returns provider and display name' do
-      expect(info.label).to eq('OpenAI - GPT-5')
+      expect(info.label).to eq('openai - GPT-5')
     end
   end
 

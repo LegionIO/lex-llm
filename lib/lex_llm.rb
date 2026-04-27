@@ -19,21 +19,11 @@ require 'zeitwerk'
 module LexLLM
   loader = Zeitwerk::Loader.for_gem
   loader.inflector.inflect(
-    'azure' => 'Azure',
     'UI' => 'UI',
     'api' => 'API',
-    'bedrock' => 'Bedrock',
-    'deepseek' => 'DeepSeek',
-    'gpustack' => 'GPUStack',
     'llm' => 'LLM',
-    'mistral' => 'Mistral',
-    'openai' => 'OpenAI',
-    'openrouter' => 'OpenRouter',
     'pdf' => 'PDF',
-    'perplexity' => 'Perplexity',
-    'lex_llm' => 'LexLLM',
-    'vertexai' => 'VertexAI',
-    'xai' => 'XAI'
+    'lex_llm' => 'LexLLM'
   )
   loader.ignore("#{__dir__}/tasks")
   loader.ignore("#{__dir__}/generators")
@@ -98,20 +88,6 @@ module LexLLM
     end
   end
 end
-
-LexLLM::Provider.register :anthropic, LexLLM::Providers::Anthropic
-LexLLM::Provider.register :azure, LexLLM::Providers::Azure
-LexLLM::Provider.register :bedrock, LexLLM::Providers::Bedrock
-LexLLM::Provider.register :deepseek, LexLLM::Providers::DeepSeek
-LexLLM::Provider.register :gemini, LexLLM::Providers::Gemini
-LexLLM::Provider.register :gpustack, LexLLM::Providers::GPUStack
-LexLLM::Provider.register :mistral, LexLLM::Providers::Mistral
-LexLLM::Provider.register :ollama, LexLLM::Providers::Ollama
-LexLLM::Provider.register :openai, LexLLM::Providers::OpenAI
-LexLLM::Provider.register :openrouter, LexLLM::Providers::OpenRouter
-LexLLM::Provider.register :perplexity, LexLLM::Providers::Perplexity
-LexLLM::Provider.register :vertexai, LexLLM::Providers::VertexAI
-LexLLM::Provider.register :xai, LexLLM::Providers::XAI
 
 if defined?(Rails::Railtie)
   require 'lex_llm/railtie'

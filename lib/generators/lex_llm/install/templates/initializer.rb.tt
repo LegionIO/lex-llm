@@ -2,8 +2,9 @@ require "lex_llm"
 require "lex_llm/active_record/acts_as"
 
 LexLLM.configure do |config|
-  config.openai_api_key = ENV.fetch("OPENAI_API_KEY", Rails.application.credentials.dig(:openai_api_key))
-  # config.default_model = "gpt-5-nano"
+  # Provider gems register their own settings.
+  # Example after installing a provider extension:
+  # config.default_model = "your-provider-model"
 
   # Use the new association-based acts_as API (recommended)
   config.use_new_acts_as = true

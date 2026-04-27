@@ -5,10 +5,11 @@ require 'stringio'
 
 RSpec.describe LexLLM::ActiveRecord::ActsAs do
   include_context 'with configured LexLLM'
+  include_context 'with fake llm provider'
 
   let(:image_path) { File.expand_path('../../fixtures/ruby.png', __dir__) }
   let(:pdf_path) { File.expand_path('../../fixtures/sample.pdf', __dir__) }
-  let(:model) { 'gpt-4.1-nano' }
+  let(:model) { 'fake-chat-model' }
 
   def uploaded_file(path, type)
     filename = File.basename(path)
@@ -38,7 +39,7 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
 
   describe 'attachment handling' do
     it 'converts ActiveStorage attachments to LexLLM Content' do
-      chat = Chat.create!(model: model)
+      chat = Chat.create!(model: model, provider: 'fake_llm', assume_model_exists: true)
 
       message = chat.messages.create!(role: 'user', content: 'Check this out')
       message.attachments.attach(
@@ -53,7 +54,7 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
     end
 
     it 'handles multiple attachments' do
-      chat = Chat.create!(model: model)
+      chat = Chat.create!(model: model, provider: 'fake_llm', assume_model_exists: true)
 
       image_upload = uploaded_file(image_path, 'image/png')
       pdf_upload = uploaded_file(pdf_path, 'application/pdf')
@@ -66,7 +67,7 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
     end
 
     it 'handles attachments in ask method' do
-      chat = Chat.create!(model: model)
+      chat = Chat.create!(model: model, provider: 'fake_llm', assume_model_exists: true)
 
       image_upload = uploaded_file(image_path, 'image/png')
 
@@ -78,7 +79,7 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
     end
 
     it 'ignores leading blank multipart attachment entries for create_user_message' do
-      chat = Chat.create!(model: model)
+      chat = Chat.create!(model: model, provider: 'fake_llm', assume_model_exists: true)
       image_upload = uploaded_file(image_path, 'image/png')
 
       expect do
@@ -90,7 +91,7 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
     end
 
     it 'reuses an existing ActiveStorage::Blob without re-uploading' do
-      chat = Chat.create!(model: model)
+      chat = Chat.create!(model: model, provider: 'fake_llm', assume_model_exists: true)
 
       existing_blob = ActiveStorage::Blob.create_and_upload!(
         io: attachment_io(image_path),
@@ -110,7 +111,7 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
 
   describe 'attachment types' do
     it 'handles images' do
-      chat = Chat.create!(model: model)
+      chat = Chat.create!(model: model, provider: 'fake_llm', assume_model_exists: true)
       message = chat.messages.create!(role: 'user', content: 'Image test')
 
       message.attachments.attach(
@@ -126,7 +127,7 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
 
     it 'handles videos' do
       video_path = File.expand_path('../../fixtures/ruby.mp4', __dir__)
-      chat = Chat.create!(model: model)
+      chat = Chat.create!(model: model, provider: 'fake_llm', assume_model_exists: true)
       message = chat.messages.create!(role: 'user', content: 'Video test')
 
       message.attachments.attach(
@@ -141,7 +142,7 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
     end
 
     it 'handles PDFs' do
-      chat = Chat.create!(model: model)
+      chat = Chat.create!(model: model, provider: 'fake_llm', assume_model_exists: true)
       message = chat.messages.create!(role: 'user', content: 'PDF test')
 
       message.attachments.attach(

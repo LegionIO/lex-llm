@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-gem 'lex-llm', path: ENV['LEX_LLM_PATH'] || ENV['RUBYLLM_PATH'] || '../../../..', require: 'lex_llm'
+gem 'lex-llm', path: ENV['LEX_LLM_PATH'] || '../../../..', require: 'lex_llm'
 
 generate 'lex_llm:install',
          'chat:Llm::Chat',

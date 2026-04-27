@@ -32,11 +32,11 @@ module LexLLM
     # System-level options are declared here.
     # Provider-specific options are declared in each provider class via
     # `self.configuration_options` and registered through Provider.register.
-    option :default_model, 'gpt-5.4'
-    option :default_embedding_model, 'text-embedding-3-small'
-    option :default_moderation_model, 'omni-moderation-latest'
-    option :default_image_model, 'gpt-image-1.5'
-    option :default_transcription_model, 'whisper-1'
+    option :default_model, nil
+    option :default_embedding_model, nil
+    option :default_moderation_model, nil
+    option :default_image_model, nil
+    option :default_transcription_model, nil
 
     option :model_registry_file, -> { File.expand_path('models.json', __dir__) }
     option :model_registry_class, 'Model'
@@ -52,8 +52,8 @@ module LexLLM
 
     option :logger, nil
     option :log_file, -> { $stdout }
-    option :log_level, -> { ENV['RUBYLLM_DEBUG'] ? Logger::DEBUG : Logger::INFO }
-    option :log_stream_debug, -> { ENV['RUBYLLM_STREAM_DEBUG'] == 'true' }
+    option :log_level, -> { ENV['LEX_LLM_DEBUG'] ? Logger::DEBUG : Logger::INFO }
+    option :log_stream_debug, -> { ENV['LEX_LLM_STREAM_DEBUG'] == 'true' }
     option :log_regexp_timeout, -> { Regexp.respond_to?(:timeout) ? (Regexp.timeout || 1.0) : nil }
 
     def initialize

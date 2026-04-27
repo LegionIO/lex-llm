@@ -77,9 +77,9 @@ module LexLLM
         say "\n  Next steps:", :yellow
         say '     1. Run: bin/rails db:migrate'
         say '     2. Run: bin/rails lex_llm:load_models'
-        say '     3. Set your API keys in config/initializers/lex_llm.rb'
+        say '     3. Install a lex-llm-* provider gem and configure its settings'
 
-        say "     4. Start chatting: #{chat_model_name}.create!(model: 'gpt-5-nano').ask('Hello!')"
+        say "     4. Start chatting: #{chat_model_name}.create!(model: 'your-provider-model').ask('Hello!')"
         say "     5. Optional UI: #{chat_ui_generator_command}"
 
         if options[:skip_active_storage]
