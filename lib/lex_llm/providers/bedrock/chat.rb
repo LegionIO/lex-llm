@@ -279,7 +279,7 @@ module LexLLM
               type: 'json_schema',
               structure: {
                 jsonSchema: {
-                  schema: JSON.generate(cleaned),
+                  schema: Legion::JSON.generate(cleaned),
                   name: schema[:name]
                 }
               }

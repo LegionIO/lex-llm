@@ -355,10 +355,10 @@ RSpec.describe LexLLM::Models do
 
       # Verify file was written with valid JSON
       saved_content = File.read(temp_file.path)
-      expect { JSON.parse(saved_content) }.not_to raise_error
+      expect { Legion::JSON.parse(saved_content, symbolize_names: false) }.not_to raise_error
 
       # Verify model data was saved
-      parsed_models = JSON.parse(saved_content)
+      parsed_models = Legion::JSON.parse(saved_content, symbolize_names: false)
       expect(parsed_models.size).to eq(models.all.size)
 
       temp_file.unlink

@@ -56,7 +56,7 @@ module LexLLM
     def tool_calls_from_stream
       tool_calls.transform_values do |tc|
         arguments = if tc.arguments.is_a?(String) && !tc.arguments.empty?
-                      JSON.parse(tc.arguments)
+                      Legion::JSON.parse(tc.arguments, symbolize_names: false)
                     elsif tc.arguments.is_a?(String)
                       {}
                     else

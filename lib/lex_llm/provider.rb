@@ -246,8 +246,8 @@ module LexLLM
     def try_parse_json(maybe_json)
       return maybe_json unless maybe_json.is_a?(String)
 
-      JSON.parse(maybe_json)
-    rescue JSON::ParserError
+      Legion::JSON.parse(maybe_json, symbolize_names: false)
+    rescue Legion::JSON::ParseError
       maybe_json
     end
 

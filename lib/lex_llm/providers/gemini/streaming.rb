@@ -81,9 +81,9 @@ module LexLLM
         end
 
         def parse_streaming_error(data)
-          error_data = JSON.parse(data)
+          error_data = Legion::JSON.parse(data, symbolize_names: false)
           [error_data['error']['code'], error_data['error']['message']]
-        rescue JSON::ParserError => e
+        rescue Legion::JSON::ParseError => e
           LexLLM.logger.debug { "Failed to parse streaming error: #{e.message}" }
           [500, "Failed to parse error: #{data}"]
         end

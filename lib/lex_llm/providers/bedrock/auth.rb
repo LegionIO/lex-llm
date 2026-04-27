@@ -12,7 +12,7 @@ module LexLLM
 
         def signed_post(connection, url, payload, additional_headers = {})
           request_payload = api_payload(payload)
-          body = JSON.generate(request_payload)
+          body = Legion::JSON.generate(request_payload)
           signed_headers = sign_headers('POST', url, body)
 
           response = connection.post(url, request_payload) do |req|

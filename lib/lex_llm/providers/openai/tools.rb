@@ -58,7 +58,7 @@ module LexLLM
               type: 'function',
               function: {
                 name: tc.name,
-                arguments: JSON.generate(tc.arguments)
+                arguments: Legion::JSON.generate(tc.arguments)
               }
             }
             if tc.thought_signature
@@ -76,7 +76,7 @@ module LexLLM
           if arguments.nil? || arguments.empty?
             {}
           else
-            JSON.parse(arguments)
+            Legion::JSON.parse(arguments, symbolize_names: false)
           end
         end
 

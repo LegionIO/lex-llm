@@ -154,8 +154,8 @@ module LexLLM
 
       if @schema && response.content.is_a?(String) && !response.tool_call?
         begin
-          response.content = JSON.parse(response.content)
-        rescue JSON::ParserError
+          response.content = Legion::JSON.parse(response.content, symbolize_names: false)
+        rescue Legion::JSON::ParseError
           # If parsing fails, keep content as string
         end
       end

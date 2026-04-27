@@ -36,7 +36,7 @@ module LexLLM
         end
 
         def parse_streaming_error(data)
-          error_data = JSON.parse(data)
+          error_data = Legion::JSON.parse(data, symbolize_names: false)
           return unless error_data['error']
 
           case error_data.dig('error', 'type')

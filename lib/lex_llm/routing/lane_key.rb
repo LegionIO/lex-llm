@@ -30,7 +30,7 @@ module LexLLM
           policy_tags: offering.policy_tags.sort,
           metadata: fingerprint_metadata(offering.metadata)
         }
-        Digest::SHA1.hexdigest(JSON.generate(canonical))[0, 10]
+        Digest::SHA1.hexdigest(Legion::JSON.generate(canonical))[0, 10]
       end
 
       def fingerprint_metadata(metadata)

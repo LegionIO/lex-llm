@@ -47,9 +47,9 @@ module LexLLM
 
       def read_from_json(file = LexLLM.config.model_registry_file)
         data = File.exist?(file) ? File.read(file) : '[]'
-        models = JSON.parse(data, symbolize_names: true).map { |model| Model::Info.new(model) }
+        models = Legion::JSON.parse(data, symbolize_names: true).map { |model| Model::Info.new(model) }
         filter_models(models)
-      rescue JSON::ParserError
+      rescue Legion::JSON::ParseError
         []
       end
 
@@ -416,7 +416,7 @@ module LexLLM
     end
 
     def save_to_json(file = LexLLM.config.model_registry_file)
-      File.write(file, JSON.pretty_generate(all.map(&:to_h)))
+      File.write(file, Legion::JSON.pretty_generate(all.map(&:to_h)))
     end
 
     def all

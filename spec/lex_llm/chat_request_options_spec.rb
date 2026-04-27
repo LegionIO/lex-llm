@@ -21,7 +21,7 @@ RSpec.describe LexLLM::Chat do
 
         response = chat.ask('What is the square root of 64? Answer with a JSON object with the key `result`.')
 
-        json_response = JSON.parse(response.content)
+        json_response = Legion::JSON.parse(response.content, symbolize_names: false)
         expect(json_response).to eq({ 'result' => 8 })
       end
     end
@@ -46,7 +46,7 @@ RSpec.describe LexLLM::Chat do
 
         response = chat.ask('What is the square root of 64? Answer with a JSON object with the key `result`.')
 
-        json_response = JSON.parse(response.content)
+        json_response = Legion::JSON.parse(response.content, symbolize_names: false)
         expect(json_response).to eq({ 'result' => 8 })
       end
     end
@@ -75,7 +75,7 @@ RSpec.describe LexLLM::Chat do
 
         response = chat.complete
 
-        json_response = JSON.parse('{' + response.content) # rubocop:disable Style/StringConcatenation
+        json_response = Legion::JSON.parse('{' + response.content, symbolize_names: false) # rubocop:disable Style/StringConcatenation
         expect(json_response).to eq({ 'result' => 8 })
       end
     end
@@ -102,7 +102,7 @@ RSpec.describe LexLLM::Chat do
 
         response = chat.complete
 
-        json_response = JSON.parse('{' + response.content) # rubocop:disable Style/StringConcatenation
+        json_response = Legion::JSON.parse('{' + response.content, symbolize_names: false) # rubocop:disable Style/StringConcatenation
         expect(json_response).to eq({ 'result' => 8 })
       end
     end

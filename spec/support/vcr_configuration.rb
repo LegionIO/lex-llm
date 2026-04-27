@@ -80,8 +80,8 @@ VCR.configure do |config|
   config.filter_sensitive_data('<GOOGLE_ACCESS_TOKEN>') do |interaction|
     if interaction.response.body&.include?('"access_token"')
       begin
-        JSON.parse(interaction.response.body)['access_token']
-      rescue JSON::ParserError
+        Legion::JSON.parse(interaction.response.body, symbolize_names: false)['access_token']
+      rescue Legion::JSON::ParseError
         nil
       end
     end
@@ -90,8 +90,8 @@ VCR.configure do |config|
   config.filter_sensitive_data('<GOOGLE_ID_TOKEN>') do |interaction|
     if interaction.response.body&.include?('"id_token"')
       begin
-        JSON.parse(interaction.response.body)['id_token']
-      rescue JSON::ParserError
+        Legion::JSON.parse(interaction.response.body, symbolize_names: false)['id_token']
+      rescue Legion::JSON::ParseError
         nil
       end
     end

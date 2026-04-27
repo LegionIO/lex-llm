@@ -57,7 +57,7 @@ RSpec.describe LexLLM::Providers::Bedrock::Chat do
         expect(json_schema[:name]).to eq('response')
         expect(json_schema[:schema]).to be_a(String)
 
-        parsed = JSON.parse(json_schema[:schema])
+        parsed = Legion::JSON.parse(json_schema[:schema], symbolize_names: false)
         expect(parsed['type']).to eq('object')
         expect(parsed['properties']).to eq({ 'name' => { 'type' => 'string' } })
       end
@@ -66,7 +66,7 @@ RSpec.describe LexLLM::Providers::Bedrock::Chat do
         payload = render_payload(schema: schema)
 
         json_schema = payload[:outputConfig][:textFormat][:structure][:jsonSchema]
-        parsed = JSON.parse(json_schema[:schema])
+        parsed = Legion::JSON.parse(json_schema[:schema], symbolize_names: false)
         expect(parsed).not_to have_key('strict')
         expect(parsed).not_to have_key(:strict)
       end
@@ -80,7 +80,7 @@ RSpec.describe LexLLM::Providers::Bedrock::Chat do
         json_schema = payload[:outputConfig][:textFormat][:structure][:jsonSchema]
         expect(json_schema[:name]).to eq('PersonSchema')
 
-        parsed = JSON.parse(json_schema[:schema])
+        parsed = Legion::JSON.parse(json_schema[:schema], symbolize_names: false)
         expect(parsed['type']).to eq('object')
         expect(parsed['properties']).to eq({ 'name' => { 'type' => 'string' } })
         expect(parsed).not_to have_key('name')

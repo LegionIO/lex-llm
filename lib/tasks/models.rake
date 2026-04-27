@@ -105,7 +105,7 @@ def validate_models!(models)
   unless validation_errors.empty?
     # Save failed models for inspection
     failed_path = File.expand_path('../lex_llm/models.failed.json', __dir__)
-    File.write(failed_path, JSON.pretty_generate(models_data))
+    File.write(failed_path, Legion::JSON.pretty_generate(models_data))
 
     puts 'ERROR: Models validation failed:'
     puts "\nValidation errors:"
@@ -467,7 +467,7 @@ def generate_aliases # rubocop:disable Metrics/PerceivedComplexity
   end
 
   sorted_aliases = aliases.sort.to_h
-  File.write(LexLLM::Aliases.aliases_file, JSON.pretty_generate(sorted_aliases))
+  File.write(LexLLM::Aliases.aliases_file, Legion::JSON.pretty_generate(sorted_aliases))
 
   puts "Generated #{sorted_aliases.size} aliases"
 end

@@ -17,8 +17,8 @@ module LexLLM
         return value if value.is_a?(Hash) || value.is_a?(Array)
         return if value.blank?
 
-        JSON.parse(value)
-      rescue JSON::ParserError
+        Legion::JSON.parse(value, symbolize_names: false)
+      rescue Legion::JSON::ParseError
         nil
       end
     end

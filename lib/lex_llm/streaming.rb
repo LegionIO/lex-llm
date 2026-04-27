@@ -82,9 +82,9 @@ module LexLLM
 
     def handle_failed_response(chunk, buffer, env)
       buffer << chunk
-      error_data = JSON.parse(buffer)
+      error_data = Legion::JSON.parse(buffer, symbolize_names: false)
       handle_parsed_error(error_data, env)
-    rescue JSON::ParserError
+    rescue Legion::JSON::ParseError
       LexLLM.logger.debug { "Accumulating error chunk: #{chunk}" }
     end
 
@@ -100,11 +100,11 @@ module LexLLM
     end
 
     def handle_data(data, env)
-      parsed = JSON.parse(data)
+      parsed = Legion::JSON.parse(data, symbolize_names: false)
       return parsed unless parsed.is_a?(Hash) && parsed.key?('error')
 
       handle_parsed_error(parsed, env)
-    rescue JSON::ParserError => e
+    rescue Legion::JSON::ParseError => e
       LexLLM.logger.debug { "Failed to parse data chunk: #{e.message}" }
     end
 
@@ -113,9 +113,9 @@ module LexLLM
     end
 
     def parse_streaming_error(data)
-      error_data = JSON.parse(data)
+      error_data = Legion::JSON.parse(data, symbolize_names: false)
       [500, error_data['message'] || 'Unknown streaming error']
-    rescue JSON::ParserError => e
+    rescue Legion::JSON::ParseError => e
       LexLLM.logger.debug { "Failed to parse streaming error: #{e.message}" }
       [500, "Failed to parse error: #{data}"]
     end
@@ -127,9 +127,9 @@ module LexLLM
     end
 
     def parse_error_from_json(data, env, error_message)
-      parsed_data = JSON.parse(data)
+      parsed_data = Legion::JSON.parse(data, symbolize_names: false)
       handle_parsed_error(parsed_data, env)
-    rescue JSON::ParserError => e
+    rescue Legion::JSON::ParseError => e
       LexLLM.logger.debug { "#{error_message}: #{e.message}" }
     end
 

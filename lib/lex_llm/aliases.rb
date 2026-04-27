@@ -24,7 +24,7 @@ module LexLLM
 
       def load_aliases
         if File.exist?(aliases_file)
-          JSON.parse(File.read(aliases_file))
+          Legion::JSON.parse(File.read(aliases_file), symbolize_names: false)
         else
           {}
         end

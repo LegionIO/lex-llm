@@ -7,7 +7,7 @@ RSpec.describe LexLLM::Models do
 
   describe 'models.json structure validation' do
     let(:models_json_path) { LexLLM.config.model_registry_file }
-    let(:models_data) { JSON.parse(File.read(models_json_path)) }
+    let(:models_data) { Legion::JSON.parse(File.read(models_json_path), symbolize_names: false) }
 
     it 'validates models.json has correct structure' do
       expect(models_data).to be_an(Array)
@@ -137,7 +137,7 @@ RSpec.describe LexLLM::Models do
 
       models.save_to_json(temp_file)
 
-      saved_data = JSON.parse(File.read(temp_file.path))
+      saved_data = Legion::JSON.parse(File.read(temp_file.path), symbolize_names: false)
       expect(saved_data).to be_an(Array)
 
       saved_data.each do |model_data|

@@ -15,7 +15,7 @@ module LexLLM
           accumulator = StreamAccumulator.new
           decoder = event_stream_decoder
           request_payload = api_payload(payload)
-          body = JSON.generate(request_payload)
+          body = Legion::JSON.generate(request_payload)
 
           response = connection.post(stream_url, request_payload) do |req|
             req.headers.merge!(sign_headers('POST', stream_url, body))
@@ -52,10 +52,10 @@ module LexLLM
         end
 
         def handle_failed_stream(chunk, env)
-          data = JSON.parse(chunk)
+          data = Legion::JSON.parse(chunk, symbolize_names: false)
           error_response = env.merge(body: data)
           ErrorMiddleware.parse_error(provider: self, response: error_response)
-        rescue JSON::ParserError
+        rescue Legion::JSON::ParseError
           LexLLM.logger.debug { "Failed Bedrock stream error chunk: #{chunk}" }
         end
 
@@ -86,11 +86,11 @@ module LexLLM
         end
 
         def raise_streaming_chunk_error(payload)
-          parsed = JSON.parse(payload)
+          parsed = Legion::JSON.parse(payload, symbolize_names: false)
           message = parsed.dig('error', 'message') || parsed['message'] || 'Bedrock streaming error'
           response = Struct.new(:body, :status).new({ 'message' => message }, 500)
           ErrorMiddleware.parse_error(provider: self, response: response)
-        rescue JSON::ParserError
+        rescue Legion::JSON::ParseError
           nil
         end
 
@@ -115,14 +115,14 @@ module LexLLM
         end
 
         def decode_event_payload(payload)
-          outer = JSON.parse(payload)
+          outer = Legion::JSON.parse(payload, symbolize_names: false)
 
           if outer['bytes'].is_a?(String)
-            JSON.parse(Base64.decode64(outer['bytes']))
+            Legion::JSON.parse(Base64.decode64(outer['bytes']), symbolize_names: false)
           else
             outer
           end
-        rescue JSON::ParserError => e
+        rescue Legion::JSON::ParseError => e
           LexLLM.logger.debug { "Failed to decode Bedrock stream event payload: #{e.message}" }
           nil
         end
@@ -306,11 +306,11 @@ module LexLLM
           return delta if delta.is_a?(Hash)
 
           if delta.is_a?(String) && !delta.empty?
-            JSON.parse(delta)
+            Legion::JSON.parse(delta, symbolize_names: false)
           else
             {}
           end
-        rescue JSON::ParserError
+        rescue Legion::JSON::ParseError
           {}
         end
       end

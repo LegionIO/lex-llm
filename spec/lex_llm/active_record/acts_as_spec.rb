@@ -282,11 +282,11 @@ RSpec.describe LexLLM::ActiveRecord::ActsAs do
       message = chat.add_message(role: :user, content: raw_block)
 
       expect(message.content).to be_nil
-      expect(message.content_raw).to eq(JSON.parse(raw_block.value.to_json))
+      expect(message.content_raw).to eq(Legion::JSON.parse(raw_block.value.to_json, symbolize_names: false))
 
       reconstructed = message.to_llm
       expect(reconstructed.content).to be_a(LexLLM::Content::Raw)
-      expect(reconstructed.content.value).to eq(JSON.parse(raw_block.value.to_json))
+      expect(reconstructed.content.value).to eq(Legion::JSON.parse(raw_block.value.to_json, symbolize_names: false))
     end
 
     it 'round-trips cached token metrics through ActiveRecord models' do
