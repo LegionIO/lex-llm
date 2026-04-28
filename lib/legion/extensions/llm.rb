@@ -1,23 +1,100 @@
 # frozen_string_literal: true
 
-require 'lex_llm'
-require 'legion/extensions/llm/provider_settings'
-require 'legion/extensions/llm/transport/fleet_lane'
+require 'base64'
+require 'date'
+require 'digest/sha1'
+require 'event_stream_parser'
+require 'faraday'
+require 'faraday/multipart'
+require 'faraday/retry'
+require 'legion/json'
+require 'logger'
+require 'marcel'
+require 'ruby_llm/schema'
+require 'securerandom'
+require 'time'
+require 'zeitwerk'
+require_relative 'llm/version'
 
 module Legion
   module Extensions
     # Legion-native namespace for the shared LLM provider framework.
     module Llm
-      VERSION = LexLLM::VERSION unless const_defined?(:VERSION, false)
+      loader = Zeitwerk::Loader.new
+      loader.tag = 'lex-llm'
+      loader.inflector.inflect(
+        'api' => 'API',
+        'llm' => 'Llm',
+        'open_ai_compatible' => 'OpenAICompatible',
+        'pdf' => 'PDF',
+        'ui' => 'UI'
+      )
+      loader.ignore("#{__dir__}/llm/version.rb")
+      loader.push_dir("#{__dir__}/llm", namespace: self)
+      loader.setup
+
+      Schema = ::RubyLLM::Schema unless const_defined?(:Schema, false)
 
       # Provider-neutral value objects exposed under the Legion extension namespace.
       module Types
-        ModelOffering = LexLLM::Routing::ModelOffering unless const_defined?(:ModelOffering, false)
+        ModelOffering = Routing::ModelOffering unless const_defined?(:ModelOffering, false)
       end
 
       # Shared routing helpers exposed under the Legion extension namespace.
       module Routing
-        LaneKey = LexLLM::Routing::LaneKey unless const_defined?(:LaneKey, false)
+        LaneKey = ::Legion::Extensions::Llm::Routing::LaneKey unless const_defined?(:LaneKey, false)
+      end
+
+      class << self
+        def context
+          context_config = config.dup
+          yield context_config if block_given?
+          Context.new(context_config)
+        end
+
+        def chat(...)
+          Chat.new(...)
+        end
+
+        def embed(...)
+          Embedding.embed(...)
+        end
+
+        def moderate(...)
+          Moderation.moderate(...)
+        end
+
+        def paint(...)
+          Image.paint(...)
+        end
+
+        def transcribe(...)
+          Transcription.transcribe(...)
+        end
+
+        def models
+          Models.instance
+        end
+
+        def providers
+          Provider.providers.values
+        end
+
+        def configure
+          yield config
+        end
+
+        def config
+          @config ||= Configuration.new
+        end
+
+        def logger
+          @logger ||= config.logger || Logger.new(
+            config.log_file,
+            progname: 'Legion::Extensions::Llm',
+            level: config.log_level
+          )
+        end
       end
 
       def self.default_settings
@@ -45,6 +122,8 @@ module Legion
       def self.provider_settings(...)
         ProviderSettings.build(...)
       end
+
+      loader.eager_load
     end
   end
 end

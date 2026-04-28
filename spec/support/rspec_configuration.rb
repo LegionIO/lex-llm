@@ -13,6 +13,6 @@ RSpec.configure do |config|
   end
 
   config.before do
-    LexLLM::Provider.providers.clear
+    Legion::Extensions::Llm::Provider.providers.clear
   end
 end

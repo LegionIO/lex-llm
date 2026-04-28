@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require_relative 'lib/lex_llm/version'
+require_relative 'lib/legion/extensions/llm/version'
 
 Gem::Specification.new do |spec|
   spec.name          = 'lex-llm'
-  spec.version       = LexLLM::VERSION
+  spec.version       = Legion::Extensions::Llm::VERSION
   spec.authors       = ['LegionIO', 'Carmine Paolino']
   spec.email         = ['matthewdiverson@gmail.com']
 

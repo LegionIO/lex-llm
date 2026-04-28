@@ -4,33 +4,28 @@
 
 Shared LegionIO framework for LLM provider extensions.
 
-`lex-llm` is the provider-neutral base layer for LegionIO LLM work. It defines the common Ruby API, schema bridge, model metadata, routing structures, request/response helpers, streaming helpers, and Legion extension namespace that concrete provider gems build on.
+`lex-llm` is a standard Legion extension gem. It does not expose a standalone RubyLLM-compatible API, Rails integration, generators, rake tasks, or concrete providers. Its runtime contract is `Legion::Extensions::Llm`, which provider gems extend through nested namespaces such as `Legion::Extensions::Llm::Ollama`.
 
 The routing principle is simple: provider is not the routing unit anymore. A concrete model offering is.
 
-That means Legion can reason about:
-
-- one local Ollama instance with many models
-- multiple remote Ollama or vLLM instances
-- several Bedrock accounts or regions exposing overlapping Anthropic models
-- direct frontier providers such as OpenAI or Anthropic
-- fleet workers on MacBooks, GPU servers, or cloud-side proxy nodes
+That lets Legion reason about one local Ollama instance with many models, multiple remote Ollama or vLLM instances, Bedrock accounts in different regions, direct frontier providers, and fleet workers on MacBooks, GPU servers, or cloud-side proxy nodes.
 
 ## What This Gem Owns
 
-`lex-llm` provides shared primitives only. Provider-specific behavior belongs in provider gems.
+`lex-llm` provides provider-neutral primitives only. Provider-specific behavior belongs in provider gems.
 
 This gem owns:
 
-- `LexLLM`, the shared Ruby API and base provider framework
 - `Legion::Extensions::Llm`, the Legion extension namespace used by autoloading and settings
-- provider-neutral model metadata and capability normalization
-- routing structures such as `LexLLM::Routing::ModelOffering`
+- provider-neutral request, response, message, content, token, and tool objects
+- schema bridging through `Legion::Extensions::Llm::Schema`
+- model metadata and capability normalization
+- routing structures such as `Legion::Extensions::Llm::Routing::ModelOffering`
 - fleet lane key generation for shared RabbitMQ work lanes
-- common chat, embedding, tool, streaming, ActiveRecord, and schema helpers
+- shared chat, embedding, moderation, image, transcription, streaming, and OpenAI-compatible adapter helpers
 - shared runtime dependencies such as `legion-json`, `legion-settings`, and `legion-logging`
 
-Concrete provider gems should depend on this gem and implement the provider-specific transport, authentication, model discovery, request translation, and response translation.
+Concrete provider gems should depend on this gem and implement the provider-specific transport, authentication, model discovery, request translation, response translation, and health checks.
 
 Expected provider gems include:
 
@@ -58,27 +53,29 @@ spec.add_dependency 'lex-llm', '>= 0.1.0'
 
 For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.
 
-## Namespaces
+## Namespace
 
-This gem exposes two runtime namespaces:
+Load the extension through the Legion namespace:
 
-- `LexLLM` for shared Ruby classes, provider primitives, schemas, and helpers
-- `Legion::Extensions::Llm` for LegionIO extension loading and default settings
+```ruby
+require 'legion/extensions/llm'
+```
 
 Provider gems must use nested Legion extension namespaces so LegionIO autoloading can find them consistently.
 
 Example for `lex-llm-ollama`:
 
 ```ruby
-require 'legion/extensions/llm/ollama'
+require 'legion/extensions/llm'
 
 module Legion
   module Extensions
     module Llm
       module Ollama
         def self.default_settings
-          Legion::Extensions::Llm.default_settings.merge(
-            provider_family: :ollama
+          Legion::Extensions::Llm.provider_settings(
+            family: :ollama,
+            instance: { base_url: 'http://localhost:11434' }
           )
         end
       end
@@ -92,7 +89,7 @@ end
 A model offering describes one concrete model made available by one provider instance. It is the base unit for routing, filtering, fleet lane creation, health, policy, and cost decisions.
 
 ```ruby
-offering = LexLLM::Routing::ModelOffering.new(
+offering = Legion::Extensions::Llm::Routing::ModelOffering.new(
   provider_family: :ollama,
   instance_id: :macbook_m4_max,
   transport: :local,
@@ -152,7 +149,7 @@ offering.lane_key
 Embedding lanes omit context size:
 
 ```ruby
-LexLLM::Routing::ModelOffering.new(
+Legion::Extensions::Llm::Routing::ModelOffering.new(
   provider_family: :ollama,
   instance_id: :gpu_embed_01,
   transport: :rabbitmq,
@@ -214,7 +211,7 @@ Provider gems can build a complete provider settings hash without duplicating me
 Legion::Extensions::Llm.provider_settings(
   family: :ollama,
   instance: {
-    base_url: "http://localhost:11434",
+    base_url: 'http://localhost:11434',
     fleet: { enabled: true, consumer_priority: 10 }
   }
 )
@@ -241,7 +238,7 @@ Provider extensions should avoid duplicating shared classes, schema logic, fleet
 `lex-llm` still depends on `ruby_llm-schema` because the current schema bridge exposes:
 
 ```ruby
-LexLLM::Schema
+Legion::Extensions::Llm::Schema
 ```
 
 as:

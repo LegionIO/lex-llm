@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module SpecSupport
-  class FakeLLMProvider < LexLLM::Provider
+  class FakeLLMProvider < Legion::Extensions::Llm::Provider
     class << self
       def configuration_options
         %i[fake_llm_api_key fake_llm_api_base]
@@ -33,18 +33,19 @@ module SpecSupport
     def complete(messages, tools:, temperature:, model:, params: {}, headers: {}, schema: nil, thinking: nil,
                  tool_prefs: nil)
       if block_given?
-        yield LexLLM::Chunk.new(content: 'streamed ', role: :assistant)
-        yield LexLLM::Chunk.new(content: 'response', role: :assistant)
+        yield Legion::Extensions::Llm::Chunk.new(content: 'streamed ', role: :assistant)
+        yield Legion::Extensions::Llm::Chunk.new(content: 'response', role: :assistant)
       end
 
       if tools.any? && messages.none?(&:tool_result?)
         tool = tools.values.first
-        return LexLLM::Message.new(
+        return Legion::Extensions::Llm::Message.new(
           role: :assistant,
           content: nil,
           model_id: model.id,
           tool_calls: {
-            tool.name.to_sym => LexLLM::ToolCall.new(id: 'tool-call-1', name: tool.name, arguments: { value: 21 })
+            tool.name.to_sym => Legion::Extensions::Llm::ToolCall.new(id: 'tool-call-1', name: tool.name,
+                                                                      arguments: { value: 21 })
           },
           input_tokens: 12,
           output_tokens: 3
@@ -61,7 +62,7 @@ module SpecSupport
                   "fake response to #{messages.last.content}"
                 end
 
-      LexLLM::Message.new(
+      Legion::Extensions::Llm::Message.new(
         role: :assistant,
         content: content,
         model_id: model.id,
@@ -76,11 +77,11 @@ module SpecSupport
       vectors = Array(text).map { Array.new(size, 0.5) }
       vectors = vectors.first unless text.is_a?(Array)
 
-      LexLLM::Embedding.new(vectors: vectors, model: model, input_tokens: Array(text).size)
+      Legion::Extensions::Llm::Embedding.new(vectors: vectors, model: model, input_tokens: Array(text).size)
     end
 
     def moderate(_input, model:)
-      LexLLM::Moderation.new(
+      Legion::Extensions::Llm::Moderation.new(
         id: 'moderation-1',
         model: model,
         results: [{ 'flagged' => false, 'categories' => {}, 'category_scores' => {} }]
@@ -88,11 +89,12 @@ module SpecSupport
     end
 
     def paint(_prompt, model:, size:, with: nil, mask: nil, params: {}) # rubocop:disable Metrics/ParameterLists, Lint/UnusedMethodArgument
-      LexLLM::Image.new(data: Base64.strict_encode64('fake-image'), mime_type: 'image/png', model_id: model)
+      Legion::Extensions::Llm::Image.new(data: Base64.strict_encode64('fake-image'), mime_type: 'image/png',
+                                         model_id: model)
     end
 
     def transcribe(_audio_file, model:, language:, **)
-      LexLLM::Transcription.new(text: 'fake transcript', model: model, language: language)
+      Legion::Extensions::Llm::Transcription.new(text: 'fake transcript', model: model, language: language)
     end
   end
 
@@ -111,7 +113,7 @@ end
 
 RSpec.shared_context 'with fake llm provider' do
   before do
-    LexLLM::Provider.register(:fake_llm, SpecSupport::FakeLLMProvider)
-    LexLLM::Provider.register(:backup_fake_llm, SpecSupport::BackupFakeLLMProvider)
+    Legion::Extensions::Llm::Provider.register(:fake_llm, SpecSupport::FakeLLMProvider)
+    Legion::Extensions::Llm::Provider.register(:backup_fake_llm, SpecSupport::BackupFakeLLMProvider)
   end
 end
