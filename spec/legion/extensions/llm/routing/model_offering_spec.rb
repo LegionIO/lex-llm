@@ -17,15 +17,62 @@ RSpec.describe Legion::Extensions::Llm::Routing::ModelOffering do
 
   it 'normalizes provider-neutral offering metadata' do
     expect(offering).to have_attributes(
+      offering_id: 'ollama:macbook-m4-max:inference:qwen3-6-27b-q4-k-m',
       provider_family: :ollama,
+      provider_instance: :'macbook-m4-max',
       instance_id: :'macbook-m4-max',
       transport: :rabbitmq,
       tier: :fleet,
       model: 'qwen3.6:27b-q4_K_M',
+      canonical_model_alias: 'qwen3.6:27b-q4_K_M',
       usage_type: :inference
     )
     expect(offering.capabilities).to eq(%i[chat tools thinking])
     expect(offering.context_window).to eq(32_768)
+  end
+
+  it 'accepts expanded contract fields while preserving instance_id compatibility' do
+    expanded = described_class.new(
+      offering_id: 'azure:gpt4o-prod',
+      provider_family: :azure_foundry,
+      model_family: :openai,
+      provider_instance: :eastus,
+      model: 'gpt4o-prod',
+      canonical_model_alias: 'gpt-4o',
+      routing_metadata: { region: 'eastus', deployment: 'gpt4o-prod' },
+      capabilities: %i[chat tools]
+    )
+
+    expect(expanded).to have_attributes(
+      offering_id: 'azure:gpt4o-prod',
+      provider_family: :azure_foundry,
+      model_family: :openai,
+      provider_instance: :eastus,
+      instance_id: :eastus,
+      model: 'gpt4o-prod',
+      canonical_model_alias: 'gpt-4o',
+      routing_metadata: { region: 'eastus', deployment: 'gpt4o-prod' }
+    )
+    expect(expanded.to_h).to include(
+      provider_instance: :eastus,
+      instance_id: :eastus,
+      canonical_model_alias: 'gpt-4o',
+      routing_metadata: { region: 'eastus', deployment: 'gpt4o-prod' }
+    )
+  end
+
+  it 'lifts model family and aliases from legacy metadata' do
+    legacy = described_class.new(
+      provider_family: :bedrock,
+      instance_id: :'us-east-1',
+      model: 'anthropic.claude-3-haiku-20240307-v1:0',
+      metadata: { model_family: :anthropic, alias: 'claude-3-haiku' }
+    )
+
+    expect(legacy.model_family).to eq(:anthropic)
+    expect(legacy.canonical_model_alias).to eq('claude-3-haiku')
+    expect(legacy.model_alias?('claude-3-haiku')).to be true
+    expect(legacy.model_alias?('anthropic.claude-3-haiku-20240307-v1:0')).to be true
   end
 
   it 'checks route eligibility without provider-specific code' do
@@ -56,6 +103,18 @@ RSpec.describe Legion::Extensions::Llm::Routing::ModelOffering do
 
   it 'generates clean fleet inference lane keys with context windows' do
     expect(offering.lane_key).to eq('llm.fleet.inference.qwen3-6-27b-q4-k-m.ctx32768')
+  end
+
+  it 'uses canonical model aliases for fleet lanes when provider deployments hide the base model' do
+    deployment = described_class.new(
+      provider_family: :azure_foundry,
+      provider_instance: :default,
+      model: 'gpt4o-prod',
+      canonical_model_alias: 'gpt-4o',
+      limits: { context_window: 128_000 }
+    )
+
+    expect(deployment.lane_key).to eq('llm.fleet.inference.gpt-4o.ctx128000')
   end
 
   it 'generates embedding lanes without context suffixes' do
@@ -139,9 +198,12 @@ RSpec.describe Legion::Extensions::Llm::Routing::ModelOffering do
 
   it 'serializes the normalized shape used by routers and registries' do
     expect(offering.to_h).to include(
+      offering_id: 'ollama:macbook-m4-max:inference:qwen3-6-27b-q4-k-m',
       provider_family: :ollama,
+      provider_instance: :'macbook-m4-max',
       instance_id: :'macbook-m4-max',
       tier: :fleet,
+      canonical_model_alias: 'qwen3.6:27b-q4_K_M',
       usage_type: :inference,
       limits: { context_window: 32_768, max_output_tokens: 8192 }
     )

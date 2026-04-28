@@ -6,15 +6,23 @@ module Legion
       module Routing
         # Describes one concrete model made available by one provider instance.
         class ModelOffering
-          attr_reader :provider_family, :instance_id, :transport, :tier, :model, :usage_type, :capabilities, :limits,
+          attr_reader :offering_id, :provider_family, :model_family, :provider_instance, :instance_id, :transport,
+                      :tier, :model, :canonical_model_alias, :routing_metadata, :usage_type, :capabilities, :limits,
                       :credentials, :health, :cost, :policy_tags, :metadata
 
           def initialize(data)
+            @metadata = normalize_hash(fetch_value(data, :metadata))
             @provider_family = normalize_symbol(fetch_value(data, :provider_family, fetch_value(data, :provider)))
-            @instance_id = normalize_symbol(fetch_value(data, :instance_id, @provider_family))
+            @model_family = normalize_symbol(fetch_value(data, :model_family, @metadata[:model_family]))
+            @provider_instance = normalize_symbol(fetch_value(data, :provider_instance,
+                                                              fetch_value(data, :instance_id, @provider_family)))
+            @instance_id = @provider_instance
             @transport = normalize_symbol(fetch_value(data, :transport, :http))
             @tier = normalize_symbol(fetch_value(data, :tier, default_tier))
             @model = fetch_value(data, :model).to_s
+            @canonical_model_alias = normalize_model_alias(fetch_value(data, :canonical_model_alias,
+                                                                       metadata_canonical_model_alias))
+            @routing_metadata = normalize_hash(fetch_value(data, :routing_metadata))
             @usage_type = normalize_usage_type(fetch_value(data, :usage_type,
                                                            fetch_value(data, :type) ||
                                                            fetch_value(data, :kind) ||
@@ -25,7 +33,7 @@ module Legion
             @health = normalize_hash(fetch_value(data, :health))
             @cost = normalize_hash(fetch_value(data, :cost))
             @policy_tags = normalize_array(fetch_value(data, :policy_tags)).map(&:to_sym)
-            @metadata = normalize_hash(fetch_value(data, :metadata))
+            @offering_id = normalize_offering_id(fetch_value(data, :offering_id, default_offering_id))
           end
 
           def enabled?
@@ -70,13 +78,23 @@ module Legion
             LaneKey.eligibility_fingerprint(self)
           end
 
+          def model_alias?(alias_name)
+            normalized = normalize_model_alias(alias_name)
+            [canonical_model_alias, model].compact.any? { |candidate| normalize_model_alias(candidate) == normalized }
+          end
+
           def to_h
             {
+              offering_id: offering_id,
               provider_family: provider_family,
+              model_family: model_family,
+              provider_instance: provider_instance,
               instance_id: instance_id,
               transport: transport,
               tier: tier,
               model: model,
+              canonical_model_alias: canonical_model_alias,
+              routing_metadata: routing_metadata,
               usage_type: usage_type,
               capabilities: capabilities,
               limits: limits,
@@ -165,6 +183,28 @@ module Legion
             Integer(value)
           rescue ArgumentError, TypeError
             nil
+          end
+
+          def metadata_canonical_model_alias
+            metadata[:canonical_model_alias] || metadata[:alias] ||
+              Legion::Extensions::Llm::Aliases.canonical_model_alias(@model, @provider_family)
+          end
+
+          def normalize_model_alias(value)
+            Legion::Extensions::Llm::Aliases.normalize_model_alias(value)
+          end
+
+          def normalize_offering_id(value)
+            value.to_s.strip
+          end
+
+          def default_offering_id
+            [
+              provider_family,
+              provider_instance,
+              usage_type,
+              canonical_model_alias || model
+            ].compact.map { |part| LaneKey.model_slug(part) }.join(':')
           end
         end
       end

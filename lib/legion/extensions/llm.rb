@@ -38,11 +38,14 @@ module Legion
       # Provider-neutral value objects exposed under the Legion extension namespace.
       module Types
         ModelOffering = Routing::ModelOffering unless const_defined?(:ModelOffering, false)
+        OfferingRegistry = Routing::OfferingRegistry unless const_defined?(:OfferingRegistry, false)
       end
 
       # Shared routing helpers exposed under the Legion extension namespace.
       module Routing
         LaneKey = ::Legion::Extensions::Llm::Routing::LaneKey unless const_defined?(:LaneKey, false)
+        OfferingRegistry = ::Legion::Extensions::Llm::Routing::OfferingRegistry unless const_defined?(:OfferingRegistry,
+                                                                                                      false)
       end
 
       class << self

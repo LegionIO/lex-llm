@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5 - 2026-04-28
+
+- Add the expanded provider-neutral model offering contract with offering IDs, provider instances, canonical model aliases, model families, and routing metadata.
+- Add shared model alias normalization and an in-memory offering registry for common routing filters.
+
 ## 0.1.4 - 2026-04-28
 
 - Add non-live provider readiness metadata for routing without expensive health or model calls by default.

@@ -48,7 +48,7 @@ gem 'lex-llm'
 Provider extensions should declare `lex-llm` as a gemspec dependency:
 
 ```ruby
-spec.add_dependency 'lex-llm', '>= 0.1.4'
+spec.add_dependency 'lex-llm', '>= 0.1.5'
 ```
 
 For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.
@@ -90,11 +90,14 @@ A model offering describes one concrete model made available by one provider ins
 
 ```ruby
 offering = Legion::Extensions::Llm::Routing::ModelOffering.new(
+  offering_id: 'ollama:macbook_m4_max:inference:qwen3-6-27b-q4-k-m',
   provider_family: :ollama,
-  instance_id: :macbook_m4_max,
+  provider_instance: :macbook_m4_max,
   transport: :local,
   tier: :local,
   model: 'qwen3.6:27b-q4_K_M',
+  canonical_model_alias: 'qwen3.6:27b-q4_K_M',
+  model_family: :qwen,
   usage_type: :inference,
   capabilities: %i[chat tools vision thinking],
   limits: {
@@ -106,6 +109,10 @@ offering = Legion::Extensions::Llm::Routing::ModelOffering.new(
     latency_ms: 180
   },
   policy_tags: %i[internal_only phi_allowed],
+  routing_metadata: {
+    region: :local,
+    accelerator: :metal
+  },
   metadata: {
     enabled: true,
     eligibility: {
@@ -125,17 +132,44 @@ offering.eligible_for?(
 
 Common offering fields:
 
+- `offering_id`: stable identifier for the concrete offering; generated from provider, instance, usage type, and canonical alias when omitted
 - `provider_family`: provider implementation family, such as `:ollama`, `:vllm`, `:bedrock`, `:anthropic`, or `:openai`
-- `instance_id`: concrete provider instance, account, node, region, or local runtime
+- `provider_instance`: concrete provider instance, account, node, region, or local runtime
+- `instance_id`: compatibility alias for `provider_instance`
+- `model_family`: provider-neutral family such as `:openai`, `:anthropic`, `:gemini`, `:qwen`, or `:llama`
 - `transport`: `:local`, `:http`, `:rabbitmq`, `:sdk`, or another provider-supported transport
 - `tier`: `:local`, `:private`, `:fleet`, `:cloud`, `:frontier`, or deployment-specific policy tier
 - `model`: provider model name or normalized model alias
+- `canonical_model_alias`: provider-neutral alias used by routers and shared fleet lane keys when a provider deployment hides the base model
 - `usage_type`: `:inference` or `:embedding`
 - `capabilities`: normalized feature flags such as `:chat`, `:tools`, `:json_schema`, `:vision`, `:thinking`, or `:embedding`
 - `limits`: context window, output token limits, rate limits, concurrency limits, and provider-specific bounds
 - `health`: readiness, latency, recent failures, and provider-specific health metadata
 - `policy_tags`: routing and compliance tags such as `:internal_only`, `:phi_allowed`, or `:hipaa`
+- `routing_metadata`: provider-neutral scheduling metadata for routers; persistence is intentionally out of scope
 - `metadata`: extension-specific metadata; sensitive values are excluded from fleet eligibility fingerprints
+
+Provider gems that still pass `instance_id`, or that store `model_family`, `canonical_model_alias`, or `alias` under `metadata`, remain compatible. `ModelOffering` lifts those values into first-class readers for routers.
+
+`Legion::Extensions::Llm::Aliases.canonical_model_alias(model, provider)` provides shared alias normalization from `aliases.json`, with an explicit model string fallback.
+
+## Offering Registry
+
+`Legion::Extensions::Llm::Routing::OfferingRegistry` is an in-memory index for discovered or configured offerings. It does not persist state.
+
+```ruby
+registry = Legion::Extensions::Llm::Routing::OfferingRegistry.new
+registry.register(offering)
+
+registry.find(offering.offering_id)
+registry.find_by_model_alias('qwen3.6:27b-q4_K_M')
+registry.filter(
+  provider_family: :ollama,
+  provider_instance: :macbook_m4_max,
+  model_family: :qwen,
+  capability: :tools
+)
+```
 
 ## Fleet Lanes
 

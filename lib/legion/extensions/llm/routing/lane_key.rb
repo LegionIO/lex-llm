@@ -9,12 +9,19 @@ module Legion
           module_function
 
           def for(offering, prefix: 'llm.fleet', include_context: true, include_fingerprint: false)
-            parts = [prefix, lane_kind(offering), model_slug(offering.model)]
+            parts = [prefix, lane_kind(offering), model_slug(lane_model(offering))]
             if include_context && offering.inference? && offering.context_window
               parts << "ctx#{offering.context_window}"
             end
             parts.push('elig', eligibility_fingerprint(offering)) if include_fingerprint
             parts.join('.')
+          end
+
+          def lane_model(offering)
+            return offering.canonical_model_alias if offering.respond_to?(:canonical_model_alias) &&
+                                                     offering.canonical_model_alias.to_s != ''
+
+            offering.model
           end
 
           def lane_kind(offering)

@@ -5,7 +5,9 @@ require 'legion/extensions/llm'
 RSpec.describe Legion::Extensions::Llm do
   it 'exposes the Legion-native extension namespace for autoloading' do
     expect(described_class::Types::ModelOffering).to equal(Legion::Extensions::Llm::Routing::ModelOffering)
+    expect(described_class::Types::OfferingRegistry).to equal(Legion::Extensions::Llm::Routing::OfferingRegistry)
     expect(described_class::Routing::LaneKey).to equal(Legion::Extensions::Llm::Routing::LaneKey)
+    expect(described_class::Routing::OfferingRegistry).to equal(Legion::Extensions::Llm::Routing::OfferingRegistry)
   end
 
   it 'provides complete default fleet settings' do
