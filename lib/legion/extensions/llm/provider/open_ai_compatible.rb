@@ -171,15 +171,51 @@ module Legion
             {}
           end
 
-          def parse_list_models_response(response, provider, _capabilities)
+          def parse_list_models_response(response, provider, capabilities)
             response.body.fetch('data', []).map do |model|
+              critical_capabilities = critical_capabilities_for(capabilities, model)
               Legion::Extensions::Llm::Model::Info.new(
                 id: model.fetch('id'),
                 name: model['id'],
                 provider: provider,
-                created_at: model['created'],
+                created_at: model_created_at(model['created']),
+                capabilities: critical_capabilities,
+                modalities: modalities_for_capabilities(critical_capabilities),
                 metadata: model
               )
+            end
+          end
+
+          def model_created_at(value)
+            value.is_a?(Numeric) ? Time.at(value).utc : value
+          end
+
+          def critical_capabilities_for(capabilities, model)
+            return [] unless capabilities
+            return capabilities.critical_capabilities_for(model) if capabilities.respond_to?(:critical_capabilities_for)
+
+            {
+              'streaming' => :streaming?,
+              'function_calling' => :functions?,
+              'vision' => :vision?,
+              'embeddings' => :embeddings?,
+              'moderation' => :moderation?,
+              'image' => :images?,
+              'audio_transcription' => :audio_transcription?
+            }.filter_map do |capability, predicate|
+              capability if capabilities.respond_to?(predicate) && capabilities.public_send(predicate, model)
+            end
+          end
+
+          def modalities_for_capabilities(capabilities)
+            if capabilities.include?('embeddings') && (capabilities - ['embeddings']).empty?
+              { input: %w[text], output: %w[embeddings] }
+            elsif capabilities.include?('image')
+              { input: %w[text image], output: %w[image] }
+            elsif capabilities.include?('audio_transcription')
+              { input: %w[audio], output: %w[text] }
+            else
+              { input: %w[text image], output: %w[text] }
             end
           end
 

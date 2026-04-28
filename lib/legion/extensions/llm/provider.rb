@@ -113,6 +113,38 @@ module Legion
           self.class.assume_models_exist?
         end
 
+        def readiness(live: false)
+          metadata = {
+            provider: slug.to_sym,
+            name: name,
+            configured: configured?,
+            ready: configured?,
+            local: local?,
+            remote: remote?,
+            api_base: api_base,
+            endpoints: endpoint_manifest,
+            live: live
+          }
+
+          return metadata.merge(health: { checked: false }) unless live && metadata[:endpoints][:health]
+
+          response = @connection.get(metadata[:endpoints][:health])
+          metadata.merge(ready: configured? && health_ready?(response.body), health: response.body)
+        rescue StandardError => e
+          metadata.merge(ready: false, health: { error: e.class.name, message: e.message })
+        end
+
+        def endpoint_manifest
+          endpoint_methods.each_with_object({}) do |(key, method_name), result|
+            next unless respond_to?(method_name)
+
+            value = public_send(method_name)
+            result[key] = value unless value.nil?
+          rescue ArgumentError, NotImplementedError
+            next
+          end
+        end
+
         def parse_error(response)
           return if response.body.empty?
 
@@ -268,6 +300,29 @@ module Legion
 
         def maybe_normalize_temperature(temperature, _model)
           temperature
+        end
+
+        def endpoint_methods
+          {
+            completion: :completion_url,
+            stream: :stream_url,
+            models: :models_url,
+            embeddings: :embedding_url,
+            moderation: :moderation_url,
+            images: :images_url,
+            transcription: :transcription_url,
+            health: :health_url,
+            version: :version_url
+          }
+        end
+
+        def health_ready?(body)
+          return body unless body.is_a?(Hash)
+
+          status = body['status'] || body[:status] || body['state'] || body[:state]
+          return true if status.nil?
+
+          %w[ok ready healthy running].include?(status.to_s.downcase)
         end
 
         def sync_response(connection, payload, additional_headers = {})

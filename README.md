@@ -48,7 +48,7 @@ gem 'lex-llm'
 Provider extensions should declare `lex-llm` as a gemspec dependency:
 
 ```ruby
-spec.add_dependency 'lex-llm', '>= 0.1.0'
+spec.add_dependency 'lex-llm', '>= 0.1.4'
 ```
 
 For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.
@@ -232,6 +232,8 @@ At minimum, a provider extension should define:
 - embedding support separately from inference support when the provider exposes both
 
 Provider extensions should avoid duplicating shared classes, schema logic, fleet lane construction, JSON handling, or common request/response objects.
+
+All providers inherit `#readiness(live: false)`, which returns configured state, provider locality, API base, endpoint helpers, and non-live health metadata without probing remote services. Providers with a cheap health endpoint can pass `live: true` to include that endpoint response. OpenAI-compatible providers also inherit shared model-list parsing that maps discovered models into normalized capabilities and modalities for Legion routing.
 
 ## Schema Status
 

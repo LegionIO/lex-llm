@@ -50,4 +50,25 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       expect(Legion::Extensions::Llm::Configuration.options).to include(:request_timeout, :model_registry_file)
     end
   end
+
+  describe '#readiness' do
+    it 'returns non-live routing readiness metadata without calling provider endpoints' do
+      provider_class = Class.new(described_class) do
+        def api_base = 'https://provider.invalid'
+        def completion_url = '/v1/chat/completions'
+        def models_url = '/v1/models'
+        def health_url = '/health'
+      end
+      provider = provider_class.new(Legion::Extensions::Llm.config)
+
+      expect(provider.readiness).to include(
+        provider: provider.slug.to_sym,
+        configured: true,
+        ready: true,
+        api_base: 'https://provider.invalid',
+        endpoints: { completion: '/v1/chat/completions', models: '/v1/models', health: '/health' },
+        health: { checked: false }
+      )
+    end
+  end
 end

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 - 2026-04-28
+
+- Add non-live provider readiness metadata for routing without expensive health or model calls by default.
+- Map OpenAI-compatible model listings to normalized capabilities and modalities for routing.
+
 ## 0.1.3 - 2026-04-27
 
 - Convert the gem to a standard Legion extension runtime under `Legion::Extensions::Llm`.
