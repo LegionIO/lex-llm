@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6 - 2026-04-28
+
+- Add provider-neutral registry event envelopes for future `llm.registry` offering availability, unavailability, degraded, and heartbeat publishing without persistence.
+- Sanitize registry offering payloads and reject sensitive runtime, capacity, health, lane, and metadata keys before publication.
+
 ## 0.1.5 - 2026-04-28
 
 - Add the expanded provider-neutral model offering contract with offering IDs, provider instances, canonical model aliases, model families, and routing metadata.

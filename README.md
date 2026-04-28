@@ -48,7 +48,7 @@ gem 'lex-llm'
 Provider extensions should declare `lex-llm` as a gemspec dependency:
 
 ```ruby
-spec.add_dependency 'lex-llm', '>= 0.1.5'
+spec.add_dependency 'lex-llm', '>= 0.1.6'
 ```
 
 For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.
@@ -170,6 +170,36 @@ registry.filter(
   capability: :tools
 )
 ```
+
+## Registry Events
+
+`Legion::Extensions::Llm::Routing::RegistryEvent` builds dependency-light envelopes for future `llm.registry` publishing. It does not persist registry state or publish messages by itself.
+
+```ruby
+event = Legion::Extensions::Llm::Routing::RegistryEvent.available(
+  offering,
+  runtime: { host_id: 'macbook-m4-max', process: { pid: 12_345 } },
+  capacity: { concurrency: 4, queued: 0 },
+  health: { ready: true, latency_ms: 180 },
+  lane: offering.lane_key,
+  metadata: { observed_by: :lex_llm_ollama }
+)
+
+event.to_h
+# => {
+#      event_id: "...",
+#      event_type: :offering_available,
+#      occurred_at: "2026-04-28T14:30:15.123456Z",
+#      offering: { ... },
+#      runtime: { host_id: "macbook-m4-max", process: { pid: 12345 } },
+#      capacity: { concurrency: 4, queued: 0 },
+#      health: { ready: true, latency_ms: 180 },
+#      lane: "llm.fleet.inference.qwen3-6-27b-q4-k-m.ctx32768",
+#      metadata: { observed_by: :lex_llm_ollama }
+#    }
+```
+
+Supported event types are `:offering_available`, `:offering_unavailable`, `:offering_degraded`, and `:offering_heartbeat`. Event offerings are derived from `ModelOffering#to_h`, with sensitive offering fields removed. Optional `runtime`, `capacity`, `health`, `lane`, and `metadata` values are intended for non-secret operational context and reject sensitive keys such as credentials, tokens, secrets, URLs, endpoint paths, prompts, and reply queues.
 
 ## Fleet Lanes
 
