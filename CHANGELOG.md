@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 - 2026-04-30
+
+- Promote ModelInfo Data.define value object with immutable fields: instance, parameter_count, parameter_size, quantization, size_bytes, modalities_input, modalities_output
+- Formalize provider contract: model_allowed? whitelist/blacklist filtering, multi-host base_url resolution with TLS awareness and reachability probing, normalize_url for consistent endpoint formatting
+- Add cache tier selection helpers: cache_local_instance?, model_cache_get/set/fetch, cache_instance_key for local vs shared cache routing
+- Add shared transport classes and RegistryPublisher/RegistryEventBuilder parameterized by provider_family for all lex-llm-* gems
+- Deprecate Provider.register, .resolve, .for, .providers in favor of the extension registry
+
 ## 0.1.9 - 2026-04-30
 
 - Replace Model::Info class with immutable Data.define value object supporting new fields: instance, parameter_count, parameter_size, quantization, size_bytes, modalities_input, modalities_output
