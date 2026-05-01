@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 - 2026-04-30
+
+- Add thinking extraction from OpenAI-compatible streaming chunks (reasoning_content, reasoning, think tags)
+- Add stream_usage_supported? opt-in for streaming token usage reporting
+- Add filtered_chunk method to StreamAccumulator for clean thinking/content separation
+- Wrap streaming callback through accumulator filter for proper SSE event routing
+
 ## 0.1.6 - 2026-04-28
 
 - Add provider-neutral registry event envelopes for future `llm.registry` offering availability, unavailability, degraded, and heartbeat publishing without persistence.

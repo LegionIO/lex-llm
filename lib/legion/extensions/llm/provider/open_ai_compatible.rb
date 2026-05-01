@@ -6,6 +6,7 @@ module Legion
       class Provider
         # Shared OpenAI-compatible HTTP payload and response adapter.
         module OpenAICompatible
+          def stream_usage_supported? = false
           def completion_url = '/v1/chat/completions'
           def stream_url = completion_url
           def models_url = '/v1/models'
@@ -20,7 +21,7 @@ module Legion
           private
 
           def render_payload(messages, tools:, temperature:, model:, stream:, schema:, thinking:, tool_prefs:) # rubocop:disable Metrics/ParameterLists
-            {
+            payload = {
               model: model.id,
               messages: format_openai_messages(messages),
               temperature: temperature,
@@ -30,6 +31,8 @@ module Legion
               response_format: openai_response_format(schema),
               reasoning_effort: openai_reasoning_effort(thinking)
             }.compact
+            payload[:stream_options] = { include_usage: true } if stream && stream_usage_supported?
+            payload
           end
 
           def format_openai_messages(messages)
@@ -116,12 +119,14 @@ module Legion
             choice = Array(body['choices']).first || {}
             message = choice['message'] || {}
             usage = body['usage'] || {}
+            content, thinking = extract_thinking_from_completion(message)
 
             Legion::Extensions::Llm::Message.new(
               role: :assistant,
-              content: message['content'],
+              content: content,
               model_id: body['model'],
               tool_calls: parse_tool_calls(message['tool_calls']),
+              thinking: thinking,
               input_tokens: usage['prompt_tokens'],
               output_tokens: usage['completion_tokens'],
               reasoning_tokens: usage.dig('completion_tokens_details', 'reasoning_tokens'),
@@ -129,20 +134,66 @@ module Legion
             )
           end
 
+          def extract_thinking_from_completion(message)
+            reasoning = message['reasoning_content'] || message['reasoning']
+            content = message['content']
+
+            if reasoning
+              [content, Thinking.build(text: reasoning)]
+            elsif content.is_a?(String) && content.include?('<think>')
+              think_text = content[%r{<think>(.*?)</think>}m, 1]
+              clean = content.gsub(%r{<think>.*?</think>}m, '').strip
+              [clean, Thinking.build(text: think_text)]
+            else
+              [content, nil]
+            end
+          end
+
           def build_chunk(data)
             choice = Array(data['choices']).first || {}
             delta = choice['delta'] || {}
             usage = data['usage'] || {}
+            content, thinking = extract_thinking_from_chunk(delta)
 
             Legion::Extensions::Llm::Chunk.new(
               role: :assistant,
-              content: delta['content'],
+              content: content,
               model_id: data['model'],
               tool_calls: parse_tool_calls(delta['tool_calls']),
+              thinking: thinking,
               input_tokens: usage['prompt_tokens'],
               output_tokens: usage['completion_tokens'],
               raw: data
             )
+          end
+
+          def extract_thinking_from_chunk(delta)
+            reasoning = delta['reasoning_content'] || delta['reasoning']
+            content = delta['content']
+
+            if reasoning
+              [content, Thinking.build(text: reasoning)]
+            elsif content.is_a?(String) && content.include?('<think>')
+              clean, think_text = split_think_tags(content)
+              [clean, Thinking.build(text: think_text)]
+            else
+              [content, nil]
+            end
+          end
+
+          def split_think_tags(text) # rubocop:disable Metrics/PerceivedComplexity
+            if text.match?(%r{<think>.*</think>}m)
+              thinking = text[%r{<think>(.*?)</think>}m, 1]
+              clean = text.gsub(%r{<think>.*?</think>}m, '').strip
+              [clean.empty? ? nil : clean, thinking]
+            elsif text.start_with?('<think>')
+              [nil, text.delete_prefix('<think>')]
+            elsif text.include?('</think>')
+              parts = text.split('</think>', 2)
+              [parts[1]&.strip.then { |s| s&.empty? ? nil : s }, parts[0]]
+            else
+              [text, nil]
+            end
           end
 
           def parse_tool_calls(tool_calls)

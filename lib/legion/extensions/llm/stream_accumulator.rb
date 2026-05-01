@@ -26,10 +26,30 @@ module Legion
           Legion::Extensions::Llm.logger.debug { chunk.inspect } if Legion::Extensions::Llm.config.log_stream_debug
           @model_id ||= chunk.model_id
 
+          @last_content_delta = +''
+          @last_thinking_delta = +''
           handle_chunk_content(chunk)
           append_thinking_from_chunk(chunk)
           count_tokens chunk
           Legion::Extensions::Llm.logger.debug { inspect } if Legion::Extensions::Llm.config.log_stream_debug
+        end
+
+        def filtered_chunk(chunk) # rubocop:disable Metrics/PerceivedComplexity
+          has_content = !@last_content_delta.empty?
+          has_thinking = !@last_thinking_delta.empty?
+          has_tokens = chunk.input_tokens&.positive? || chunk.output_tokens&.positive?
+          return nil unless has_content || has_thinking || chunk.tool_call? || has_tokens
+
+          Chunk.new(
+            role: :assistant,
+            content: has_content ? @last_content_delta : nil,
+            thinking: has_thinking ? Thinking.build(text: @last_thinking_delta) : chunk.thinking,
+            model_id: chunk.model_id,
+            tool_calls: chunk.tool_calls,
+            input_tokens: chunk.input_tokens,
+            output_tokens: chunk.output_tokens,
+            raw: chunk.raw
+          )
         end
 
         def to_message(response)
@@ -137,14 +157,21 @@ module Legion
         def append_text_with_thinking(text)
           content_chunk, thinking_chunk = extract_think_tags(text)
           @content << content_chunk
-          @thinking_text << thinking_chunk if thinking_chunk
+          @last_content_delta << content_chunk
+          return unless thinking_chunk
+
+          @thinking_text << thinking_chunk
+          @last_thinking_delta << thinking_chunk
         end
 
         def append_thinking_from_chunk(chunk)
           thinking = chunk.thinking
           return unless thinking
 
-          @thinking_text << thinking.text.to_s if thinking.text
+          if thinking.text
+            @thinking_text << thinking.text.to_s
+            @last_thinking_delta << thinking.text.to_s
+          end
           @thinking_signature ||= thinking.signature # rubocop:disable Naming/MemoizedInstanceVariableName
         end
 

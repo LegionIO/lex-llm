@@ -12,22 +12,25 @@ module Legion
 
           response = connection.post stream_url, payload do |req|
             req.headers = additional_headers.merge(req.headers) unless additional_headers.empty?
+            on_chunk = build_stream_callback(accumulator, block)
             if faraday_1?
-              req.options[:on_data] = handle_stream do |chunk|
-                accumulator.add chunk
-                block.call chunk
-              end
+              req.options[:on_data] = handle_stream(&on_chunk)
             else
-              req.options.on_data = handle_stream do |chunk|
-                accumulator.add chunk
-                block.call chunk
-              end
+              req.options.on_data = handle_stream(&on_chunk)
             end
           end
 
           message = accumulator.to_message(response)
           Legion::Extensions::Llm.logger.debug { "Stream completed: #{message.content}" }
           message
+        end
+
+        def build_stream_callback(accumulator, block)
+          proc do |chunk|
+            accumulator.add chunk
+            filtered = accumulator.filtered_chunk(chunk)
+            block.call(filtered) if filtered
+          end
         end
 
         def handle_stream(&block)
