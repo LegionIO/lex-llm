@@ -18,7 +18,7 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
     end
   end
   let(:provider) { provider_class.new(Legion::Extensions::Llm.config) }
-  let(:model) { Legion::Extensions::Llm::Model::Info.new(id: 'model-a', provider: :openai_compatible) }
+  let(:model) { Legion::Extensions::Llm::Model::Info.from_hash(id: 'model-a', provider: :openai_compatible) }
 
   it 'renders chat payloads for OpenAI-compatible servers' do
     payload = chat_payload
@@ -45,7 +45,7 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
     models = provider.send(:parse_list_models_response, fake_response(models_body), :compatible,
                            provider_class.capabilities)
 
-    expect(models.map(&:capabilities)).to eq([%w[streaming function_calling], %w[embeddings]])
+    expect(models.map(&:capabilities)).to eq([%i[streaming function_calling], %i[embeddings]])
     expect(models.map { |model| model.modalities.to_h }).to eq([
                                                                  { input: %w[text image], output: %w[text] },
                                                                  { input: %w[text], output: %w[embeddings] }

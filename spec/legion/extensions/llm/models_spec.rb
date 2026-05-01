@@ -9,7 +9,7 @@ RSpec.describe Legion::Extensions::Llm::Models do
   include_context 'with fake llm provider'
 
   let(:chat_model) do
-    Legion::Extensions::Llm::Model::Info.new(
+    Legion::Extensions::Llm::Model::Info.from_hash(
       id: 'fake-chat-model',
       name: 'Fake Chat Model',
       provider: 'fake_llm',
@@ -20,7 +20,7 @@ RSpec.describe Legion::Extensions::Llm::Models do
   end
 
   let(:embedding_model) do
-    Legion::Extensions::Llm::Model::Info.new(
+    Legion::Extensions::Llm::Model::Info.from_hash(
       id: 'fake-embedding-model',
       name: 'Fake Embedding Model',
       provider: 'fake_llm',
@@ -56,7 +56,7 @@ RSpec.describe Legion::Extensions::Llm::Models do
       end
     end
     Legion::Extensions::Llm::Provider.register(:normalizing_fake, provider)
-    normalized = Legion::Extensions::Llm::Model::Info.new(
+    normalized = Legion::Extensions::Llm::Model::Info.from_hash(
       id: 'fake-chat-model',
       name: 'Normalized',
       provider: 'normalizing_fake',
@@ -69,7 +69,7 @@ RSpec.describe Legion::Extensions::Llm::Models do
 
   it 'raises when a model exists but its provider extension is not registered' do
     registry = described_class.new([
-                                     Legion::Extensions::Llm::Model::Info.new(
+                                     Legion::Extensions::Llm::Model::Info.from_hash(
                                        id: 'orphan-model',
                                        name: 'Orphan',
                                        provider: 'missing_provider'

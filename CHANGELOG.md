@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.9 - 2026-04-30
+
+- Replace Model::Info class with immutable Data.define value object supporting new fields: instance, parameter_count, parameter_size, quantization, size_bytes, modalities_input, modalities_output
+- Add Model::Info.from_hash factory for backward-compatible construction from legacy hash format
+- Add backward-compatible accessors on Model::Info for context_window, max_output_tokens, created_at, knowledge_cutoff, modalities, pricing, type, and legacy capability predicates
+- Add model_allowed? to base Provider with whitelist/blacklist filtering from settings
+- Add multi-host base_url resolution with TLS awareness and reachability probing
+- Add cache tier selection helpers: cache_local_instance?, model_cache_get/set/fetch, cache_instance_key for local vs shared cache routing
+- Add shared transport classes for llm.registry exchange and registry event messages (guarded by defined? for optional legion-transport)
+- Add shared RegistryPublisher parameterized by provider_family for all lex-llm-* gems
+- Add shared RegistryEventBuilder parameterized by provider_family for all lex-llm-* gems
+- Mark Provider.register, .resolve, .for, .providers with @deprecated annotations for future removal in favor of the extension registry
+
 ## 0.1.8 - 2026-04-30
 
 - Audit all rescue blocks for handle_exception compliance

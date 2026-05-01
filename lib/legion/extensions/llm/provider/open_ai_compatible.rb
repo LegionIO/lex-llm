@@ -226,7 +226,7 @@ module Legion
           def parse_list_models_response(response, provider, capabilities)
             response.body.fetch('data', []).map do |model|
               critical_capabilities = critical_capabilities_for(capabilities, model)
-              Legion::Extensions::Llm::Model::Info.new(
+              Legion::Extensions::Llm::Model::Info.from_hash(
                 id: model.fetch('id'),
                 name: model['id'],
                 provider: provider,

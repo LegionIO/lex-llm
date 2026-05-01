@@ -184,6 +184,112 @@ module Legion
           nil
         end
 
+        # ── Model allow-list / deny-list filtering ────────────────────────
+
+        def model_whitelist
+          wl = settings[:model_whitelist] if respond_to?(:settings)
+          Array(wl).map { |p| p.to_s.downcase }
+        end
+
+        def model_blacklist
+          bl = settings[:model_blacklist] if respond_to?(:settings)
+          Array(bl).map { |p| p.to_s.downcase }
+        end
+
+        def model_allowed?(model_name)
+          name = model_name.to_s.downcase
+          wl = model_whitelist
+          bl = model_blacklist
+
+          return false if wl.any? && wl.none? { |p| name.include?(p) }
+          return false if bl.any? && bl.any? { |p| name.include?(p) }
+
+          true
+        end
+
+        # ── Multi-host base_url resolution ────────────────────────────────
+
+        def resolve_base_url
+          urls = Array(config_base_url)
+          @resolve_base_url ||= find_reachable_url(urls) || urls.first
+        end
+
+        def config_base_url
+          respond_to?(:settings) ? settings[:base_url] : nil
+        end
+
+        def find_reachable_url(urls)
+          urls.each do |url|
+            normalized = strip_scheme(url)
+            scheme = tls_enabled? ? 'https' : 'http'
+            full = "#{scheme}://#{normalized}"
+            return full if url_reachable?(full)
+          end
+          nil
+        end
+
+        def strip_scheme(url)
+          url.to_s.sub(%r{^https?://}, '')
+        end
+
+        def url_reachable?(url)
+          require 'uri'
+          require 'socket'
+          uri = URI.parse(url)
+          Socket.tcp(uri.host, uri.port, connect_timeout: 1).close
+          true
+        rescue StandardError
+          false
+        end
+
+        def tls_enabled?
+          tls = respond_to?(:settings) ? settings[:tls] : nil
+          tls.is_a?(Hash) && tls[:enabled] == true
+        end
+
+        # ── Cache helpers with local/shared tier selection ────────────────
+
+        def cache_local_instance?
+          Array(config_base_url).any? do |url|
+            host = url.to_s.downcase
+            host.include?('localhost') || host.include?('127.0.0.1') || host.include?('::1')
+          end
+        end
+
+        def model_cache_get(key)
+          return nil unless defined?(Legion::Cache)
+
+          cache_local_instance? ? local_cache_get(key) : cache_get(key)
+        rescue StandardError
+          nil
+        end
+
+        def model_cache_set(key, value, ttl:)
+          return unless defined?(Legion::Cache)
+
+          cache_local_instance? ? local_cache_set(key, value, ttl: ttl) : cache_set(key, value, ttl: ttl)
+        rescue StandardError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'lex.provider.model_cache_set')
+        end
+
+        def model_cache_fetch(key, ttl:, &)
+          return yield unless defined?(Legion::Cache)
+
+          cache_local_instance? ? local_cache_fetch(key, ttl: ttl, &) : cache_fetch(key, ttl: ttl, &)
+        rescue StandardError
+          yield
+        end
+
+        def cache_instance_key
+          if cache_local_instance?
+            (respond_to?(:instance_id) ? instance_id : :default).to_s
+          else
+            require 'digest'
+            urls = Array(config_base_url).map { |u| strip_scheme(u).downcase.chomp('/') }.sort
+            Digest::SHA256.hexdigest(urls.join('|'))[0, 12]
+          end
+        end
+
         class << self
           def name
             to_s.split('::').last
@@ -225,22 +331,26 @@ module Legion
             configuration_requirements.all? { |req| config.send(req) }
           end
 
+          # @deprecated Use the extension registry instead. Will be removed in 1.0.
           def register(name, provider_class)
             providers[name.to_sym] = provider_class
             Legion::Extensions::Llm::Configuration.register_provider_options(provider_class.configuration_options)
           end
 
+          # @deprecated Use the extension registry instead. Will be removed in 1.0.
           def resolve(name)
             return nil if name.nil?
 
             providers[name.to_sym]
           end
 
+          # @deprecated Use the extension registry instead. Will be removed in 1.0.
           def for(model)
             model_info = Models.find(model)
             resolve model_info.provider
           end
 
+          # @deprecated Use the extension registry instead. Will be removed in 1.0.
           def providers
             @providers ||= {}
           end

@@ -31,6 +31,8 @@ module Legion
         'ui' => 'UI'
       )
       loader.ignore("#{__dir__}/llm/version.rb")
+      loader.ignore("#{__dir__}/llm/transport/exchanges")
+      loader.ignore("#{__dir__}/llm/transport/messages")
       loader.push_dir("#{__dir__}/llm", namespace: self)
       loader.setup
 

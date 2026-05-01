@@ -51,7 +51,7 @@ module Legion
 
           def read_from_json(file = Legion::Extensions::Llm.config.model_registry_file)
             data = File.exist?(file) ? File.read(file) : '[]'
-            models = Legion::JSON.parse(data, symbolize_names: true).map { |model| Model::Info.new(model) }
+            models = Legion::JSON.parse(data, symbolize_names: true).map { |model| Model::Info.from_hash(model) }
             filter_models(models)
           rescue Legion::JSON::ParseError => e
             handle_exception(e, level: :warn, handled: true, operation: 'llm.models.read_from_json')
@@ -170,7 +170,7 @@ module Legion
               next [] unless provider_slug
 
               (provider_data[:models] || {}).values.map do |model_data|
-                Model::Info.new(models_dev_model_to_info(model_data, provider_slug, provider_key.to_s))
+                Model::Info.from_hash(models_dev_model_to_info(model_data, provider_slug, provider_key.to_s))
               end
             end
             { models: models.reject { |model| model.provider.nil? || model.id.nil? }, fetched: true }
@@ -267,7 +267,7 @@ module Legion
               if bedrock_model
                 data = bedrock_model.to_h.merge(id: model_id)
                 data[:context_window] = context_override if context_override
-                return Model::Info.new(data)
+                return Model::Info.from_hash(data)
               end
             end
 
@@ -278,7 +278,7 @@ module Legion
             return unless gemini_model
 
             # Return Gemini's models.dev data but with VertexAI as provider
-            Model::Info.new(gemini_model.to_h.merge(provider: 'vertexai'))
+            Model::Info.from_hash(gemini_model.to_h.merge(provider: 'vertexai'))
           end
 
           def index_by_key(models)
@@ -299,7 +299,7 @@ module Legion
             data[:metadata] = provider_model.metadata.merge(data[:metadata] || {})
             data[:capabilities] = (models_dev_model.capabilities + provider_model.capabilities).uniq
             normalize_embedding_modalities(data)
-            Model::Info.new(data)
+            Model::Info.from_hash(data)
           end
 
           def normalize_embedding_modalities(data)
@@ -461,11 +461,11 @@ module Legion
         end
 
         def by_family(family)
-          self.class.new(all.select { |m| m.family == family.to_s })
+          self.class.new(all.select { |m| m.family.to_s == family.to_s })
         end
 
         def by_provider(provider)
-          self.class.new(all.select { |m| m.provider == provider.to_s })
+          self.class.new(all.select { |m| m.provider.to_s == provider.to_s })
         end
 
         def refresh!(remote_only: false)
@@ -480,8 +480,8 @@ module Legion
 
         def find_with_provider(model_id, provider)
           resolved_id = provider_resolved_model_id(Aliases.resolve(model_id, provider), provider)
-          all.find { |m| m.id == resolved_id && m.provider == provider.to_s } ||
-            all.find { |m| m.id == model_id && m.provider == provider.to_s } ||
+          all.find { |m| m.id == resolved_id && m.provider.to_s == provider.to_s } ||
+            all.find { |m| m.id == model_id && m.provider.to_s == provider.to_s } ||
             raise(ModelNotFoundError, "Unknown model: #{model_id} for provider: #{provider}")
         end
 
@@ -507,7 +507,7 @@ module Legion
           return candidates.first if candidates.size == 1
 
           candidates.min_by do |model|
-            index = PROVIDER_PREFERENCE.index(model.provider)
+            index = PROVIDER_PREFERENCE.index(model.provider.to_s)
             index || PROVIDER_PREFERENCE.length
           end
         end
