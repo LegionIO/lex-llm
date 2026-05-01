@@ -31,6 +31,7 @@ module Legion
         'ui' => 'UI'
       )
       loader.ignore("#{__dir__}/llm/version.rb")
+      loader.ignore("#{__dir__}/llm/auto_registration.rb")
       loader.ignore("#{__dir__}/llm/credential_sources.rb")
       loader.ignore("#{__dir__}/llm/transport/exchanges")
       loader.ignore("#{__dir__}/llm/transport/messages")
@@ -132,6 +133,7 @@ module Legion
         ProviderSettings.build(...)
       end
 
+      require_relative 'llm/auto_registration'
       require_relative 'llm/credential_sources'
       loader.eager_load
     end
