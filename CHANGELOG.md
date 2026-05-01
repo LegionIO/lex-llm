@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-05-01
+
+- Add CredentialSources helper: read-only probes for env vars, ~/.claude/settings.json, ~/.codex/auth.json, Legion::Settings, socket/HTTP probes, SHA-256 credential dedup
+- Add AutoRegistration mixin: shared discover_instances/register_discovered_instances/rediscover! for lex-llm-* provider self-registration into Call::Registry
+- Delete Provider.register, .resolve, .for, .providers, .local_providers, .remote_providers, .configured_providers, .configured_remote_providers — replaced by Call::Registry
+- Delete Configuration.register_provider_options — providers accept plain Hash config via new HashConfig wrapper
+- Provider#initialize accepts plain Hash in addition to Configuration objects
+- Models module uses Call::Registry with namespace-scanning fallback for standalone usage
+
 ## 0.2.0 - 2026-04-30
 
 - Promote ModelInfo Data.define value object with immutable fields: instance, parameter_count, parameter_size, quantization, size_bytes, modalities_input, modalities_output
