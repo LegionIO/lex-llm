@@ -3,6 +3,62 @@
 require 'spec_helper'
 
 RSpec.describe Legion::Extensions::Llm::Provider do
+  describe 'Hash config support' do
+    let(:provider_class) do
+      Class.new(described_class) do
+        def api_base = 'https://test.invalid'
+      end
+    end
+
+    it 'accepts a plain Hash and wraps it so method-style access works' do
+      provider = provider_class.new({ request_timeout: 60, max_retries: 2,
+                                      retry_interval: 0, retry_backoff_factor: 0,
+                                      retry_interval_randomness: 0,
+                                      anthropic_api_key: 'sk-test-123' })
+      expect(provider.config.anthropic_api_key).to eq('sk-test-123')
+      expect(provider.config.request_timeout).to eq(60)
+    end
+
+    it 'converts string keys to symbols' do
+      provider = provider_class.new({ 'request_timeout' => 120, 'max_retries' => 1,
+                                      'retry_interval' => 0, 'retry_backoff_factor' => 0,
+                                      'retry_interval_randomness' => 0,
+                                      'some_key' => 'value' })
+      expect(provider.config.some_key).to eq('value')
+      expect(provider.config.request_timeout).to eq(120)
+    end
+
+    it 'returns nil for missing keys instead of raising' do
+      provider = provider_class.new({ request_timeout: 30, max_retries: 0,
+                                      retry_interval: 0, retry_backoff_factor: 0,
+                                      retry_interval_randomness: 0 })
+      expect(provider.config.nonexistent_key).to be_nil
+    end
+
+    it 'supports respond_to_missing? for present keys' do
+      provider = provider_class.new({ request_timeout: 30, max_retries: 0,
+                                      retry_interval: 0, retry_backoff_factor: 0,
+                                      retry_interval_randomness: 0,
+                                      ollama_api_base: 'http://localhost:11434' })
+      expect(provider.config.respond_to?(:ollama_api_base)).to be true
+      expect(provider.config.respond_to?(:nonexistent_key)).to be false
+    end
+
+    it 'supports setter methods' do
+      provider = provider_class.new({ request_timeout: 30, max_retries: 0,
+                                      retry_interval: 0, retry_backoff_factor: 0,
+                                      retry_interval_randomness: 0 })
+      provider.config.new_value = 'hello'
+      expect(provider.config.new_value).to eq('hello')
+    end
+
+    it 'still works with a Configuration object' do
+      provider = provider_class.new(Legion::Extensions::Llm.config)
+      expect(provider.config).to be_a(Legion::Extensions::Llm::Configuration)
+      expect(provider.config.request_timeout).to be_a(Numeric)
+    end
+  end
+
   describe '#readiness' do
     it 'returns non-live routing readiness metadata without calling provider endpoints' do
       provider_class = Class.new(described_class) do

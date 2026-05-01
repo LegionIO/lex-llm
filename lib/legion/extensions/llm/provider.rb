@@ -3,6 +3,27 @@
 module Legion
   module Extensions
     module Llm
+      # Lightweight wrapper that lets a plain Hash behave like a Configuration
+      # object, responding to method-style accessors (e.g. +config.api_key+).
+      class HashConfig
+        def initialize(hash)
+          @data = hash.transform_keys(&:to_sym)
+        end
+
+        def respond_to_missing?(name, include_private = false)
+          @data.key?(name.to_sym) || super
+        end
+
+        def method_missing(name, *args)
+          key = name.to_sym
+          if name.to_s.end_with?('=')
+            @data[name.to_s.chomp('=').to_sym] = args.first
+          elsif @data.key?(key)
+            @data[key]
+          end
+        end
+      end
+
       # Base class for LLM providers.
       class Provider
         include Streaming
@@ -11,7 +32,7 @@ module Legion
         attr_reader :config, :connection
 
         def initialize(config)
-          @config = config
+          @config = config.is_a?(Hash) ? HashConfig.new(config) : config
           ensure_configured!
           @connection = Connection.new(self, @config)
         end
