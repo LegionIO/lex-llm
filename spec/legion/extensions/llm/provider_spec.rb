@@ -210,7 +210,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
         provider.settings = { base_url: 'unreachable.invalid:9999' }
         allow(provider).to receive(:url_reachable?).and_return(false)
 
-        expect(provider.resolve_base_url).to eq('unreachable.invalid:9999')
+        expect(provider.resolve_base_url).to eq('http://unreachable.invalid:9999')
       end
 
       it 'handles array of URLs and picks first reachable' do
@@ -225,7 +225,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
         provider.settings = { base_url: ['a.invalid:1', 'b.invalid:2'] }
         allow(provider).to receive(:url_reachable?).and_return(false, false)
 
-        expect(provider.resolve_base_url).to eq('a.invalid:1')
+        expect(provider.resolve_base_url).to eq('http://a.invalid:1')
       end
     end
 

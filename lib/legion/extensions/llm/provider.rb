@@ -211,18 +211,26 @@ module Legion
 
         def resolve_base_url
           urls = Array(config_base_url)
-          @resolve_base_url ||= find_reachable_url(urls) || urls.first
+          return nil if urls.empty?
+
+          @resolve_base_url ||= find_reachable_url(urls) || normalize_url(urls.first)
         end
 
         def config_base_url
           respond_to?(:settings) ? settings[:base_url] : nil
         end
 
+        def normalize_url(url)
+          raw = url.to_s.strip
+          return raw if raw.match?(%r{^https?://})
+
+          scheme = tls_enabled? ? 'https' : 'http'
+          "#{scheme}://#{raw}"
+        end
+
         def find_reachable_url(urls)
           urls.each do |url|
-            normalized = strip_scheme(url)
-            scheme = tls_enabled? ? 'https' : 'http'
-            full = "#{scheme}://#{normalized}"
+            full = normalize_url(url)
             return full if url_reachable?(full)
           end
           nil
