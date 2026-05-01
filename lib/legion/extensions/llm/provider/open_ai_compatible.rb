@@ -218,7 +218,8 @@ module Legion
             return arguments if arguments.is_a?(Hash)
 
             Legion::JSON.parse(arguments, symbolize_names: false)
-          rescue Legion::JSON::ParseError
+          rescue Legion::JSON::ParseError => e
+            handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.parse_tool_arguments')
             {}
           end
 

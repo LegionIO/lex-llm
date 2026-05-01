@@ -6,6 +6,7 @@ module Legion
       # Base class for LLM providers.
       class Provider
         include Streaming
+        include Legion::Logging::Helper
 
         attr_reader :config, :connection
 
@@ -131,6 +132,7 @@ module Legion
           response = @connection.get(metadata[:endpoints][:health])
           metadata.merge(ready: configured? && health_ready?(response.body), health: response.body)
         rescue StandardError => e
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.readiness')
           metadata.merge(ready: false, health: { error: e.class.name, message: e.message })
         end
 

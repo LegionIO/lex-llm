@@ -35,6 +35,8 @@ module Legion
         ].freeze
 
         class << self
+          include Legion::Logging::Helper
+
           def instance
             @instance ||= new
           end
@@ -51,7 +53,8 @@ module Legion
             data = File.exist?(file) ? File.read(file) : '[]'
             models = Legion::JSON.parse(data, symbolize_names: true).map { |model| Model::Info.new(model) }
             filter_models(models)
-          rescue Legion::JSON::ParseError
+          rescue Legion::JSON::ParseError => e
+            handle_exception(e, level: :warn, handled: true, operation: 'llm.models.read_from_json')
             []
           end
 
@@ -92,6 +95,8 @@ module Legion
                 result[:models].concat(provider_class.new(config).list_models)
                 result[:fetched_providers] << provider_class.slug
               rescue StandardError => e
+                handle_exception(e, level: :warn, handled: true,
+                                    operation: 'llm.models.fetch_provider_models')
                 result[:failed] << { name: provider_class.name, slug: provider_class.slug, error: e }
               end
             end
@@ -170,9 +175,7 @@ module Legion
             end
             { models: models.reject { |model| model.provider.nil? || model.id.nil? }, fetched: true }
           rescue StandardError => e
-            Legion::Extensions::Llm.logger.warn(
-              "Failed to fetch models.dev (#{e.class}: #{e.message}). Keeping existing."
-            )
+            handle_exception(e, level: :warn, handled: true, operation: 'llm.models.fetch_models_dev')
             {
               models: existing_models.select { |model| model.metadata[:source] == 'models.dev' },
               fetched: false

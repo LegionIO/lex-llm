@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.8 - 2026-04-30
+
+- Audit all rescue blocks for handle_exception compliance
+- Add Legion::Logging::Helper to Provider, Chat, and Models for structured exception reporting
+- Replace ad-hoc logger.debug/warn calls in rescue blocks with handle_exception across streaming, chat, models, and provider modules
+- Add require for legion/logging in the main entrypoint
+
 ## 0.1.7 - 2026-04-30
 
 - Add thinking extraction from OpenAI-compatible streaming chunks (reasoning_content, reasoning, think tags)

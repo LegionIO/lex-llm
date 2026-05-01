@@ -6,6 +6,7 @@ module Legion
       # Represents a conversation with an AI model
       class Chat
         include Enumerable
+        include Legion::Logging::Helper
 
         attr_reader :model, :messages, :tools, :tool_prefs, :params, :headers, :schema
 
@@ -157,8 +158,8 @@ module Legion
           if @schema && response.content.is_a?(String) && !response.tool_call?
             begin
               response.content = Legion::JSON.parse(response.content, symbolize_names: false)
-            rescue Legion::JSON::ParseError
-              # If parsing fails, keep content as string
+            rescue Legion::JSON::ParseError => e
+              handle_exception(e, level: :warn, handled: true, operation: 'llm.chat.complete')
             end
           end
 

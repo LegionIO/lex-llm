@@ -91,8 +91,8 @@ module Legion
           buffer << chunk
           error_data = Legion::JSON.parse(buffer, symbolize_names: false)
           handle_parsed_error(error_data, env)
-        rescue Legion::JSON::ParseError
-          Legion::Extensions::Llm.logger.debug { "Accumulating error chunk: #{chunk}" }
+        rescue Legion::JSON::ParseError => e
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.handle_failed_response')
         end
 
         def handle_sse(chunk, parser, env, &)
@@ -112,7 +112,7 @@ module Legion
 
           handle_parsed_error(parsed, env)
         rescue Legion::JSON::ParseError => e
-          Legion::Extensions::Llm.logger.debug { "Failed to parse data chunk: #{e.message}" }
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.handle_data')
         end
 
         def handle_error_event(data, env)
@@ -123,7 +123,7 @@ module Legion
           error_data = Legion::JSON.parse(data, symbolize_names: false)
           [500, error_data['message'] || 'Unknown streaming error']
         rescue Legion::JSON::ParseError => e
-          Legion::Extensions::Llm.logger.debug { "Failed to parse streaming error: #{e.message}" }
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.parse_streaming_error')
           [500, "Failed to parse error: #{data}"]
         end
 
@@ -133,11 +133,11 @@ module Legion
           ErrorMiddleware.parse_error(provider: self, response: error_response)
         end
 
-        def parse_error_from_json(data, env, error_message)
+        def parse_error_from_json(data, env, _error_message)
           parsed_data = Legion::JSON.parse(data, symbolize_names: false)
           handle_parsed_error(parsed_data, env)
         rescue Legion::JSON::ParseError => e
-          Legion::Extensions::Llm.logger.debug { "#{error_message}: #{e.message}" }
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.parse_error_from_json')
         end
 
         def build_stream_error_response(parsed_data, env, status)
