@@ -87,7 +87,7 @@ module Legion
         end
 
         def providers
-          Provider.providers.values
+          Models.scan_provider_classes.values
         end
 
         def configure

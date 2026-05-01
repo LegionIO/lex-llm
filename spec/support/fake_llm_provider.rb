@@ -111,9 +111,38 @@ module SpecSupport
   end
 end
 
-RSpec.shared_context 'with fake llm provider' do
-  before do
-    Legion::Extensions::Llm::Provider.register(:fake_llm, SpecSupport::FakeLLMProvider)
-    Legion::Extensions::Llm::Provider.register(:backup_fake_llm, SpecSupport::BackupFakeLLMProvider)
+# Namespace module that mimics a real lex-llm-* provider extension.
+# Models.scan_provider_classes discovers providers via this pattern.
+module Legion
+  module Extensions
+    module Llm
+      module FakeLlmProvider
+        PROVIDER_FAMILY = :fake_llm
+
+        def self.provider_class
+          SpecSupport::FakeLLMProvider
+        end
+      end
+
+      module BackupFakeLlmProvider
+        PROVIDER_FAMILY = :backup_fake_llm
+
+        def self.provider_class
+          SpecSupport::BackupFakeLLMProvider
+        end
+      end
+    end
   end
+end
+
+# Register provider-specific configuration options at load time,
+# the same way real lex-llm-* extensions declare their options.
+[SpecSupport::FakeLLMProvider, SpecSupport::BackupFakeLLMProvider].each do |klass|
+  Array(klass.configuration_options).each do |key|
+    Legion::Extensions::Llm::Configuration.send(:option, key, nil)
+  end
+end
+
+RSpec.shared_context 'with fake llm provider' do
+  # Provider modules are defined at load time above; no runtime registration needed.
 end

@@ -37,6 +37,27 @@ module Legion
         class << self
           include Legion::Logging::Helper
 
+          # Discover provider classes from the Llm namespace.
+          # Each lex-llm-* extension defines a module under Legion::Extensions::Llm
+          # that responds to `provider_class` and has a `PROVIDER_FAMILY` constant.
+          def scan_provider_classes
+            Legion::Extensions::Llm.constants(false).filter_map do |const_name|
+              mod = Legion::Extensions::Llm.const_get(const_name, false)
+              next unless mod.is_a?(Module) && mod.respond_to?(:provider_class) &&
+                          mod.const_defined?(:PROVIDER_FAMILY, false)
+
+              [mod::PROVIDER_FAMILY.to_sym, mod.provider_class]
+            end.to_h
+          end
+
+          # Resolve a single provider class by slug.
+          # Returns nil when the provider is unknown.
+          def resolve_provider_class(name)
+            return nil if name.nil?
+
+            scan_provider_classes[name.to_sym]
+          end
+
           def instance
             @instance ||= new
           end
@@ -71,15 +92,12 @@ module Legion
             @instance = new(merged_models)
           end
 
-          def fetch_provider_models(remote_only: true) # rubocop:disable Metrics/PerceivedComplexity
+          def fetch_provider_models(remote_only: true)
             config = Legion::Extensions::Llm.config
-            provider_classes = remote_only ? Provider.remote_providers.values : Provider.providers.values
-            configured_classes = if remote_only
-                                   Provider.configured_remote_providers(config)
-                                 else
-                                   Provider.configured_providers(config)
-                                 end
-            configured = configured_classes.select { |klass| provider_classes.include?(klass) }
+            all_providers = scan_provider_classes.values
+            provider_classes = remote_only ? all_providers.reject(&:local?) : all_providers
+            configured = provider_classes.select { |klass| klass.configured?(config) }
+
             result = {
               models: [],
               fetched_providers: [],
@@ -87,18 +105,13 @@ module Legion
               failed: []
             }
 
-            provider_classes.each do |provider_class|
-              next if remote_only && provider_class.local?
-              next unless provider_class.configured?(config)
-
-              begin
-                result[:models].concat(provider_class.new(config).list_models)
-                result[:fetched_providers] << provider_class.slug
-              rescue StandardError => e
-                handle_exception(e, level: :warn, handled: true,
-                                    operation: 'llm.models.fetch_provider_models')
-                result[:failed] << { name: provider_class.name, slug: provider_class.slug, error: e }
-              end
+            configured.each do |provider_class|
+              result[:models].concat(provider_class.new(config).list_models)
+              result[:fetched_providers] << provider_class.slug
+            rescue StandardError => e
+              handle_exception(e, level: :warn, handled: true,
+                                  operation: 'llm.models.fetch_provider_models')
+              result[:failed] << { name: provider_class.name, slug: provider_class.slug, error: e }
             end
 
             result[:fetched_providers].uniq!
@@ -112,7 +125,7 @@ module Legion
 
           def resolve(model_id, provider: nil, assume_exists: false, config: nil) # rubocop:disable Metrics/PerceivedComplexity
             config ||= Legion::Extensions::Llm.config
-            provider_class = provider ? Provider.providers[provider.to_sym] : nil
+            provider_class = provider ? resolve_provider_class(provider) : nil
 
             if provider_class
               temp_instance = provider_class.new(config)
@@ -136,8 +149,8 @@ module Legion
               model ||= Model::Info.default(model_id, provider_instance.slug)
             else
               model = Models.find model_id, provider
-              provider_class = Provider.providers[model.provider.to_sym] || raise(Error,
-                                                                                  "Unknown provider: #{model.provider}")
+              provider_class = resolve_provider_class(model.provider) || raise(Error,
+                                                                               "Unknown provider: #{model.provider}")
               provider_instance = provider_class.new(config)
             end
             [model, provider_instance]
@@ -486,7 +499,7 @@ module Legion
         end
 
         def provider_resolved_model_id(model_id, provider)
-          provider_class = Provider.resolve(provider)
+          provider_class = self.class.resolve_provider_class(provider)
           return model_id unless provider_class
 
           provider_class.resolve_model_id(model_id, config: Legion::Extensions::Llm.config)

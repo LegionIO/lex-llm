@@ -338,50 +338,6 @@ module Legion
           def configured?(config)
             configuration_requirements.all? { |req| config.send(req) }
           end
-
-          # @deprecated Use the extension registry instead. Will be removed in 1.0.
-          def register(name, provider_class)
-            providers[name.to_sym] = provider_class
-            Legion::Extensions::Llm::Configuration.register_provider_options(provider_class.configuration_options)
-          end
-
-          # @deprecated Use the extension registry instead. Will be removed in 1.0.
-          def resolve(name)
-            return nil if name.nil?
-
-            providers[name.to_sym]
-          end
-
-          # @deprecated Use the extension registry instead. Will be removed in 1.0.
-          def for(model)
-            model_info = Models.find(model)
-            resolve model_info.provider
-          end
-
-          # @deprecated Use the extension registry instead. Will be removed in 1.0.
-          def providers
-            @providers ||= {}
-          end
-
-          def local_providers
-            providers.select { |_slug, provider_class| provider_class.local? }
-          end
-
-          def remote_providers
-            providers.select { |_slug, provider_class| provider_class.remote? }
-          end
-
-          def configured_providers(config)
-            providers.select do |_slug, provider_class|
-              provider_class.configured?(config)
-            end.values
-          end
-
-          def configured_remote_providers(config)
-            providers.select do |_slug, provider_class|
-              provider_class.remote? && provider_class.configured?(config)
-            end.values
-          end
         end
 
         private

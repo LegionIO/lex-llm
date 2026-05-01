@@ -50,12 +50,19 @@ RSpec.describe Legion::Extensions::Llm::Models do
   end
 
   it 'supports provider-specific model id normalization through provider hooks' do
-    provider = Class.new(SpecSupport::FakeLLMProvider) do
+    normalizing_class = Class.new(SpecSupport::FakeLLMProvider) do
       def self.resolve_model_id(model_id, config: nil) # rubocop:disable Lint/UnusedMethodArgument
         model_id == 'alias-model' ? 'fake-chat-model' : model_id
       end
     end
-    Legion::Extensions::Llm::Provider.register(:normalizing_fake, provider)
+
+    # Temporarily define a namespace module so scan_provider_classes can find it
+    mod = Module.new do
+      const_set(:PROVIDER_FAMILY, :normalizing_fake)
+    end
+    mod.define_singleton_method(:provider_class) { normalizing_class }
+    stub_const('Legion::Extensions::Llm::NormalizingFakeProvider', mod)
+
     normalized = Legion::Extensions::Llm::Model::Info.from_hash(
       id: 'fake-chat-model',
       name: 'Normalized',

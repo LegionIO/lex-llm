@@ -16,10 +16,6 @@ module Legion
             defaults[key] = default
           end
 
-          def register_provider_options(options)
-            Array(options).each { |key| option(key, nil) }
-          end
-
           def options
             option_keys.dup
           end
@@ -32,8 +28,8 @@ module Legion
         end
 
         # System-level options are declared here.
-        # Provider-specific options are declared in each provider class via
-        # `self.configuration_options` and registered through Provider.register.
+        # Provider-specific options are declared in each provider extension via
+        # `self.configuration_options`.
         option :default_model, nil
         option :default_embedding_model, nil
         option :default_moderation_model, nil

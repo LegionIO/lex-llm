@@ -19,10 +19,9 @@ RSpec.describe Legion::Extensions::Llm do
     )
   end
 
-  it 'loads without registering concrete provider gems' do
-    Legion::Extensions::Llm::Provider.providers.clear
-
-    expect(Legion::Extensions::Llm::Provider.providers).to eq({})
+  it 'loads and discovers provider classes from the namespace' do
+    provider_classes = Legion::Extensions::Llm::Models.scan_provider_classes
+    expect(provider_classes).to include(fake_llm: SpecSupport::FakeLLMProvider)
     expect(Legion::Extensions::Llm::Routing::ModelOffering).to be_a(Class)
   end
 
@@ -37,7 +36,6 @@ RSpec.describe Legion::Extensions::Llm do
       input_tokens: 10,
       output_tokens: 5
     )
-    expect(Legion::Extensions::Llm::Configuration.options).to include(:fake_llm_api_key, :fake_llm_api_base)
   end
 
   it 'runs shared tool orchestration without provider-specific payload code' do

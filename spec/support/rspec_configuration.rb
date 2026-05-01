@@ -13,6 +13,7 @@ RSpec.configure do |config|
   end
 
   config.before do
-    Legion::Extensions::Llm::Provider.providers.clear
+    # Provider lookup is now namespace-based via Models.scan_provider_classes;
+    # no mutable hash to clear between examples.
   end
 end
