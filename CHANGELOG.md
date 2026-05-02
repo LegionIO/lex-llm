@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-05-02
+
+- Fix AutoRegistration to pass tier and capabilities metadata to Call::Registry on registration
+
 ## 0.3.0 - 2026-05-01
 
 - Add CredentialSources helper: read-only probes for env vars, ~/.claude/settings.json, ~/.codex/auth.json, Legion::Settings, socket/HTTP probes, SHA-256 credential dedup

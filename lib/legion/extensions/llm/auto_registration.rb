@@ -32,9 +32,9 @@ module Legion
             adapter = Legion::LLM::Call::LexLLMAdapter.new(
               self::PROVIDER_FAMILY, provider_class, instance_config: registry_config
             )
+            meta = { tier: config[:tier], capabilities: config[:capabilities] || [] }
             Legion::LLM::Call::Registry.register(
-              self::PROVIDER_FAMILY, adapter, instance: instance_id,
-              metadata: { tier: config[:tier], capabilities: config[:capabilities] || [] }
+              self::PROVIDER_FAMILY, adapter, instance: instance_id, metadata: meta
             )
           end
         rescue StandardError => e
