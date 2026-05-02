@@ -4,7 +4,7 @@ module Legion
   module Extensions
     module Llm
       module Model
-        Info = Data.define(
+        Info = ::Data.define(
           :id, :name, :provider, :instance, :family,
           :capabilities, :context_length, :parameter_count,
           :parameter_size, :quantization, :size_bytes,

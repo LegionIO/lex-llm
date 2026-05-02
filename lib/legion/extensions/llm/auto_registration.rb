@@ -33,7 +33,8 @@ module Legion
               self::PROVIDER_FAMILY, provider_class, instance_config: registry_config
             )
             Legion::LLM::Call::Registry.register(
-              self::PROVIDER_FAMILY, adapter, instance: instance_id
+              self::PROVIDER_FAMILY, adapter, instance: instance_id,
+              metadata: { tier: config[:tier], capabilities: config[:capabilities] || [] }
             )
           end
         rescue StandardError => e

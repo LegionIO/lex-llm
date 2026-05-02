@@ -54,10 +54,12 @@ RSpec.describe Legion::Extensions::Llm::AutoRegistration do
         provider_module.register_discovered_instances
 
         expect(registry).to have_received(:register).with(
-          :fake_provider, an_instance_of(adapter_class), instance: :local
+          :fake_provider, an_instance_of(adapter_class), instance: :local,
+          metadata: { tier: nil, capabilities: [] }
         )
         expect(registry).to have_received(:register).with(
-          :fake_provider, an_instance_of(adapter_class), instance: :remote
+          :fake_provider, an_instance_of(adapter_class), instance: :remote,
+          metadata: { tier: nil, capabilities: [] }
         )
       end
 
@@ -139,7 +141,8 @@ RSpec.describe Legion::Extensions::Llm::AutoRegistration do
 
         expect(registry).to have_received(:deregister_provider).with(:fake_provider)
         expect(registry).to have_received(:register).with(
-          :fake_provider, an_instance_of(adapter_class), instance: :local
+          :fake_provider, an_instance_of(adapter_class), instance: :local,
+          metadata: { tier: nil, capabilities: [] }
         )
       end
     end
