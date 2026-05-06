@@ -27,11 +27,80 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
     expect(payload[:messages]).to eq([{ role: 'user', content: 'hello' }])
   end
 
+  it 'strips assistant think tags from outbound OpenAI-compatible history' do
+    message = Legion::Extensions::Llm::Message.new(
+      role: :assistant,
+      content: "internal\n</think>\n\nHello"
+    )
+
+    payload = provider.send(
+      :render_payload,
+      [message],
+      tools: {},
+      temperature: 0.2,
+      model: model,
+      stream: false,
+      schema: nil,
+      thinking: nil,
+      tool_prefs: nil
+    )
+
+    expect(payload[:messages]).to eq([{ role: 'assistant', content: 'Hello' }])
+  end
+
   it 'parses chat completion responses with usage and tool calls' do
     message = provider.send(:parse_completion_response, fake_response(completion_body))
 
     expect([message.content, message.input_tokens, message.output_tokens]).to eq(['hi', 3, 5])
     expect(message.tool_calls[:lookup].arguments).to eq('id' => 1)
+  end
+
+  it 'strips malformed trailing think close tags from chat completion responses' do
+    message = provider.send(
+      :parse_completion_response,
+      fake_response(completion_body(content: "hidden only\n</think>\n\nvisible"))
+    )
+
+    expect(message.content).to eq('visible')
+    expect(message.thinking.text).to eq('hidden only')
+  end
+
+  it 'strips truncated think tags from chat completion responses' do
+    message = provider.send(
+      :parse_completion_response,
+      fake_response(completion_body(content: "visible\n<think>hidden only"))
+    )
+
+    expect(message.content).to eq('visible')
+    expect(message.thinking.text).to eq('hidden only')
+  end
+
+  it 'does not leak streamed think-tag content split across chunks' do
+    accumulator = Legion::Extensions::Llm::StreamAccumulator.new
+    filtered = think_tag_stream.filter_map do |content|
+      chunk = provider.send(:build_chunk, stream_delta(content: content))
+      accumulator.add(chunk)
+      accumulator.filtered_chunk(chunk)
+    end
+
+    message = accumulator.to_message(nil)
+
+    expect(filtered.filter_map(&:content)).to eq(['visible'])
+    expect(filtered.filter_map { |chunk| chunk.thinking&.text }.join).to eq('internal')
+    expect(message.content).to eq('visible')
+    expect(message.thinking.text).to eq('internal')
+  end
+
+  it 'ignores incomplete OpenAI-compatible tool call deltas without a function name' do
+    chunk = nil
+
+    expect do
+      chunk = provider.send(:build_chunk, stream_delta(tool_calls: [tool_call_delta_without_name]))
+    end.not_to raise_error
+
+    expect(chunk.tool_calls[:'0'].id).to eq('0')
+    expect(chunk.tool_calls[:'0'].name).to be_nil
+    expect(chunk.tool_calls[:'0'].arguments).to eq({})
   end
 
   it 'parses embedding responses for single and batch inputs' do
@@ -67,16 +136,28 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
     )
   end
 
-  def completion_body
+  def completion_body(content: 'hi')
     {
       'model' => 'model-a',
-      'choices' => [{ 'message' => { 'content' => 'hi', 'tool_calls' => [tool_call] } }],
+      'choices' => [{ 'message' => { 'content' => content, 'tool_calls' => [tool_call] } }],
       'usage' => { 'prompt_tokens' => 3, 'completion_tokens' => 5 }
     }
   end
 
   def tool_call
     { 'id' => 'call-1', 'function' => { 'name' => 'lookup', 'arguments' => '{"id":1}' } }
+  end
+
+  def tool_call_delta_without_name
+    { 'index' => 0, 'function' => { 'arguments' => '{}' } }
+  end
+
+  def think_tag_stream
+    ['<think>', 'internal', '</think>visible']
+  end
+
+  def stream_delta(content: nil, tool_calls: nil)
+    { 'model' => 'model-a', 'choices' => [{ 'delta' => { 'content' => content, 'tool_calls' => tool_calls }.compact }] }
   end
 
   def embedding_body

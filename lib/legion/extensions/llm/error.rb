@@ -27,6 +27,20 @@ module Legion
       class ModelNotFoundError < StandardError; end
       class UnsupportedAttachmentError < StandardError; end
 
+      # Backward-compatible unsupported-capability error alias.
+      class UnsupportedCapabilityError < Errors::UnsupportedCapability
+        def initialize(message = nil, provider: nil, capability: nil, model: nil)
+          if provider && capability
+            super(provider:, capability:, model:)
+          else
+            @provider = provider
+            @capability = capability
+            @model = model
+            StandardError.instance_method(:initialize).bind_call(self, message)
+          end
+        end
+      end
+
       # Error classes for different HTTP status codes
       class BadRequestError < Error; end
       class ForbiddenError < Error; end

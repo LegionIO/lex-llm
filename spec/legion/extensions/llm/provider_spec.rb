@@ -80,6 +80,113 @@ RSpec.describe Legion::Extensions::Llm::Provider do
     end
   end
 
+  describe 'canonical provider contract' do
+    let(:model) do
+      Legion::Extensions::Llm::Model::Info.new(
+        id: 'test-model',
+        provider: :contract,
+        instance: :primary,
+        capabilities: %i[completion streaming tools],
+        context_length: 8192,
+        metadata: { max_output_tokens: 2048 }
+      )
+    end
+
+    let(:provider_class) do
+      model_info = model
+      Class.new(described_class) do
+        def self.name = 'Provider'
+
+        define_method(:api_base) { 'https://contract.invalid' }
+        define_method(:models_url) { '/v1/models' }
+        define_method(:list_models) { [model_info] }
+
+        def render_payload(_messages, **)
+          {}
+        end
+
+        def parse_completion_response(_response)
+          Legion::Extensions::Llm::Message.new(role: :assistant, content: 'ok')
+        end
+      end
+    end
+
+    let(:provider) do
+      provider_class.new({ request_timeout: 30, max_retries: 0,
+                           retry_interval: 0, retry_backoff_factor: 0,
+                           retry_interval_randomness: 0,
+                           instance_id: :primary })
+    end
+
+    it 'exposes a canonical chat alias over complete' do
+      allow(provider).to receive(:complete).and_return('ok')
+
+      expect(provider.chat(messages: [], model: model)).to eq('ok')
+      expect(provider).to have_received(:complete).with(
+        [], tools: [], temperature: nil, model: model, params: {}, headers: {},
+            schema: nil, thinking: nil, tool_prefs: nil
+      )
+    end
+
+    it 'exposes a canonical stream_chat alias over complete' do
+      seen = []
+      allow(provider).to receive(:complete) { |_messages, **_opts, &block| block.call('chunk') }
+
+      provider.stream_chat(messages: [], model: model) { |chunk| seen << chunk }
+
+      expect(seen).to eq(['chunk'])
+    end
+
+    it 'converts live list_models results into model offerings' do
+      offerings = provider.discover_offerings(live: true)
+      offering = offerings.first
+
+      expect(offerings.size).to eq(1)
+      expect(offering.provider_family).to eq(:provider)
+      expect(offering.provider_instance).to eq(:primary)
+      expect(offering.model).to eq('test-model')
+      expect(offering.usage_type).to eq(:inference)
+      expect(offering.capabilities).to include(:completion, :streaming, :tools)
+      expect(offering.context_window).to eq(8192)
+    end
+
+    it 'filters generated offerings by capability and instance' do
+      provider.discover_offerings(live: true)
+
+      expect(provider.discover_offerings(capability: :tools, instance: :primary)).not_to be_empty
+      expect(provider.discover_offerings(capability: :embedding)).to be_empty
+      expect(provider.discover_offerings(instance: :other)).to be_empty
+    end
+
+    it 'does not perform live discovery for uncached non-live offerings reads' do
+      allow(provider).to receive(:list_models).and_raise('unexpected live discovery')
+
+      expect(provider.discover_offerings).to eq([])
+      expect(provider).not_to have_received(:list_models)
+    end
+
+    it 'serves non-live offerings reads from the live discovery cache' do
+      provider.discover_offerings(live: true)
+      allow(provider).to receive(:list_models).and_raise('unexpected live discovery')
+
+      expect(provider.discover_offerings(capability: :tools, instance: :primary)).not_to be_empty
+    end
+
+    it 'returns normalized health metadata' do
+      expect(provider.health).to include(
+        provider: :provider,
+        instance_id: :primary,
+        status: 'healthy',
+        ready: true,
+        circuit_state: 'closed'
+      )
+    end
+
+    it 'provides a deterministic token estimate fallback' do
+      expect(provider.count_tokens(messages: [{ content: 'hello world' }], model: model)).to be >= 1
+    end
+  end
+
   describe '#model_allowed?' do
     let(:provider_class) do
       Class.new(described_class) do

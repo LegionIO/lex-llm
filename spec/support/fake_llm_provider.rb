@@ -72,7 +72,7 @@ module SpecSupport
     end
     # rubocop:enable Metrics/ParameterLists, Metrics/PerceivedComplexity, Lint/UnusedMethodArgument
 
-    def embed(text, model:, dimensions:)
+    def embed(text:, model:, dimensions: nil)
       size = dimensions || 3
       vectors = Array(text).map { Array.new(size, 0.5) }
       vectors = vectors.first unless text.is_a?(Array)

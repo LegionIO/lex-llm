@@ -110,20 +110,26 @@ module Legion
       def self.default_settings
         {
           fleet: {
-            enabled: false,
-            scheduler: :basic_get,
-            consumer_priority: 0,
-            queue_expires_ms: 60_000,
-            message_ttl_ms: 120_000,
-            queue_max_length: 100,
-            delivery_limit: 3,
-            consumer_ack_timeout_ms: 300_000,
-            endpoint: {
+            consumer: {
               enabled: false,
+              scheduler: :basic_get,
+              consumer_priority: 0,
+              queue_expires_ms: 60_000,
+              message_ttl_ms: 120_000,
+              queue_max_length: 100,
+              delivery_limit: 3,
+              consumer_ack_timeout_ms: 90_000,
               empty_lane_backoff_ms: 250,
               idle_backoff_ms: 1_000,
-              max_consecutive_pulls_per_lane: 0,
-              accept_when: []
+              max_consecutive_pulls_per_lane: 0
+            },
+            auth: {
+              require_signed_token: true,
+              issuer: 'legion-llm',
+              audience: 'lex-llm-fleet-worker',
+              algorithm: 'HS256',
+              accepted_issuers: ['legion-llm'],
+              max_clock_skew_seconds: 30
             }
           }
         }
@@ -133,9 +139,59 @@ module Legion
         ProviderSettings.build(...)
       end
 
+      def self.with_silent_settings_logger
+        require 'logger'
+        require 'legion/settings'
+        state = settings_logger_state
+        silence_settings_logger!
+        yield
+      ensure
+        restore_settings_instance_variable(:@log, state[:log_defined], state[:log])
+        restore_settings_instance_variable(:@log_generation, state[:generation_defined], state[:generation])
+      end
+      private_class_method :with_silent_settings_logger
+
+      def self.settings_logger_state
+        {
+          log_defined: ::Legion::Settings.instance_variable_defined?(:@log),
+          log: instance_variable_value(:@log),
+          generation_defined: ::Legion::Settings.instance_variable_defined?(:@log_generation),
+          generation: instance_variable_value(:@log_generation)
+        }
+      end
+      private_class_method :settings_logger_state
+
+      def self.silence_settings_logger!
+        ::Legion::Settings.instance_variable_set(:@log, ::Logger.new(File::NULL))
+        ::Legion::Settings.instance_variable_set(:@log_generation, ::Legion::Logging.configuration_generation)
+      end
+      private_class_method :silence_settings_logger!
+
+      def self.restore_settings_instance_variable(name, variable_defined, value)
+        if variable_defined
+          ::Legion::Settings.instance_variable_set(name, value)
+        elsif defined?(::Legion::Settings) && ::Legion::Settings.instance_variable_defined?(name)
+          ::Legion::Settings.remove_instance_variable(name)
+        end
+      end
+      private_class_method :restore_settings_instance_variable
+
+      def self.instance_variable_value(name)
+        ::Legion::Settings.instance_variable_get(name) if ::Legion::Settings.instance_variable_defined?(name)
+      end
+      private_class_method :instance_variable_value
+
       require_relative 'llm/auto_registration'
       require_relative 'llm/credential_sources'
-      loader.eager_load
+      with_silent_settings_logger do
+        require 'legion/transport'
+        require_relative 'llm/fleet/protocol'
+        require_relative 'llm/transport/exchanges/fleet'
+        require_relative 'llm/transport/messages/fleet_request'
+        require_relative 'llm/transport/messages/fleet_response'
+        require_relative 'llm/transport/messages/fleet_error'
+        loader.eager_load
+      end
     end
   end
 end

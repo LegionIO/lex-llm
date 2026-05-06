@@ -81,7 +81,28 @@ RSpec.describe Legion::Extensions::Llm::AutoRegistration do
         expect(adapter_class).to have_received(:new).with(
           :fake_provider,
           fake_provider_class,
-          instance_config: { base_url: 'http://localhost:11434', api_key: 'sk-test' }
+          instance_config: { base_url: 'http://localhost:11434', api_key: 'sk-test', instance_id: :default }
+        )
+      end
+
+      it 'passes the discovered instance id into the adapter config' do
+        allow(provider_module).to receive(:discover_instances).and_return(
+          local: { base_url: 'http://localhost:11434' },
+          west: { base_url: 'http://west:11434' }
+        )
+        allow(adapter_class).to receive(:new).and_call_original
+
+        provider_module.register_discovered_instances
+
+        expect(adapter_class).to have_received(:new).with(
+          :fake_provider,
+          fake_provider_class,
+          instance_config: { base_url: 'http://localhost:11434', instance_id: :local }
+        )
+        expect(adapter_class).to have_received(:new).with(
+          :fake_provider,
+          fake_provider_class,
+          instance_config: { base_url: 'http://west:11434', instance_id: :west }
         )
       end
 

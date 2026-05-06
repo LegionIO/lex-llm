@@ -37,7 +37,7 @@ Expected provider gems include:
 - `lex-llm-mlx`
 - `lex-llm-bedrock`
 - `lex-llm-vertex`
-- `lex-llm-azure`
+- `lex-llm-azure-foundry`
 
 ## Install
 
@@ -48,7 +48,7 @@ gem 'lex-llm'
 Provider extensions should declare `lex-llm` as a gemspec dependency:
 
 ```ruby
-spec.add_dependency 'lex-llm', '>= 0.1.6'
+spec.add_dependency 'lex-llm', '>= 0.4.0'
 ```
 
 For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.
@@ -296,6 +296,22 @@ At minimum, a provider extension should define:
 - embedding support separately from inference support when the provider exposes both
 
 Provider extensions should avoid duplicating shared classes, schema logic, fleet lane construction, JSON handling, or common request/response objects.
+
+Canonical provider calls are keyword-based:
+
+```ruby
+provider.chat(messages:, model:, tools: [], temperature: nil, params: {}, headers: {}, schema: nil, thinking: nil)
+provider.stream_chat(messages:, model:, tools: [], temperature: nil, params: {}, headers: {}, schema: nil, thinking: nil) { |chunk| ... }
+provider.embed(text:, model:, dimensions: nil, params: {}, headers: {})
+provider.image(prompt:, model:, size:, with: nil, mask: nil, params: {})
+provider.count_tokens(messages:, model:, params: {})
+provider.health(live: false)
+provider.discover_offerings(live: false, **filters)
+```
+
+Provider responses should normalize through the shared response objects before they reach callers. Visible assistant text and provider reasoning are separate values: provider-specific thinking fields, OpenAI-compatible `reasoning_content`, and literal `<think>...</think>` text are removed from caller-visible content and preserved as thinking metadata when present.
+
+Fleet envelopes also live here. `FleetRequest`, `FleetResponse`, and `FleetError` are protocol-v2 transport messages with `operation`, `request_id`, `correlation_id`, `idempotency_key`, `message_context`, and signed-token fields. Provider gems should consume and publish these shared envelopes instead of defining local fleet message shapes.
 
 All providers inherit `#readiness(live: false)`, which returns configured state, provider locality, API base, endpoint helpers, and non-live health metadata without probing remote services. Providers with a cheap health endpoint can pass `live: true` to include that endpoint response. OpenAI-compatible providers also inherit shared model-list parsing that maps discovered models into normalized capabilities and modalities for Legion routing.
 

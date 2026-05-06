@@ -28,11 +28,12 @@ module Legion
 
           instances = discover_instances
           instances.each do |instance_id, config|
-            registry_config = config.except(:tier, :capabilities)
+            normalized_config = normalize_instance_config(config)
+            registry_config = adapter_instance_config(normalized_config, instance_id)
             adapter = Legion::LLM::Call::LexLLMAdapter.new(
               self::PROVIDER_FAMILY, provider_class, instance_config: registry_config
             )
-            meta = { tier: config[:tier], capabilities: config[:capabilities] || [] }
+            meta = { tier: normalized_config[:tier], capabilities: normalized_config[:capabilities] || [] }
             Legion::LLM::Call::Registry.register(
               self::PROVIDER_FAMILY, adapter, instance: instance_id, metadata: meta
             )
@@ -49,6 +50,18 @@ module Legion
 
           Legion::LLM::Call::Registry.deregister_provider(self::PROVIDER_FAMILY)
           register_discovered_instances
+        end
+
+        private
+
+        def normalize_instance_config(config)
+          config.to_h.transform_keys { |key| key.respond_to?(:to_sym) ? key.to_sym : key }
+        end
+
+        def adapter_instance_config(config, instance_id)
+          config.except(:tier, :capabilities).tap do |registry_config|
+            registry_config[:instance_id] ||= instance_id
+          end
         end
       end
     end

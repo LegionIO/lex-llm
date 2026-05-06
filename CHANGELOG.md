@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.4.0 - 2026-05-06
+
+- Set the coordinated sweep dependency floor for provider-owned fleet responders.
+- Make `Provider#discover_offerings(live: false)` serve only cached live discovery results so inventory reads do not probe provider endpoints.
+
+## 0.3.6 - 2026-05-06
+
+- Replace shared fleet request, response, and error envelopes with strict fleet protocol v2 fields.
+- Reject legacy fleet envelope fields and publish provider replies through the AMQP default exchange reply queue with optional mandatory routing and publisher confirms.
+
+## 0.3.5 - 2026-05-06
+
+- Add shared response normalization value objects for chat, stream, embedding, and thinking extraction.
+- Strip provider thinking from caller-visible OpenAI-compatible completion content, including malformed trailing close-tag output.
+- Preserve provider reasoning metadata while tolerating streaming tool-call deltas without optional function names.
+
+## 0.3.4 - 2026-05-06
+
+- Add shared provider contract and unsupported capability error namespace for lex-llm provider gems.
+- Require keyword provider embed/count token calls and validate provider settings instance nesting.
+- Move shared fleet defaults under nested consumer/auth settings.
+
+## 0.3.3 - 2026-05-03
+
+- Fix OpenAI-compatible streaming to keep split `<think>` tag content out of streamed assistant content.
+- Strip leaked assistant thinking from outbound OpenAI-compatible history, including dangling close-tag content from prior responses.
+- Tolerate incomplete streaming tool-call deltas that omit `function.name`.
+
+## 0.3.2 - 2026-05-03
+
+- Fix AutoRegistration to pass the discovered instance id into provider adapter config for instance-aware model offerings
+
 ## 0.3.1 - 2026-05-02
 
 - Fix AutoRegistration to pass tier and capabilities metadata to Call::Registry on registration
