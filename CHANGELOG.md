@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - 2026-05-06
+
+- Remove the temporary settings logger wrapper and lazy-load fleet transport envelopes so `lex-llm` boot does not force `legion-transport` loading.
+
 ## 0.4.1 - 2026-05-06
 
 - Make `AutoRegistration` a pure provider discovery mixin and remove upward `Legion::LLM::Call::Registry` mutation hooks.

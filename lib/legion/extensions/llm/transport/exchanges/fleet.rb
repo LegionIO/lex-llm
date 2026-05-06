@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'legion/transport'
+
 module Legion
   module Extensions
     module Llm

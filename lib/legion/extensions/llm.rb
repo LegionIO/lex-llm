@@ -139,58 +139,22 @@ module Legion
         ProviderSettings.build(...)
       end
 
-      def self.with_silent_settings_logger
-        require 'logger'
-        require 'legion/settings'
-        state = settings_logger_state
-        silence_settings_logger!
-        yield
-      ensure
-        restore_settings_instance_variable(:@log, state[:log_defined], state[:log])
-        restore_settings_instance_variable(:@log_generation, state[:generation_defined], state[:generation])
-      end
-      private_class_method :with_silent_settings_logger
-
-      def self.settings_logger_state
-        {
-          log_defined: ::Legion::Settings.instance_variable_defined?(:@log),
-          log: instance_variable_value(:@log),
-          generation_defined: ::Legion::Settings.instance_variable_defined?(:@log_generation),
-          generation: instance_variable_value(:@log_generation)
-        }
-      end
-      private_class_method :settings_logger_state
-
-      def self.silence_settings_logger!
-        ::Legion::Settings.instance_variable_set(:@log, ::Logger.new(File::NULL))
-        ::Legion::Settings.instance_variable_set(:@log_generation, ::Legion::Logging.configuration_generation)
-      end
-      private_class_method :silence_settings_logger!
-
-      def self.restore_settings_instance_variable(name, variable_defined, value)
-        if variable_defined
-          ::Legion::Settings.instance_variable_set(name, value)
-        elsif defined?(::Legion::Settings) && ::Legion::Settings.instance_variable_defined?(name)
-          ::Legion::Settings.remove_instance_variable(name)
-        end
-      end
-      private_class_method :restore_settings_instance_variable
-
-      def self.instance_variable_value(name)
-        ::Legion::Settings.instance_variable_get(name) if ::Legion::Settings.instance_variable_defined?(name)
-      end
-      private_class_method :instance_variable_value
-
       require_relative 'llm/auto_registration'
       require_relative 'llm/credential_sources'
-      with_silent_settings_logger do
-        require 'legion/transport'
-        require_relative 'llm/fleet/protocol'
-        require_relative 'llm/transport/exchanges/fleet'
-        require_relative 'llm/transport/messages/fleet_request'
-        require_relative 'llm/transport/messages/fleet_response'
-        require_relative 'llm/transport/messages/fleet_error'
-        loader.eager_load
+      loader.eager_load
+
+      module Transport
+        # Local autoloads for fleet exchange classes that depend on legion-transport.
+        module Exchanges
+          autoload :Fleet, File.expand_path('llm/transport/exchanges/fleet', __dir__)
+        end
+
+        # Local autoloads for fleet message classes that depend on legion-transport.
+        module Messages
+          autoload :FleetRequest, File.expand_path('llm/transport/messages/fleet_request', __dir__)
+          autoload :FleetResponse, File.expand_path('llm/transport/messages/fleet_response', __dir__)
+          autoload :FleetError, File.expand_path('llm/transport/messages/fleet_error', __dir__)
+        end
       end
     end
   end
