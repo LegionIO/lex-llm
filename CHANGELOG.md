@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 - 2026-05-06
+
+- Make `AutoRegistration` a pure provider discovery mixin and remove upward `Legion::LLM::Call::Registry` mutation hooks.
+- Add provider alias metadata so `legion-llm` can register compatibility provider families without provider require-time side effects.
+- Pass live discovery flags and filters through from `Provider#discover_offerings` to `#list_models`.
+- Merge provider-specific embedding params into canonical `Provider#embed` request payloads.
+
 ## 0.4.0 - 2026-05-06
 
 - Set the coordinated sweep dependency floor for provider-owned fleet responders.

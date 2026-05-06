@@ -99,7 +99,13 @@ RSpec.describe Legion::Extensions::Llm::Provider do
 
         define_method(:api_base) { 'https://contract.invalid' }
         define_method(:models_url) { '/v1/models' }
-        define_method(:list_models) { [model_info] }
+        attr_reader :list_model_calls
+
+        define_method(:list_models) do |live: false, **filters|
+          @list_model_calls ||= []
+          @list_model_calls << { live: live, filters: filters }
+          [model_info]
+        end
 
         def render_payload(_messages, **)
           {}
@@ -150,6 +156,15 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       expect(offering.context_window).to eq(8192)
     end
 
+    it 'passes live discovery filters through to list_models' do
+      provider.discover_offerings(live: true, capability: :tools, instance: :primary)
+
+      expect(provider.list_model_calls).to include(
+        live: true,
+        filters: { capability: :tools, instance: :primary }
+      )
+    end
+
     it 'filters generated offerings by capability and instance' do
       provider.discover_offerings(live: true)
 
@@ -184,6 +199,60 @@ RSpec.describe Legion::Extensions::Llm::Provider do
 
     it 'provides a deterministic token estimate fallback' do
       expect(provider.count_tokens(messages: [{ content: 'hello world' }], model: model)).to be >= 1
+    end
+
+    it 'deep merges embedding params into the provider payload' do
+      captured_payload = nil
+      response = instance_double(Faraday::Response)
+      connection = instance_double(Legion::Extensions::Llm::Connection)
+      embedding_provider_class = Class.new(described_class) do
+        def api_base = 'https://contract.invalid'
+        def embedding_url(model:) = "/v1/#{model}/embeddings"
+
+        def render_embedding_payload(text, model:, dimensions:)
+          {
+            model: model,
+            input: text,
+            options: {
+              dimensions: dimensions,
+              normalize: false
+            }
+          }
+        end
+
+        def parse_embedding_response(response, model:, text:)
+          [response, model, text]
+        end
+      end
+      embedding_provider = embedding_provider_class.new(provider.config)
+      embedding_provider.instance_variable_set(:@connection, connection)
+
+      allow(connection).to receive(:post) do |_url, payload, &_block|
+        captured_payload = payload
+        response
+      end
+
+      result = embedding_provider.embed(
+        text: 'hello',
+        model: 'embed-model',
+        dimensions: 1024,
+        params: {
+          options: { normalize: true },
+          encoding_format: 'float'
+        }
+      )
+
+      expect(result).to eq([response, 'embed-model', 'hello'])
+      expect(connection).to have_received(:post).with('/v1/embed-model/embeddings', kind_of(Hash))
+      expect(captured_payload).to eq(
+        model: 'embed-model',
+        input: 'hello',
+        options: {
+          dimensions: 1024,
+          normalize: true
+        },
+        encoding_format: 'float'
+      )
     end
   end
 

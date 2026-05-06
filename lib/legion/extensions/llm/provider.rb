@@ -108,7 +108,7 @@ module Legion
           return filter_cached_offerings(Array(@cached_offerings), filters) unless live
 
           provider_health = health(live:)
-          @cached_offerings = Array(list_models).filter_map do |model|
+          @cached_offerings = Array(list_models(live:, **filters)).filter_map do |model|
             next unless model_matches_filters?(model, filters)
 
             offering_from_model(model, health: provider_health)
@@ -143,8 +143,7 @@ module Legion
         end
 
         def embed(text:, model:, dimensions: nil, params: {}, headers: {})
-          _ = params
-          payload = render_embedding_payload(text, model:, dimensions:)
+          payload = Utils.deep_merge(render_embedding_payload(text, model:, dimensions:), params)
           response = @connection.post(embedding_url(model:), payload) do |req|
             req.headers = headers.merge(req.headers) unless headers.empty?
           end
