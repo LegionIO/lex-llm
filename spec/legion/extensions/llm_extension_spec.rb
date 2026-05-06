@@ -13,9 +13,12 @@ RSpec.describe Legion::Extensions::Llm do
   it 'provides complete default fleet settings' do
     defaults = described_class.default_settings
 
-    expect(defaults.dig(:fleet, :scheduler)).to eq(:basic_get)
-    expect(defaults.dig(:fleet, :queue_expires_ms)).to eq(60_000)
-    expect(defaults.dig(:fleet, :endpoint, :accept_when)).to eq([])
+    expect(defaults.dig(:fleet, :consumer, :scheduler)).to eq(:basic_get)
+    expect(defaults.dig(:fleet, :consumer, :queue_expires_ms)).to eq(60_000)
+    expect(defaults.dig(:fleet, :consumer, :consumer_ack_timeout_ms)).to eq(90_000)
+    expect(defaults.dig(:fleet, :auth, :accepted_issuers)).to eq(['legion-llm'])
+    expect(defaults.dig(:fleet, :auth, :audience)).to eq('lex-llm-fleet-worker')
+    expect(defaults.dig(:fleet, :auth, :algorithm)).to eq('HS256')
   end
 
   it 'builds provider defaults with shared fleet settings' do
@@ -29,7 +32,7 @@ RSpec.describe Legion::Extensions::Llm do
 
     expect(settings[:provider_family]).to eq(:ollama)
     expect(settings.dig(:discovery, :interval_seconds)).to eq(300)
-    expect(settings.dig(:fleet, :scheduler)).to eq(:basic_get)
+    expect(settings.dig(:fleet, :consumer, :scheduler)).to eq(:basic_get)
     expect(settings.dig(:instances, :default, :base_url)).to eq('http://localhost:11434')
     expect(settings.dig(:instances, :default, :fleet)).to include(
       enabled: true,

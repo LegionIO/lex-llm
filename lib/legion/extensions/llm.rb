@@ -110,20 +110,26 @@ module Legion
       def self.default_settings
         {
           fleet: {
-            enabled: false,
-            scheduler: :basic_get,
-            consumer_priority: 0,
-            queue_expires_ms: 60_000,
-            message_ttl_ms: 120_000,
-            queue_max_length: 100,
-            delivery_limit: 3,
-            consumer_ack_timeout_ms: 300_000,
-            endpoint: {
+            consumer: {
               enabled: false,
+              scheduler: :basic_get,
+              consumer_priority: 0,
+              queue_expires_ms: 60_000,
+              message_ttl_ms: 120_000,
+              queue_max_length: 100,
+              delivery_limit: 3,
+              consumer_ack_timeout_ms: 90_000,
               empty_lane_backoff_ms: 250,
               idle_backoff_ms: 1_000,
-              max_consecutive_pulls_per_lane: 0,
-              accept_when: []
+              max_consecutive_pulls_per_lane: 0
+            },
+            auth: {
+              require_signed_token: true,
+              issuer: 'legion-llm',
+              audience: 'lex-llm-fleet-worker',
+              algorithm: 'HS256',
+              accepted_issuers: ['legion-llm'],
+              max_clock_skew_seconds: 30
             }
           }
         }
@@ -136,6 +142,20 @@ module Legion
       require_relative 'llm/auto_registration'
       require_relative 'llm/credential_sources'
       loader.eager_load
+
+      module Transport
+        # Local autoloads for fleet exchange classes that depend on legion-transport.
+        module Exchanges
+          autoload :Fleet, File.expand_path('llm/transport/exchanges/fleet', __dir__)
+        end
+
+        # Local autoloads for fleet message classes that depend on legion-transport.
+        module Messages
+          autoload :FleetRequest, File.expand_path('llm/transport/messages/fleet_request', __dir__)
+          autoload :FleetResponse, File.expand_path('llm/transport/messages/fleet_response', __dir__)
+          autoload :FleetError, File.expand_path('llm/transport/messages/fleet_error', __dir__)
+        end
+      end
     end
   end
 end

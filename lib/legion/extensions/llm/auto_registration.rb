@@ -3,9 +3,9 @@
 module Legion
   module Extensions
     module Llm
-      # Mixin that lex-llm-* provider modules `extend` to get shared
-      # registration boilerplate.  The provider only needs to override
-      # `discover_instances` — everything else is handled here.
+      # Mixin that lex-llm-* provider modules `extend` to expose shared
+      # discovery metadata. Registration into Legion::LLM is owned by
+      # legion-llm so loaded providers can be rediscovered after reloads.
       #
       # Prerequisites on the extending module:
       #   - `PROVIDER_FAMILY` constant (Symbol, e.g. :ollama)
@@ -16,39 +16,10 @@ module Legion
           {}
         end
 
-        # Calls discover_instances, creates a LexLLMAdapter for each,
-        # and registers into Call::Registry.
-        #
-        # Strips :tier and :capabilities from config before passing to
-        # the adapter (these are metadata, not connection config).
-        #
-        # Guarded: no-op when Legion::LLM::Call::Registry is not loaded.
-        def register_discovered_instances
-          return unless defined?(Legion::LLM::Call::Registry)
-
-          instances = discover_instances
-          instances.each do |instance_id, config|
-            registry_config = config.except(:tier, :capabilities)
-            adapter = Legion::LLM::Call::LexLLMAdapter.new(
-              self::PROVIDER_FAMILY, provider_class, instance_config: registry_config
-            )
-            meta = { tier: config[:tier], capabilities: config[:capabilities] || [] }
-            Legion::LLM::Call::Registry.register(
-              self::PROVIDER_FAMILY, adapter, instance: instance_id, metadata: meta
-            )
-          end
-        rescue StandardError => e
-          log.warn "[#{self::PROVIDER_FAMILY}] self-registration failed: #{e.message}" if respond_to?(:log)
-        end
-
-        # Deregisters all instances for this provider and re-runs discovery.
-        #
-        # Guarded: no-op when Legion::LLM::Call::Registry is not loaded.
-        def rediscover!
-          return unless defined?(Legion::LLM::Call::Registry)
-
-          Legion::LLM::Call::Registry.deregister_provider(self::PROVIDER_FAMILY)
-          register_discovered_instances
+        # Optional provider-family aliases that legion-llm should register
+        # against the same discovered provider instances.
+        def provider_aliases
+          []
         end
       end
     end

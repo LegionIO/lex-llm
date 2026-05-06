@@ -59,4 +59,29 @@ RSpec.describe Legion::Extensions::Llm::Error do
       expect(error.response).to be_nil
     end
   end
+
+  describe Legion::Extensions::Llm::Errors::UnsupportedCapability do
+    it 'formats provider capability failures' do
+      error = described_class.new(provider: :ollama, capability: :image, model: 'llama3')
+
+      expect(error.message).to eq('Provider ollama does not support image for llama3')
+      expect(error.provider).to eq(:ollama)
+      expect(error.capability).to eq(:image)
+      expect(error.model).to eq('llama3')
+    end
+  end
+
+  describe Legion::Extensions::Llm::UnsupportedCapabilityError do
+    it 'keeps string message compatibility for existing callers' do
+      error = described_class.new('not supported')
+
+      expect(error.message).to eq('not supported')
+    end
+
+    it 'accepts the shared keyword initializer' do
+      error = described_class.new(provider: :openai, capability: :embed)
+
+      expect(error.message).to eq('Provider openai does not support embed')
+    end
+  end
 end

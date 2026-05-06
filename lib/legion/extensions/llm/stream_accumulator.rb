@@ -210,8 +210,11 @@ module Legion
         end
 
         def consume_non_think_content(remaining, start_tag, output)
+          unmatched_close = remaining.index('</think>')
           start_index = remaining.index(start_tag)
-          if start_index
+          if unmatched_close && (start_index.nil? || unmatched_close < start_index)
+            consume_unmatched_think_close(remaining, unmatched_close)
+          elsif start_index
             output << remaining.slice(0, start_index)
             @inside_think_tag = true
             remaining.slice((start_index + start_tag.length)..) || +''
@@ -221,6 +224,14 @@ module Legion
             @pending_think_tag = remaining.slice(-suffix_len, suffix_len)
             +''
           end
+        end
+
+        def consume_unmatched_think_close(remaining, close_index)
+          end_tag = '</think>'
+          thinking = remaining.slice(0, close_index)
+          @thinking_text << thinking
+          @last_thinking_delta << thinking
+          remaining.slice((close_index + end_tag.length)..).to_s.sub(/\A[[:space:]]+/, '')
         end
 
         def longest_suffix_prefix(text, tag)

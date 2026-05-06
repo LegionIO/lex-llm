@@ -39,17 +39,17 @@ module Legion
             messages.map do |message|
               {
                 role: message.role.to_s,
-                content: openai_content(message.content),
+                content: openai_content(message.content, role: message.role),
                 tool_call_id: message.tool_call_id,
                 tool_calls: format_openai_tool_calls(message.tool_calls)
               }.compact
             end
           end
 
-          def openai_content(content)
+          def openai_content(content, role:)
             return content.format if content.is_a?(Legion::Extensions::Llm::Content::Raw)
-            return content unless content.respond_to?(:attachments)
-            return content.text.to_s if content.attachments.empty?
+            return sanitize_openai_text(content, role:) unless content.respond_to?(:attachments)
+            return sanitize_openai_text(content.text.to_s, role:) if content.attachments.empty?
 
             openai_content_parts(content)
           end
@@ -61,6 +61,12 @@ module Legion
               parts << { type: 'image_url', image_url: { url: attachment.for_llm } } if attachment.image?
             end
             parts
+          end
+
+          def sanitize_openai_text(text, role:)
+            return text unless role.to_sym == :assistant && text.is_a?(String)
+
+            Responses::ThinkingExtractor.extract(text).content
           end
 
           def format_openai_tool_calls(tool_calls)
@@ -135,18 +141,29 @@ module Legion
           end
 
           def extract_thinking_from_completion(message)
-            reasoning = message['reasoning_content'] || message['reasoning']
-            content = message['content']
+            extraction = Responses::ThinkingExtractor.extract(
+              message['content'],
+              metadata: thinking_metadata(message)
+            )
 
-            if reasoning
-              [content, Thinking.build(text: reasoning)]
-            elsif content.is_a?(String) && content.include?('<think>')
-              think_text = content[%r{<think>(.*?)</think>}m, 1]
-              clean = content.gsub(%r{<think>.*?</think>}m, '').strip
-              [clean, Thinking.build(text: think_text)]
-            else
-              [content, nil]
-            end
+            [
+              extraction.content,
+              Thinking.build(
+                text: extraction.thinking,
+                signature: extraction.signature
+              )
+            ]
+          end
+
+          def thinking_metadata(message)
+            {
+              reasoning_content: message['reasoning_content'],
+              reasoning: message['reasoning'],
+              thinking: message['thinking'],
+              thinking_text: message['thinking_text'],
+              thinking_signature: message['thinking_signature'],
+              reasoning_signature: message['reasoning_signature']
+            }.compact
           end
 
           def build_chunk(data)
@@ -173,26 +190,8 @@ module Legion
 
             if reasoning
               [content, Thinking.build(text: reasoning)]
-            elsif content.is_a?(String) && content.include?('<think>')
-              clean, think_text = split_think_tags(content)
-              [clean, Thinking.build(text: think_text)]
             else
               [content, nil]
-            end
-          end
-
-          def split_think_tags(text) # rubocop:disable Metrics/PerceivedComplexity
-            if text.match?(%r{<think>.*</think>}m)
-              thinking = text[%r{<think>(.*?)</think>}m, 1]
-              clean = text.gsub(%r{<think>.*?</think>}m, '').strip
-              [clean.empty? ? nil : clean, thinking]
-            elsif text.start_with?('<think>')
-              [nil, text.delete_prefix('<think>')]
-            elsif text.include?('</think>')
-              parts = text.split('</think>', 2)
-              [parts[1]&.strip.then { |s| s&.empty? ? nil : s }, parts[0]]
-            else
-              [text, nil]
             end
           end
 
@@ -201,11 +200,13 @@ module Legion
 
             tool_calls.to_h do |call|
               function = call.fetch('function', {})
-              name = function.fetch('name')
+              name = function['name']
+              id = call['id'] || name || call['index']
+              key = name || id
               [
-                name.to_sym,
+                key.to_s.to_sym,
                 Legion::Extensions::Llm::ToolCall.new(
-                  id: call['id'] || name,
+                  id: id&.to_s,
                   name: name,
                   arguments: parse_tool_arguments(function['arguments'])
                 )

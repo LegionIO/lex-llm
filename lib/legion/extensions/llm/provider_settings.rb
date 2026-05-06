@@ -7,7 +7,10 @@ module Legion
       module ProviderSettings
         module_function
 
-        def build(family:, instance: {}, enabled: true, discovery: {}, instances: {})
+        def build(family:, instance: {}, enabled: true, discovery: {}, instances: {}, fleet: nil, gateways: nil, # rubocop:disable Metrics/ParameterLists
+                  **legacy_settings)
+          validate_provider_defaults!(fleet:, gateways:, legacy_settings:)
+
           deep_merge(
             Legion::Extensions::Llm.default_settings,
             {
@@ -25,6 +28,20 @@ module Legion
               )
             }
           )
+        end
+
+        def validate_provider_defaults!(fleet:, gateways:, legacy_settings:)
+          if fleet
+            raise ArgumentError,
+                  'Provider fleet defaults must be nested under an instance, for example instances.default.fleet'
+          end
+
+          raise ArgumentError, 'Provider gateways settings are no longer supported; use instances instead' if gateways
+
+          return if legacy_settings.empty?
+
+          invalid_keys = legacy_settings.keys.map(&:to_sym)
+          raise ArgumentError, "Unsupported top-level provider settings: #{invalid_keys.join(', ')}"
         end
 
         def deep_dup(value)

@@ -80,10 +80,16 @@ module Legion
             content: content,
             model_id: model_id,
             tool_calls: tool_calls,
-            tool_call_id: tool_call_id,
-            thinking: thinking&.text,
-            thinking_signature: thinking&.signature
+            tool_call_id: tool_call_id
           }.merge(tokens ? tokens.to_h : {}).compact
+        end
+
+        def to_internal_h
+          to_h.merge(
+            thinking: thinking&.text,
+            thinking_signature: thinking&.signature,
+            raw: raw
+          ).compact
         end
 
         def instance_variables

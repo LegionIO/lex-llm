@@ -62,6 +62,16 @@ module Legion
         end
 
         # rubocop:disable Metrics/ParameterLists
+        def chat(messages:, model:, tools: [], temperature: nil, params: {}, headers: {}, schema: nil, thinking: nil,
+                 tool_prefs: nil)
+          complete(messages, tools:, temperature:, model:, params:, headers:, schema:, thinking:, tool_prefs:)
+        end
+
+        def stream_chat(messages:, model:, tools: [], temperature: nil, params: {}, headers: {}, schema: nil,
+                        thinking: nil, tool_prefs: nil, &)
+          complete(messages, tools:, temperature:, model:, params:, headers:, schema:, thinking:, tool_prefs:, &)
+        end
+
         def complete(messages, tools:, temperature:, model:, params: {}, headers: {}, schema: nil, thinking: nil,
                      tool_prefs: nil, &)
           normalized_temperature = maybe_normalize_temperature(temperature, model)
@@ -88,14 +98,55 @@ module Legion
         end
         # rubocop:enable Metrics/ParameterLists
 
-        def list_models
+        def list_models(live: false, **filters)
+          _ = [live, filters]
           response = @connection.get models_url
           parse_list_models_response response, slug, capabilities
         end
 
-        def embed(text, model:, dimensions:)
-          payload = render_embedding_payload(text, model:, dimensions:)
-          response = @connection.post(embedding_url(model:), payload)
+        def discover_offerings(live: false, **filters)
+          return filter_cached_offerings(Array(@cached_offerings), filters) unless live
+
+          provider_health = health(live:)
+          @cached_offerings = Array(list_models(live:, **filters)).filter_map do |model|
+            next unless model_matches_filters?(model, filters)
+
+            offering_from_model(model, health: provider_health)
+          end
+          @cached_offerings
+        end
+
+        def health(live: false)
+          readiness_data = readiness(live:)
+          raw_health = readiness_data[:health] || readiness_data['health'] || {}
+          status = health_status(readiness_data, raw_health)
+          {
+            provider: slug.to_sym,
+            instance_id: provider_instance_id,
+            status:,
+            ready: readiness_data[:ready] == true || readiness_data['ready'] == true,
+            circuit_state: status == 'healthy' ? 'closed' : 'open',
+            latency_ms: raw_health[:latency_ms] || raw_health['latency_ms'],
+            raw: raw_health
+          }.compact
+        rescue StandardError => e
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.health')
+          {
+            provider: slug.to_sym,
+            instance_id: provider_instance_id,
+            status: 'unhealthy',
+            ready: false,
+            circuit_state: 'open',
+            error: e.class.name,
+            message: e.message
+          }
+        end
+
+        def embed(text:, model:, dimensions: nil, params: {}, headers: {})
+          payload = Utils.deep_merge(render_embedding_payload(text, model:, dimensions:), params)
+          response = @connection.post(embedding_url(model:), payload) do |req|
+            req.headers = headers.merge(req.headers) unless headers.empty?
+          end
           parse_embedding_response(response, model:, text:)
         end
 
@@ -110,6 +161,18 @@ module Legion
           payload = render_image_payload(prompt, model:, size:, with:, mask:, params:)
           response = @connection.post images_url(with:, mask:), payload
           parse_image_response(response, model:)
+        end
+
+        def image(prompt:, model:, size:, with: nil, mask: nil, params: {}) # rubocop:disable Metrics/ParameterLists
+          paint(prompt, model:, size:, with:, mask:, params:)
+        end
+
+        def count_tokens(messages:, model:, params: {})
+          _ = [model, params]
+          Array(messages).sum do |message|
+            content = message.respond_to?(:content) ? message.content : message[:content] || message['content']
+            estimate_text_tokens(content)
+          end
         end
 
         def transcribe(audio_file, model:, language:, **)
@@ -319,6 +382,12 @@ module Legion
           end
         end
 
+        def provider_instance_id
+          return config.instance_id.to_sym if config.respond_to?(:instance_id) && config.instance_id
+
+          :default
+        end
+
         class << self
           def name
             to_s.split('::').last
@@ -367,6 +436,131 @@ module Legion
           return if with.nil? && mask.nil?
 
           raise UnsupportedAttachmentError, "#{name} does not support image references in paint"
+        end
+
+        def offering_from_model(model, health: {})
+          Routing::ModelOffering.new(
+            provider_family: slug.to_sym,
+            provider_instance: model.instance || provider_instance_id,
+            transport: offering_transport,
+            tier: offering_tier,
+            model: model.id,
+            canonical_model_alias: model.name,
+            model_family: model.family,
+            usage_type: offering_usage_type(model),
+            capabilities: model.capabilities,
+            limits: offering_limits(model),
+            health:,
+            metadata: offering_metadata(model)
+          )
+        end
+
+        def offering_transport
+          local? ? :local : :http
+        end
+
+        def offering_tier
+          local? ? :local : :direct
+        end
+
+        def offering_usage_type(model)
+          model.embedding? ? :embedding : :inference
+        end
+
+        def offering_limits(model)
+          {
+            context_window: model.context_length,
+            max_output_tokens: model.max_output_tokens
+          }.compact
+        end
+
+        def offering_metadata(model)
+          {
+            raw_model: model.id,
+            parameter_count: model.parameter_count,
+            parameter_size: model.parameter_size,
+            quantization: model.quantization,
+            size_bytes: model.size_bytes,
+            modalities_input: model.modalities_input,
+            modalities_output: model.modalities_output
+          }.merge(model.metadata || {}).compact
+        end
+
+        def model_matches_filters?(model, filters)
+          return true if filters.empty?
+
+          filters.all? do |key, value|
+            blank_filter_value?(value) || model_matches_filter?(model, key, value)
+          end
+        end
+
+        def blank_filter_value?(value)
+          value.nil? || (value.respond_to?(:empty?) && value.empty?)
+        end
+
+        def model_matches_filter?(model, key, value)
+          case key.to_sym
+          when :capability, :capabilities
+            Array(value).all? { |capability| model.supports?(capability) }
+          when :type, :usage_type, :purpose
+            offering_usage_type(model).to_s == value.to_s || model.type.to_s == value.to_s
+          when :model, :id, :name
+            [model.id, model.name].map(&:to_s).include?(value.to_s)
+          when :instance, :instance_id, :provider_instance
+            provider_instance_id.to_s == value.to_s || model.instance.to_s == value.to_s
+          else
+            true
+          end
+        end
+
+        def filter_cached_offerings(offerings, filters)
+          return offerings if filters.empty?
+
+          offerings.select do |offering|
+            filters.all? do |key, value|
+              blank_filter_value?(value) || offering_matches_filter?(offering, key, value)
+            end
+          end
+        end
+
+        def offering_matches_filter?(offering, key, value)
+          case key.to_sym
+          when :provider, :provider_family
+            offering.provider_family.to_s == value.to_s
+          when :capability, :capabilities
+            Array(value).all? { |capability| offering.supports?(capability) }
+          when :type, :usage_type, :purpose
+            offering.usage_type.to_s == value.to_s
+          when :model, :id, :name
+            [offering.model, offering.canonical_model_alias].compact.map(&:to_s).include?(value.to_s)
+          when :instance, :instance_id, :provider_instance
+            [offering.provider_instance, offering.instance_id].compact.map(&:to_s).include?(value.to_s)
+          else
+            true
+          end
+        end
+
+        def health_status(readiness_data, raw_health)
+          return 'healthy' if readiness_data[:ready] == true || readiness_data['ready'] == true
+
+          status = raw_health[:status] || raw_health['status'] || raw_health[:state] || raw_health['state']
+          return 'healthy' if %w[ok ready healthy running].include?(status.to_s.downcase)
+
+          'unhealthy'
+        end
+
+        def estimate_text_tokens(content)
+          text = case content
+                 when Content
+                   [content.text, *content.attachments.map(&:to_s)].compact.join(' ')
+                 when Array
+                   content.map do |part|
+                     part.respond_to?(:[]) ? part[:text] || part['text'] || part.to_s : part.to_s
+                   end.join(' ')
+                 else
+                   content.to_s
+                 end
+          [(text.length / 4.0).ceil, 1].max
         end
 
         def build_audio_file_part(file_path)
