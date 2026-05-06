@@ -48,7 +48,7 @@ gem 'lex-llm'
 Provider extensions should declare `lex-llm` as a gemspec dependency:
 
 ```ruby
-spec.add_dependency 'lex-llm', '>= 0.4.0'
+spec.add_dependency 'lex-llm', '>= 0.4.3'
 ```
 
 For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.

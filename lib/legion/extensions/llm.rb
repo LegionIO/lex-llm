@@ -130,6 +130,12 @@ module Legion
               algorithm: 'HS256',
               accepted_issuers: ['legion-llm'],
               max_clock_skew_seconds: 30
+            },
+            responder: {
+              require_auth: nil,
+              require_policy: false,
+              require_idempotency: true,
+              idempotency_ttl_seconds: 600
             }
           }
         }

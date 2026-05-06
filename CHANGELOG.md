@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3 - 2026-05-06
+
+- Move provider-owned fleet responder execution into `lex-llm` so provider gems no longer depend on `legion-llm`.
+- Add shared responder-side fleet token validation, idempotency protection, provider dispatch, and response/error publishing helpers.
+
 ## 0.4.2 - 2026-05-06
 
 - Remove the temporary settings logger wrapper and lazy-load fleet transport envelopes so `lex-llm` boot does not force `legion-transport` loading.

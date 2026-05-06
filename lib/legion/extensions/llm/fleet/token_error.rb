@@ -3,7 +3,9 @@
 module Legion
   module Extensions
     module Llm
-      VERSION = '0.4.3'
+      module Fleet
+        class TokenError < StandardError; end
+      end
     end
   end
 end
