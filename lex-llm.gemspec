@@ -29,11 +29,13 @@ Gem::Specification.new do |spec|
 
   # Runtime dependencies
   spec.add_dependency 'base64'
+  spec.add_dependency 'concurrent-ruby', '>= 1.2'
   spec.add_dependency 'event_stream_parser', '~> 1'
   spec.add_dependency 'faraday', ENV['FARADAY_VERSION'] || '>= 1.10.0'
   spec.add_dependency 'faraday-multipart', '>= 1'
   spec.add_dependency 'faraday-net_http', '>= 1'
   spec.add_dependency 'faraday-retry', '>= 1'
+  spec.add_dependency 'legion-crypt', '>= 1.5.1'
   spec.add_dependency 'legion-json', '>= 1.2.1'
   spec.add_dependency 'legion-logging', '>= 1.3.2'
   spec.add_dependency 'legion-settings', '>= 1.3.14'

@@ -19,6 +19,32 @@ RSpec.describe Legion::Extensions::Llm do
     expect(defaults.dig(:fleet, :auth, :accepted_issuers)).to eq(['legion-llm'])
     expect(defaults.dig(:fleet, :auth, :audience)).to eq('lex-llm-fleet-worker')
     expect(defaults.dig(:fleet, :auth, :algorithm)).to eq('HS256')
+    expect(defaults.dig(:fleet, :auth, :replay_ttl_seconds)).to eq(600)
+    expect(defaults.dig(:fleet, :responder, :require_idempotency)).to be(true)
+    expect(defaults.dig(:fleet, :responder, :idempotency_ttl_seconds)).to eq(600)
+  end
+
+  it 'reads fleet settings from extension settings before falling back to core llm settings' do
+    data = {
+      extensions: { llm: { fleet: { auth: { accepted_issuers: ['extension'] } } } },
+      llm: {
+        fleet: {
+          auth: { audience: 'core-audience', accepted_issuers: ['core'] },
+          responder: { require_auth: false }
+        }
+      }
+    }
+    settings = Module.new
+    settings.define_singleton_method(:[]) { |key| data[key] }
+
+    stub_const('Legion::Settings', settings)
+
+    expect(Legion::Extensions::Llm::Fleet::Settings.value(:fleet, :auth, :accepted_issuers, default: []))
+      .to eq(['extension'])
+    expect(Legion::Extensions::Llm::Fleet::Settings.value(:fleet, :auth, :audience, default: nil))
+      .to eq('core-audience')
+    expect(Legion::Extensions::Llm::Fleet::Settings.value(:fleet, :responder, :require_auth, default: true))
+      .to be(false)
   end
 
   it 'builds provider defaults with shared fleet settings' do
