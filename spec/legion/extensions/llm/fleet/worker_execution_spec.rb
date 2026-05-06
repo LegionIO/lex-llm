@@ -44,4 +44,52 @@ RSpec.describe Legion::Extensions::Llm::Fleet::WorkerExecution do
       described_class.call(envelope: envelope, provider: provider)
     end.to raise_error(described_class::PolicyError, /duplicate fleet idempotency key/)
   end
+
+  it 'replaces expired idempotency entries while reserving the new attempt' do
+    described_class.instance_variable_get(:@idempotency_keys)['idem-expired'] = {
+      state: :complete,
+      expires_at: Time.now.to_i - 1
+    }
+
+    expect { described_class.reserve_idempotency_key!('idem-expired') }.not_to raise_error
+
+    expect do
+      described_class.reserve_idempotency_key!('idem-expired')
+    end.to raise_error(described_class::PolicyError, /duplicate fleet idempotency key/)
+  end
+
+  it 'reserves token replay protection before provider dispatch and marks success after completion' do
+    allow(Legion::Extensions::Llm::Fleet::Settings).to receive(:value)
+      .with(:fleet, :auth, :require_signed_token, default: true).and_return(true)
+    allow(Legion::Extensions::Llm::Fleet::Settings).to receive(:value)
+      .with(:fleet, :responder, :require_idempotency, default: nil).and_return(false)
+    allow(Legion::Extensions::Llm::Fleet::TokenValidator).to receive(:validate!).and_return({ jti: 'jti-1' })
+    allow(Legion::Extensions::Llm::Fleet::TokenValidator).to receive(:mark_replay!)
+
+    described_class.call(envelope: envelope, provider: provider)
+
+    expect(Legion::Extensions::Llm::Fleet::TokenValidator).to have_received(:validate!)
+      .with(token: 'unsigned', envelope: envelope)
+    expect(Legion::Extensions::Llm::Fleet::TokenValidator).to have_received(:mark_replay!).with('jti-1')
+  end
+
+  it 'releases reserved token replay state when provider dispatch fails' do
+    failing_provider = Class.new do
+      def chat(**)
+        raise 'provider unavailable'
+      end
+    end.new
+    allow(Legion::Extensions::Llm::Fleet::Settings).to receive(:value)
+      .with(:fleet, :auth, :require_signed_token, default: true).and_return(true)
+    allow(Legion::Extensions::Llm::Fleet::Settings).to receive(:value)
+      .with(:fleet, :responder, :require_idempotency, default: nil).and_return(false)
+    allow(Legion::Extensions::Llm::Fleet::TokenValidator).to receive(:validate!).and_return({ jti: 'jti-2' })
+    allow(Legion::Extensions::Llm::Fleet::TokenValidator).to receive(:release_replay!)
+
+    expect do
+      described_class.call(envelope: envelope, provider: failing_provider)
+    end.to raise_error(RuntimeError, /provider unavailable/)
+
+    expect(Legion::Extensions::Llm::Fleet::TokenValidator).to have_received(:release_replay!).with('jti-2')
+  end
 end

@@ -14,10 +14,13 @@ module Legion
           class PolicyError < StandardError; end
 
           @idempotency_keys = Concurrent::Map.new
+          @idempotency_mutex = Mutex.new
 
           module_function
 
           def call(envelope:, provider:)
+            claims = nil
+            idempotency_key = nil
             claims = validate_identity!(envelope)
             validate_policy!(envelope)
             idempotency_key = validate_idempotency!(envelope)
@@ -27,17 +30,18 @@ module Legion
             response
           rescue TokenError => e
             release_idempotency!(idempotency_key) if idempotency_key
+            release_replay!(claims)
             raise PolicyError, e.message
           rescue StandardError
             release_idempotency!(idempotency_key) if idempotency_key
+            release_replay!(claims)
             raise
           end
 
           def validate_identity!(envelope)
             return true unless responder_setting(:require_auth, default: true)
 
-            TokenValidator.validate!(token: envelope_value(envelope, :signed_token), envelope: envelope,
-                                     record_replay: false)
+            TokenValidator.validate!(token: envelope_value(envelope, :signed_token), envelope: envelope)
           end
 
           def validate_policy!(_envelope)
@@ -49,7 +53,6 @@ module Legion
           def validate_idempotency!(envelope)
             return nil unless responder_setting(:require_idempotency, default: true)
 
-            purge_idempotency_cache!
             key = envelope_value(envelope, :idempotency_key)
             raise PolicyError, 'fleet idempotency_key is required' if key.to_s.empty?
 
@@ -79,29 +82,42 @@ module Legion
 
           def reset_idempotency_cache!
             @idempotency_keys = Concurrent::Map.new
+            @idempotency_mutex = Mutex.new
           end
 
           def mark_idempotency_success!(key)
-            @idempotency_keys[key.to_s] = { state: :complete, expires_at: Time.now.to_i + idempotency_ttl_seconds }
+            @idempotency_mutex.synchronize do
+              @idempotency_keys[key.to_s] = { state: :complete, expires_at: Time.now.to_i + idempotency_ttl_seconds }
+            end
           end
 
           def release_idempotency!(key)
-            @idempotency_keys.delete(key.to_s)
+            @idempotency_mutex.synchronize { @idempotency_keys.delete(key.to_s) }
+          end
+
+          def release_replay!(claims)
+            return unless claims.is_a?(Hash) && claims[:jti]
+
+            TokenValidator.release_replay!(claims[:jti])
           end
 
           def purge_idempotency_cache!
-            now = Time.now.to_i
-            @idempotency_keys.each_pair do |key, entry|
-              @idempotency_keys.delete(key) if entry[:expires_at] <= now
+            @idempotency_mutex.synchronize do
+              now = Time.now.to_i
+              @idempotency_keys.each_pair do |key, entry|
+                @idempotency_keys.delete(key) if entry[:expires_at] <= now
+              end
             end
           end
 
           def reserve_idempotency_key!(key)
-            entry = { state: :inflight, expires_at: Time.now.to_i + idempotency_ttl_seconds }
-            existing = @idempotency_keys.put_if_absent(key, entry)
-            return true unless existing && existing[:expires_at] > Time.now.to_i
+            @idempotency_mutex.synchronize do
+              now = Time.now.to_i
+              existing = @idempotency_keys[key]
+              raise PolicyError, 'duplicate fleet idempotency key' if existing && existing[:expires_at] > now
 
-            raise PolicyError, 'duplicate fleet idempotency key'
+              @idempotency_keys[key] = { state: :inflight, expires_at: now + idempotency_ttl_seconds }
+            end
           end
 
           def idempotency_ttl_seconds

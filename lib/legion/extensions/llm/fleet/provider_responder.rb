@@ -122,7 +122,7 @@ module Legion
           end
 
           def publish_response(envelope, response)
-            ::Legion::Extensions::Llm::Transport::Messages::FleetResponse.new(
+            transport_message_class(:FleetResponse).new(
               protocol_version: envelope.protocol_version,
               request_id: envelope.request_id,
               correlation_id: envelope.correlation_id,
@@ -143,7 +143,7 @@ module Legion
           end
 
           def publish_error(envelope, error)
-            ::Legion::Extensions::Llm::Transport::Messages::FleetError.new(
+            transport_message_class(:FleetError).new(
               protocol_version: envelope.protocol_version,
               request_id: envelope.request_id,
               correlation_id: envelope.correlation_id,
@@ -167,6 +167,12 @@ module Legion
             publish_error(envelope, error)
           rescue StandardError
             nil
+          end
+
+          def transport_message_class(name)
+            ::Legion::Extensions::Llm::Transport::Messages.const_get(name)
+          rescue LoadError, NameError => e
+            raise ConfigurationError, "fleet responder transport unavailable for #{name}: #{e.message}"
           end
 
           def ack(delivery)

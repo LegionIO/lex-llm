@@ -108,4 +108,13 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
     expect(described_class.enabled_for?(provider_instances)).to be(true)
     expect(described_class.enabled_for?(default: { fleet: { respond_to_requests: false } })).to be(false)
   end
+
+  it 'raises an actionable configuration error when fleet transport messages cannot load' do
+    allow(Legion::Extensions::Llm::Transport::Messages).to receive(:const_get)
+      .with(:FleetResponse).and_raise(NameError, 'missing transport')
+
+    expect do
+      described_class.transport_message_class(:FleetResponse)
+    end.to raise_error(described_class::ConfigurationError, /fleet responder transport unavailable/)
+  end
 end

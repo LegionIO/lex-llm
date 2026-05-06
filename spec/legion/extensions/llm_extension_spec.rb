@@ -19,6 +19,7 @@ RSpec.describe Legion::Extensions::Llm do
     expect(defaults.dig(:fleet, :auth, :accepted_issuers)).to eq(['legion-llm'])
     expect(defaults.dig(:fleet, :auth, :audience)).to eq('lex-llm-fleet-worker')
     expect(defaults.dig(:fleet, :auth, :algorithm)).to eq('HS256')
+    expect(defaults.dig(:fleet, :auth, :replay_ttl_seconds)).to eq(600)
     expect(defaults.dig(:fleet, :responder, :require_idempotency)).to be(true)
     expect(defaults.dig(:fleet, :responder, :idempotency_ttl_seconds)).to eq(600)
   end

@@ -129,7 +129,8 @@ module Legion
               audience: 'lex-llm-fleet-worker',
               algorithm: 'HS256',
               accepted_issuers: ['legion-llm'],
-              max_clock_skew_seconds: 30
+              max_clock_skew_seconds: 30,
+              replay_ttl_seconds: 600
             },
             responder: {
               require_auth: nil,

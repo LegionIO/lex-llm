@@ -13,6 +13,7 @@ module Legion
         # Verifies responder-side fleet JWTs and prevents replay on provider nodes.
         module TokenValidator
           @seen_jtis = Concurrent::Map.new
+          @replay_mutex = Mutex.new
 
           module_function
 
@@ -29,7 +30,7 @@ module Legion
             validate_registered_claims!(claims)
             validate_request_expiry!(claims)
             validate_envelope_claims!(claims, symbolize_keys(envelope || {}))
-            record_replay ? reject_replay!(claims[:jti]) : ensure_not_replayed!(claims[:jti])
+            record_replay ? reserve_replay!(claims[:jti]) : ensure_not_replayed!(claims[:jti])
             claims
           rescue TokenError
             raise
@@ -39,6 +40,7 @@ module Legion
 
           def reset_replay_cache!
             @seen_jtis = Concurrent::Map.new
+            @replay_mutex = Mutex.new
           end
 
           def validate_registered_claims!(claims)
@@ -77,28 +79,56 @@ module Legion
             end
           end
 
-          def reject_replay!(jti)
-            ensure_not_replayed!(jti)
-            @seen_jtis[jti.to_s] = Time.now.to_i + replay_ttl_seconds
+          def reserve_replay!(jti)
+            @replay_mutex.synchronize do
+              now = Time.now.to_i
+              purge_replay_cache_locked!(now)
+              existing = @seen_jtis[jti.to_s]
+              raise TokenError, 'fleet token replay detected' if active_replay?(existing, now)
+
+              @seen_jtis[jti.to_s] = replay_entry(:inflight, now)
+            end
           end
 
           def mark_replay!(jti)
-            reject_replay!(jti)
+            @replay_mutex.synchronize do
+              @seen_jtis[jti.to_s] = replay_entry(:complete)
+            end
+          end
+
+          def release_replay!(jti)
+            @replay_mutex.synchronize do
+              entry = @seen_jtis[jti.to_s]
+              @seen_jtis.delete(jti.to_s) if entry.nil? || entry[:state] == :inflight
+            end
           end
 
           def ensure_not_replayed!(jti)
-            purge_replay_cache!
-            existing_expiry = @seen_jtis[jti.to_s]
-            raise TokenError, 'fleet token replay detected' if existing_expiry && existing_expiry > Time.now.to_i
+            @replay_mutex.synchronize do
+              now = Time.now.to_i
+              purge_replay_cache_locked!(now)
+              raise TokenError, 'fleet token replay detected' if active_replay?(@seen_jtis[jti.to_s], now)
+            end
           end
 
           def purge_replay_cache!
-            now = Time.now.to_i
-            @seen_jtis.each_pair { |jti, expires_at| @seen_jtis.delete(jti) if expires_at <= now }
+            @replay_mutex.synchronize { purge_replay_cache_locked!(Time.now.to_i) }
+          end
+
+          def purge_replay_cache_locked!(now)
+            @seen_jtis.each_pair { |jti, entry| @seen_jtis.delete(jti) unless active_replay?(entry, now) }
+          end
+
+          def active_replay?(entry, now)
+            entry && entry[:expires_at] > now
+          end
+
+          def replay_entry(state, now = Time.now.to_i)
+            { state: state, expires_at: now + replay_ttl_seconds }
           end
 
           def replay_ttl_seconds
-            ttl = Settings.value(:fleet, :responder, :idempotency_ttl_seconds, default: 600).to_i
+            ttl = Settings.value(:fleet, :auth, :replay_ttl_seconds, default: 600).to_i
             ttl.positive? ? ttl : 600
           end
 

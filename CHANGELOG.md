@@ -4,6 +4,7 @@
 
 - Move provider-owned fleet responder execution into `lex-llm` so provider gems no longer depend on `legion-llm`.
 - Add shared responder-side fleet token validation, idempotency protection, provider dispatch, and response/error publishing helpers.
+- Reserve fleet replay tokens before provider dispatch, split replay TTL into auth settings, and raise explicit responder transport configuration errors.
 
 ## 0.4.2 - 2026-05-06
 
