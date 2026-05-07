@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4 - 2026-05-07
+
+- Fix `confirm_publish` to call `wait_for_confirms` with no arguments, matching bunny 3.1.0 API which removed the timeout parameter.
+- Fix `prepare_publisher_confirms` to pass `confirm_timeout:` to `confirm_select` when `publish_confirm_timeout_ms` is set, so publish timeouts are correctly configured at channel setup time.
+
 ## 0.4.3 - 2026-05-06
 
 - Move provider-owned fleet responder execution into `lex-llm` so provider gems no longer depend on `legion-llm`.
