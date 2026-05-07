@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.5 - 2026-05-07
+
+- Add `ProviderSettings.infer_tier_from_endpoint(url)` shared utility: returns `:local` for localhost/loopback endpoints, `:direct` for all other hosts. Handles `URI::InvalidURIError` and nil safely.
+
+## 0.4.4 - 2026-05-07
+
+- Fix `confirm_publish` to call `wait_for_confirms` with no arguments, matching bunny 3.1.0 API which removed the timeout parameter.
+- Fix `prepare_publisher_confirms` to pass `confirm_timeout:` to `confirm_select` when `publish_confirm_timeout_ms` is set.
+
 ## 0.4.3 - 2026-05-06
 
 - Move provider-owned fleet responder execution into `lex-llm` so provider gems no longer depend on `legion-llm`.
