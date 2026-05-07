@@ -60,6 +60,16 @@ module Legion
             left_value.is_a?(Hash) && right_value.is_a?(Hash) ? deep_merge(left_value, right_value) : right_value
           end
         end
+
+        def infer_tier_from_endpoint(url)
+          return :direct if url.nil? || url.to_s.empty?
+
+          require 'uri'
+          host = URI.parse(url.to_s).host.to_s.downcase
+          %w[localhost 127.0.0.1 ::1 [::1]].include?(host) ? :local : :direct
+        rescue URI::InvalidURIError
+          :direct
+        end
       end
     end
   end
