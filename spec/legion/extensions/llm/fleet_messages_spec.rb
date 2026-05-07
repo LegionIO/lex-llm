@@ -10,8 +10,8 @@ RSpec.describe 'LLM fleet message envelopes' do
       attr_accessor :default_exchange
 
       def on_return; end
-      def confirm_select; end
-      def wait_for_confirms(_timeout = nil); end
+      def confirm_select(**_kwargs); end
+      def wait_for_confirms; end
     end
   end
 
@@ -131,6 +131,25 @@ RSpec.describe 'LLM fleet message envelopes' do
       expect(channel).to have_received(:confirm_select)
       expect(channel).to have_received(:wait_for_confirms)
       expect(result).to include(status: :accepted, accepted: true, exchange: 'llm.fleet')
+    end
+
+    it 'passes confirm_timeout: to confirm_select and calls wait_for_confirms with no args for timeout option' do
+      channel = instance_double(channel_class, on_return: nil, wait_for_confirms: true)
+      exchange = instance_double(
+        Legion::Extensions::Llm::Transport::Exchanges::Fleet,
+        publish: true,
+        name: 'llm.fleet',
+        channel: channel
+      )
+      allow(channel).to receive(:confirm_select)
+      message = described_class.new(**valid_request_options)
+
+      allow(Legion::Extensions::Llm::Transport::Exchanges::Fleet).to receive(:cached_instance).and_return(exchange)
+      result = message.publish(publish_confirm_timeout_ms: 5000)
+
+      expect(channel).to have_received(:confirm_select).with(confirm_timeout: 5000)
+      expect(channel).to have_received(:wait_for_confirms).with(no_args)
+      expect(result).to include(status: :accepted, accepted: true)
     end
   end
 
