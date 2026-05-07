@@ -57,7 +57,14 @@ module Legion
             return unless options[:publisher_confirm] == true
 
             confirm_channel = publish_channel(exchange_dest)
-            confirm_channel.confirm_select if confirm_channel.respond_to?(:confirm_select)
+            return unless confirm_channel.respond_to?(:confirm_select)
+
+            timeout_ms = options[:publish_confirm_timeout_ms]
+            if timeout_ms
+              confirm_channel.confirm_select(confirm_timeout: timeout_ms.to_i)
+            else
+              confirm_channel.confirm_select
+            end
           end
 
           def publish_result(exchange_dest, options, return_state)
@@ -93,12 +100,7 @@ module Legion
             confirm_channel = publish_channel(exchange_dest)
             return :accepted unless confirm_channel.respond_to?(:wait_for_confirms)
 
-            timeout = options[:publish_confirm_timeout_ms]
-            confirmed = if timeout
-                          confirm_channel.wait_for_confirms(timeout.to_f / 1000.0)
-                        else
-                          confirm_channel.wait_for_confirms
-                        end
+            confirmed = confirm_channel.wait_for_confirms
             confirmed == false ? :nacked : :accepted
           rescue Timeout::Error => e
             handle_exception(e, level: :warn, handled: true, operation: 'llm.fleet.publish.confirm')
