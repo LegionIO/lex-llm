@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.7 - 2026-05-08
+
+- Unpack legacy nested fleet `options` before provider dispatch so `system` and `tools` arrive as normal provider keyword arguments.
+
+## 0.4.6 - 2026-05-07
+
+- Render OpenAI-compatible embedding payloads with the canonical model id when callers pass `Model::Info` objects.
+- Preserve streamed OpenAI-compatible tool-call argument fragments until the accumulator can assemble and parse the full JSON payload.
+- Treat malformed accumulated streaming tool arguments as handled provider output and return empty arguments instead of raising.
+
 ## 0.4.5 - 2026-05-07
 
 - Add `ProviderSettings.infer_tier_from_endpoint(url)` shared utility: returns `:local` for localhost/loopback endpoints, `:direct` for all other hosts. Handles `URI::InvalidURIError` and nil safely.

@@ -176,12 +176,27 @@ module Legion
               role: :assistant,
               content: content,
               model_id: data['model'],
-              tool_calls: parse_tool_calls(delta['tool_calls']),
+              tool_calls: parse_streaming_tool_calls(delta['tool_calls']),
               thinking: thinking,
               input_tokens: usage['prompt_tokens'],
               output_tokens: usage['completion_tokens'],
               raw: data
             )
+          end
+
+          def parse_streaming_tool_calls(tool_calls)
+            return nil unless tool_calls&.any?
+
+            tool_calls.to_h do |call|
+              function = call.fetch('function', {})
+              name = function['name']
+              id = call['id']
+              key = (name || id || call['index']).to_s.to_sym
+              [
+                key,
+                Legion::Extensions::Llm::ToolCall.new(id: id, name: name, arguments: function['arguments'] || '')
+              ]
+            end
           end
 
           def extract_thinking_from_chunk(delta)
@@ -273,7 +288,7 @@ module Legion
           end
 
           def render_embedding_payload(text, model:, dimensions:)
-            { model: model, input: text, dimensions: dimensions }.compact
+            { model: model.respond_to?(:id) ? model.id : model, input: text, dimensions: dimensions }.compact
           end
 
           def parse_embedding_response(response, model:, text:)

@@ -34,6 +34,39 @@ RSpec.describe Legion::Extensions::Llm::Fleet::WorkerExecution do
     expect(described_class.call(envelope: envelope, provider: provider)).to eq(content: 'llama3:hello')
   end
 
+  it 'unpacks legacy nested options before dispatching to the local provider' do
+    allow(Legion::Extensions::Llm::Fleet::Settings).to receive(:value)
+      .with(:fleet, :responder, :require_idempotency, default: nil).and_return(false)
+    captured_options = nil
+    capture_provider = Class.new do
+      define_method(:chat) do |messages:, model:, **options|
+        captured_options = options
+        { content: "#{model}:#{messages.first[:content]}" }
+      end
+    end.new
+    legacy_envelope = envelope.merge(
+      params: {
+        messages: [{ role: 'user', content: 'hello' }],
+        stream: false,
+        tools: { current: { name: 'current' } },
+        options: {
+          'stream' => true,
+          'system' => 'Use available tools.',
+          'tools' => { legacy: { name: 'legacy' } }
+        }
+      }
+    )
+
+    described_class.call(envelope: legacy_envelope, provider: capture_provider)
+
+    expect(captured_options).to include(
+      stream: false,
+      system: 'Use available tools.',
+      tools: { current: { name: 'current' } }
+    )
+    expect(captured_options).not_to have_key(:options)
+  end
+
   it 'rejects duplicate idempotency keys before executing the provider again' do
     allow(Legion::Extensions::Llm::Fleet::Settings).to receive(:value)
       .with(:fleet, :responder, :require_idempotency, default: nil).and_return(true)
