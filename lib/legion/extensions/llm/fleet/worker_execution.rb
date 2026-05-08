@@ -64,6 +64,7 @@ module Legion
             provider = provider.call(envelope) if provider.respond_to?(:call) && !provider.respond_to?(:chat)
             operation = envelope_value(envelope, :operation).to_sym
             params = normalize_hash(envelope_value(envelope, :params) || {})
+            params = unpack_legacy_options(params)
             model = envelope_value(envelope, :model)
 
             case operation
@@ -78,6 +79,14 @@ module Legion
             else
               raise PolicyError, "unsupported fleet operation: #{operation}"
             end
+          end
+
+          def unpack_legacy_options(params)
+            options = params.delete(:options)
+            return params unless options.is_a?(Hash)
+
+            normalize_hash(options).each { |key, value| params[key] = value unless params.key?(key) }
+            params
           end
 
           def reset_idempotency_cache!

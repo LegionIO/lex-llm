@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.7 - 2026-05-08
+
+- Unpack legacy nested fleet `options` before provider dispatch so `system` and `tools` arrive as normal provider keyword arguments.
+
 ## 0.4.6 - 2026-05-07
 
 - Render OpenAI-compatible embedding payloads with the canonical model id when callers pass `Model::Info` objects.
