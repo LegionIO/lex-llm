@@ -5,6 +5,8 @@ module Legion
     module Llm
       # Assembles streaming responses from LLMs into complete messages.
       class StreamAccumulator
+        include Legion::Logging::Helper
+
         attr_reader :content, :model_id, :tool_calls
 
         def initialize
@@ -77,13 +79,7 @@ module Legion
 
         def tool_calls_from_stream
           tool_calls.transform_values do |tc|
-            arguments = if tc.arguments.is_a?(String) && !tc.arguments.empty?
-                          Legion::JSON.parse(tc.arguments, symbolize_names: false)
-                        elsif tc.arguments.is_a?(String)
-                          {}
-                        else
-                          tc.arguments
-                        end
+            arguments = parse_accumulated_arguments(tc.arguments)
 
             ToolCall.new(
               id: tc.id,
@@ -94,36 +90,57 @@ module Legion
           end
         end
 
-        def accumulate_tool_calls(new_tool_calls) # rubocop:disable Metrics/PerceivedComplexity
+        def parse_accumulated_arguments(arguments)
+          return arguments unless arguments.is_a?(String)
+          return {} if arguments.empty?
+
+          Legion::JSON.parse(arguments, symbolize_names: false)
+        rescue Legion::JSON::ParseError => e
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.stream.parse_tool_arguments')
+          {}
+        end
+
+        def accumulate_tool_calls(new_tool_calls)
           if Legion::Extensions::Llm.config.log_stream_debug
             Legion::Extensions::Llm.logger.debug { "Accumulating tool calls: #{new_tool_calls}" }
           end
           new_tool_calls.each_value do |tool_call|
             if tool_call.id
-              tool_call_id = tool_call.id.empty? ? SecureRandom.uuid : tool_call.id
-              tool_call_arguments = tool_call.arguments
-              if tool_call_arguments.nil? || (tool_call_arguments.respond_to?(:empty?) && tool_call_arguments.empty?)
-                tool_call_arguments = +''
-              end
-              @tool_calls[tool_call.id] = ToolCall.new(
-                id: tool_call_id,
-                name: tool_call.name,
-                arguments: tool_call_arguments,
-                thought_signature: tool_call.thought_signature
-              )
-              @latest_tool_call_id = tool_call.id
+              start_tool_call(tool_call)
             else
-              existing = @tool_calls[@latest_tool_call_id]
-              if existing
-                fragment = tool_call.arguments
-                fragment = '' if fragment.nil?
-                existing.arguments << fragment
-                if tool_call.thought_signature && existing.thought_signature.nil?
-                  existing.thought_signature = tool_call.thought_signature
-                end
-              end
+              append_tool_call_fragment(tool_call)
             end
           end
+        end
+
+        def start_tool_call(tool_call)
+          @tool_calls[tool_call.id] = ToolCall.new(
+            id: tool_call.id.empty? ? SecureRandom.uuid : tool_call.id,
+            name: tool_call.name,
+            arguments: mutable_tool_arguments(tool_call.arguments),
+            thought_signature: tool_call.thought_signature
+          )
+          @latest_tool_call_id = tool_call.id
+        end
+
+        def mutable_tool_arguments(arguments)
+          if arguments.nil? || (arguments.respond_to?(:empty?) && arguments.empty?)
+            +''
+          elsif arguments.is_a?(String)
+            +arguments
+          else
+            arguments
+          end
+        end
+
+        def append_tool_call_fragment(tool_call)
+          existing = @tool_calls[@latest_tool_call_id]
+          return unless existing
+
+          existing.arguments << tool_call.arguments.to_s
+          return unless tool_call.thought_signature && existing.thought_signature.nil?
+
+          existing.thought_signature = tool_call.thought_signature
         end
 
         def find_tool_call(tool_call_id)

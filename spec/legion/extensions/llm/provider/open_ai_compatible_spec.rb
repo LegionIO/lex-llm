@@ -98,9 +98,26 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
       chunk = provider.send(:build_chunk, stream_delta(tool_calls: [tool_call_delta_without_name]))
     end.not_to raise_error
 
-    expect(chunk.tool_calls[:'0'].id).to eq('0')
+    expect(chunk.tool_calls[:'0'].id).to be_nil
     expect(chunk.tool_calls[:'0'].name).to be_nil
-    expect(chunk.tool_calls[:'0'].arguments).to eq({})
+    expect(chunk.tool_calls[:'0'].arguments).to eq('{}')
+  end
+
+  it 'accumulates streamed OpenAI-compatible tool call argument fragments' do
+    accumulator = Legion::Extensions::Llm::StreamAccumulator.new
+
+    tool_call_stream.each do |delta|
+      accumulator.add(provider.send(:build_chunk, stream_delta(tool_calls: [delta])))
+    end
+
+    message = accumulator.to_message(nil)
+    expect(message.tool_calls['call-1'].arguments).to eq('city' => 'Chicago')
+  end
+
+  it 'renders embedding payloads with model ids' do
+    payload = provider.send(:render_embedding_payload, 'hello', model: model, dimensions: 768)
+
+    expect(payload).to eq(model: 'model-a', input: 'hello', dimensions: 768)
   end
 
   it 'parses embedding responses for single and batch inputs' do
@@ -150,6 +167,13 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
 
   def tool_call_delta_without_name
     { 'index' => 0, 'function' => { 'arguments' => '{}' } }
+  end
+
+  def tool_call_stream
+    [
+      { 'index' => 0, 'id' => 'call-1', 'function' => { 'name' => 'lookup', 'arguments' => '{"city"' } },
+      { 'index' => 0, 'function' => { 'arguments' => ':"Chicago"}' } }
+    ]
   end
 
   def think_tag_stream

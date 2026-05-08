@@ -15,6 +15,17 @@ RSpec.describe Legion::Extensions::Llm::StreamAccumulator do
       expect(message.tool_calls['call_1'].arguments).to eq({})
     end
 
+    it 'drops malformed accumulated tool arguments instead of raising' do
+      accumulator = described_class.new
+      tool_call = Legion::Extensions::Llm::ToolCall.new(id: 'call_1', name: 'weather', arguments: '{"city"')
+      chunk = Legion::Extensions::Llm::Chunk.new(role: :assistant, content: nil, tool_calls: { 'call_1' => tool_call })
+
+      expect { accumulator.add(chunk) }.not_to raise_error
+
+      message = accumulator.to_message(nil)
+      expect(message.tool_calls['call_1'].arguments).to eq({})
+    end
+
     it 'treats content before an unmatched closing think tag as thinking' do
       accumulator = described_class.new
       chunk = Legion::Extensions::Llm::Chunk.new(
