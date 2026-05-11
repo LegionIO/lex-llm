@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.8 - 2026-05-11
+
+- Set `remote_invocable?` to false — this extension does not need remote AMQP topology (exchanges, queues, DLX).
+
 ## 0.4.7 - 2026-05-08
 
 - Unpack legacy nested fleet `options` before provider dispatch so `system` and `tools` arrive as normal provider keyword arguments.

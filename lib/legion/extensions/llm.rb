@@ -56,6 +56,8 @@ module Legion
       end
 
       class << self
+        def remote_invocable? = false
+
         def context
           context_config = config.dup
           yield context_config if block_given?
