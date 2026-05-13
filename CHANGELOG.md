@@ -5,6 +5,7 @@
 - Route provider, tool, streaming, model, attachment, connection, credential, and fleet diagnostics through `Legion::Logging::Helper`.
 - Replace temporary provider and stream probes with helper-backed debug logs that preserve model, tool, parameter, and header-key context without stdout or fatal-level noise.
 - Add handled debug exception logging around provider discovery, credential probes, and fleet cleanup fallbacks.
+- Fix provider request debug logging when callers pass tools as a hash.
 
 ## 0.4.8 - 2026-05-11
 

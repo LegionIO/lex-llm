@@ -201,6 +201,15 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       expect(provider.count_tokens(messages: [{ content: 'hello world' }], model: model)).to be >= 1
     end
 
+    it 'summarizes hash-backed tools for debug logging' do
+      tools = {
+        current: { name: 'current' },
+        legacy: { 'name' => 'legacy' }
+      }
+
+      expect(provider.send(:debug_tool_names, tools)).to eq(%w[current legacy])
+    end
+
     it 'deep merges embedding params into the provider payload' do
       captured_payload = nil
       response = instance_double(Faraday::Response)

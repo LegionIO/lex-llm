@@ -631,10 +631,12 @@ module Legion
         end
 
         def debug_tool_names(tools)
-          Array(tools).filter_map do |tool|
+          tool_definitions = tools.is_a?(Hash) ? tools.values : Array(tools)
+
+          tool_definitions.filter_map do |tool|
             if tool.respond_to?(:name)
               tool.name
-            elsif tool.respond_to?(:[])
+            elsif tool.is_a?(Hash)
               tool[:name] || tool['name']
             else
               tool.class.name
