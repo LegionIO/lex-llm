@@ -12,6 +12,9 @@ module Legion
       module Fleet
         # Verifies responder-side fleet JWTs and prevents replay on provider nodes.
         module TokenValidator
+          include Legion::Logging::Helper
+          extend Legion::Logging::Helper
+
           @seen_jtis = Concurrent::Map.new
           @replay_mutex = Mutex.new
 
@@ -35,6 +38,7 @@ module Legion
           rescue TokenError
             raise
           rescue StandardError => e
+            handle_exception(e, level: :warn, handled: false, operation: 'llm.fleet.token_validator.validate')
             raise TokenError, "fleet token verification failed: #{e.message}"
           end
 
@@ -167,6 +171,7 @@ module Legion
           rescue TokenError
             raise
           rescue StandardError => e
+            handle_exception(e, level: :warn, handled: false, operation: 'llm.fleet.token_validator.signing_key')
             raise TokenError, "no signing key available: #{e.message}"
           end
 

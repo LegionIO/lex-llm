@@ -5,6 +5,8 @@ module Legion
     module Llm
       # Global configuration for Legion::Extensions::Llm
       class Configuration
+        include Legion::Logging::Helper
+
         class << self
           # Declare a single configuration option.
           def option(key, default = nil)
@@ -68,7 +70,7 @@ module Legion
           elsif Regexp.respond_to?(:timeout)
             @log_regexp_timeout = value
           else
-            Legion::Extensions::Llm.logger.warn("log_regexp_timeout is not supported on Ruby #{RUBY_VERSION}")
+            log.warn { "log_regexp_timeout is not supported on Ruby #{RUBY_VERSION}" }
             @log_regexp_timeout = value
           end
         end

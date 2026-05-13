@@ -6,6 +6,9 @@ module Legion
       module Fleet
         # Reads fleet settings from Legion::Settings when available, falling back to lex-llm defaults.
         module Settings
+          include Legion::Logging::Helper
+          extend Legion::Logging::Helper
+
           module_function
 
           def value(*path, default:)
@@ -29,7 +32,8 @@ module Legion
             llm = safe_fetch(::Legion::Settings, :llm)
             configured << llm if llm.respond_to?(:key?)
             configured
-          rescue StandardError
+          rescue StandardError => e
+            handle_exception(e, level: :debug, handled: true, operation: 'llm.fleet.settings.configured')
             []
           end
 
@@ -49,7 +53,9 @@ module Legion
 
           def safe_fetch(source, key)
             source[key] || source[key.to_s]
-          rescue StandardError
+          rescue StandardError => e
+            handle_exception(e, level: :debug, handled: true, operation: 'llm.fleet.settings.safe_fetch',
+                                key: key.to_s)
             nil
           end
 

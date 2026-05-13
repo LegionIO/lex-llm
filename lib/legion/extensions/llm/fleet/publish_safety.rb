@@ -6,6 +6,8 @@ module Legion
       module Fleet
         # Publish-result helpers kept local to fleet messages so they work with older legion-transport releases.
         module PublishSafety
+          include Legion::Logging::Helper
+
           private
 
           def return_publish_result?(options)

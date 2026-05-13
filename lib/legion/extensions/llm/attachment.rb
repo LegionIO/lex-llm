@@ -8,6 +8,8 @@ module Legion
     module Llm
       # A class representing a file attachment.
       class Attachment
+        include Legion::Logging::Helper
+
         attr_reader :source, :filename, :mime_type
 
         def initialize(source, filename: nil)
@@ -50,9 +52,7 @@ module Legion
           elsif io_like?
             load_content_from_io
           else
-            Legion::Extensions::Llm.logger.warn(
-              "Source is neither a URL, path, ActiveStorage, nor IO-like: #{@source.class}"
-            )
+            log.warn { "Source is neither a URL, path, ActiveStorage, nor IO-like: #{@source.class}" }
             nil
           end
 

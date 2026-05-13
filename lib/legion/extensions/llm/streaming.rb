@@ -5,6 +5,9 @@ module Legion
     module Llm
       # Handles streaming responses from AI providers.
       module Streaming
+        include Legion::Logging::Helper
+        extend Legion::Logging::Helper
+
         module_function
 
         def stream_response(connection, payload, additional_headers = {}, &block)
@@ -13,6 +16,9 @@ module Legion
           response = connection.post stream_url, payload do |req|
             req.headers = additional_headers.merge(req.headers) unless additional_headers.empty?
             on_chunk = build_stream_callback(accumulator, block)
+            if Legion::Extensions::Llm.config.log_stream_debug
+              log.debug { "Stream callback prepared: #{on_chunk.inspect}" }
+            end
             if faraday_1?
               req.options[:on_data] = handle_stream(&on_chunk)
             else
@@ -21,7 +27,7 @@ module Legion
           end
 
           message = accumulator.to_message(response)
-          Legion::Extensions::Llm.logger.debug { "Stream completed: #{message.content}" }
+          log.debug { "Stream completed: #{message.content}" }
           message
         end
 
@@ -57,9 +63,7 @@ module Legion
         end
 
         def process_stream_chunk(chunk, parser, env, &)
-          if Legion::Extensions::Llm.config.log_stream_debug
-            Legion::Extensions::Llm.logger.debug { "Received chunk: #{chunk}" }
-          end
+          log.debug { "Received chunk: #{chunk}" } if Legion::Extensions::Llm.config.log_stream_debug
 
           if error_chunk?(chunk)
             handle_error_chunk(chunk, env)

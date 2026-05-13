@@ -169,7 +169,7 @@ module Legion
           end
 
           def fetch_models_dev_models(existing_models) # rubocop:disable Metrics/PerceivedComplexity
-            Legion::Extensions::Llm.logger.info 'Fetching models from models.dev API...'
+            log.info 'Fetching models from models.dev API...'
 
             connection = Connection.basic do |f|
               f.request :json
@@ -202,11 +202,11 @@ module Legion
           end
 
           def log_provider_fetch(provider_fetch)
-            Legion::Extensions::Llm.logger.info(
+            log.info(
               "Fetching models from providers: #{provider_fetch[:configured_names].join(', ')}"
             )
             provider_fetch[:failed].each do |failure|
-              Legion::Extensions::Llm.logger.warn(
+              log.warn(
                 "Failed to fetch #{failure[:name]} models (#{failure[:error].class}: #{failure[:error].message}). " \
                 'Keeping existing.'
               )
@@ -216,7 +216,7 @@ module Legion
           def log_models_dev_fetch(models_dev_fetch)
             return if models_dev_fetch[:fetched]
 
-            Legion::Extensions::Llm.logger.warn('Using cached models.dev data due to fetch failure.')
+            log.warn('Using cached models.dev data due to fetch failure.')
           end
 
           def merge_with_existing(existing_models, provider_fetch, models_dev_fetch)

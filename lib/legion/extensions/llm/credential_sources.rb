@@ -11,6 +11,9 @@ module Legion
       # network probes).  All methods are pure readers — the calling provider
       # decides what to do with the result.
       module CredentialSources
+        include Legion::Logging::Helper
+        extend Legion::Logging::Helper
+
         CLAUDE_SETTINGS = File.expand_path('~/.claude/settings.json')
         CLAUDE_PROJECT  = File.join(Dir.pwd, '.claude', 'settings.json')
         CODEX_AUTH      = File.expand_path('~/.codex/auth.json')
@@ -79,7 +82,9 @@ module Legion
           return nil unless defined?(::Legion::Settings)
 
           ::Legion::Settings.dig(*path)
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.setting',
+                              path: path.map(&:to_s))
           nil
         end
 
@@ -104,7 +109,9 @@ module Legion
             end
           end
           true
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.socket_open',
+                              host:, port:)
           false
         ensure
           sock&.close
@@ -120,7 +127,9 @@ module Legion
           end
           response = conn.get(path)
           response.status >= 200 && response.status < 300
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.http_ok',
+                              path:)
           false
         ensure
           conn&.close if conn.respond_to?(:close)
@@ -168,7 +177,8 @@ module Legion
 
           normalized = host.delete_prefix('[').delete_suffix(']')
           %w[localhost 127.0.0.1 ::1].include?(normalized)
-        rescue URI::InvalidURIError
+        rescue URI::InvalidURIError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.localhost')
           false
         end
 
@@ -199,7 +209,9 @@ module Legion
           else
             ::JSON.parse(raw, symbolize_names: true)
           end
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.read_json',
+                              path:)
           {}
         end
 
@@ -220,7 +232,8 @@ module Legion
           return true if exp.nil?
 
           exp.to_i > Time.now.to_i
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.token_valid')
           true
         end
 

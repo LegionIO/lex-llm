@@ -22,6 +22,9 @@ module Legion
       module Fleet
         # Shared implementation for provider-owned fleet responder runners.
         module ProviderResponder
+          include Legion::Logging::Helper
+          extend Legion::Logging::Helper
+
           class ConfigurationError < StandardError; end
 
           REQUIRED_FIELDS = %i[
@@ -71,6 +74,8 @@ module Legion
             ack(delivery || properties)
             response
           rescue StandardError => e
+            handle_exception(e, level: :warn, handled: false, operation: 'llm.fleet.provider_responder.call',
+                                provider_family:)
             safe_publish_error(envelope, e) if defined?(envelope) && envelope
             reject(delivery || properties, requeue: requeue_error?(e))
             raise
@@ -165,7 +170,10 @@ module Legion
 
           def safe_publish_error(envelope, error)
             publish_error(envelope, error)
-          rescue StandardError
+          rescue StandardError => e
+            handle_exception(e, level: :debug, handled: true,
+                                operation: 'llm.fleet.provider_responder.safe_publish_error',
+                                error_class: error.class.name)
             nil
           end
 
