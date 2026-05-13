@@ -25,7 +25,7 @@ module Legion
         end
 
         def add(chunk)
-          Legion::Extensions::Llm.logger.debug { chunk.inspect } if Legion::Extensions::Llm.config.log_stream_debug
+          log.debug { chunk.inspect } if Legion::Extensions::Llm.config.log_stream_debug
           @model_id ||= chunk.model_id
 
           @last_content_delta = +''
@@ -33,7 +33,7 @@ module Legion
           handle_chunk_content(chunk)
           append_thinking_from_chunk(chunk)
           count_tokens chunk
-          Legion::Extensions::Llm.logger.debug { inspect } if Legion::Extensions::Llm.config.log_stream_debug
+          log.debug { inspect } if Legion::Extensions::Llm.config.log_stream_debug
         end
 
         def filtered_chunk(chunk) # rubocop:disable Metrics/PerceivedComplexity
@@ -101,9 +101,7 @@ module Legion
         end
 
         def accumulate_tool_calls(new_tool_calls)
-          if Legion::Extensions::Llm.config.log_stream_debug
-            Legion::Extensions::Llm.logger.debug { "Accumulating tool calls: #{new_tool_calls}" }
-          end
+          log.debug { "Accumulating tool calls: #{new_tool_calls}" } if Legion::Extensions::Llm.config.log_stream_debug
           new_tool_calls.each_value do |tool_call|
             if tool_call.id
               start_tool_call(tool_call)

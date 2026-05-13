@@ -28,7 +28,7 @@ RSpec.describe Legion::Extensions::Llm::Connection do
 
     it 'disables body logging when log level is above DEBUG' do
       logger = Logger.new(File::NULL, level: Logger::INFO)
-      allow(Legion::Extensions::Llm).to receive(:logger).and_return(logger)
+      allow(config).to receive(:logger).and_return(logger)
 
       connection = described_class.new(provider, config).connection
       handler = connection.builder.handlers.find { |h| h.klass == Faraday::Response::Logger }
@@ -40,7 +40,7 @@ RSpec.describe Legion::Extensions::Llm::Connection do
 
     it 'enables body logging when log level is DEBUG' do
       logger = Logger.new(File::NULL, level: Logger::DEBUG)
-      allow(Legion::Extensions::Llm).to receive(:logger).and_return(logger)
+      allow(config).to receive(:logger).and_return(logger)
 
       connection = described_class.new(provider, config).connection
       handler = connection.builder.handlers.find { |h| h.klass == Faraday::Response::Logger }

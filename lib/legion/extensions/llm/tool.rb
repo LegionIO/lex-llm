@@ -19,6 +19,8 @@ module Legion
 
       # Base class for creating tools that AI models can use
       class Tool
+        include Legion::Logging::Helper
+
         # Stops conversation continuation after tool execution
         class Halt
           attr_reader :content
@@ -105,9 +107,9 @@ module Legion
           validation_error = validate_keyword_arguments(normalized_args)
           return { error: "Invalid tool arguments: #{validation_error}" } if validation_error
 
-          Legion::Extensions::Llm.logger.debug { "Tool #{name} called with: #{normalized_args.inspect}" }
+          log.debug { "Tool #{name} called with: #{normalized_args.inspect}" }
           result = execute(**normalized_args)
-          Legion::Extensions::Llm.logger.debug { "Tool #{name} returned: #{result.inspect}" }
+          log.debug { "Tool #{name} returned: #{result.inspect}" }
           result
         end
 

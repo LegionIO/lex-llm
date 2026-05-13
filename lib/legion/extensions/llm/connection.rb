@@ -5,18 +5,34 @@ module Legion
     module Llm
       # Connection class for managing API connections to various providers.
       class Connection
+        include Legion::Logging::Helper
+
         attr_reader :provider, :connection, :config
 
-        def self.basic(&)
-          Faraday.new do |f|
-            f.response :logger,
-                       Legion::Extensions::Llm.logger,
-                       bodies: false,
-                       errors: true,
-                       headers: false,
-                       log_level: :debug
-            f.response :raise_error
-            yield f if block_given?
+        class << self
+          include Legion::Logging::Helper
+
+          def basic(&)
+            logger = faraday_logger
+            Faraday.new do |f|
+              f.response :logger,
+                         logger,
+                         bodies: false,
+                         errors: true,
+                         headers: false,
+                         log_level: :debug
+              f.response :raise_error
+              yield f if block_given?
+            end
+          end
+
+          private
+
+          def faraday_logger
+            config = Legion::Extensions::Llm.config
+            return config.logger if config.respond_to?(:logger) && config.logger
+
+            log
           end
         end
 
@@ -59,15 +75,29 @@ module Legion
         end
 
         def setup_logging(faraday)
+          logger = faraday_logger
           faraday.response :logger,
-                           Legion::Extensions::Llm.logger,
-                           bodies: Legion::Extensions::Llm.logger.debug?,
+                           logger,
+                           bodies: debug_logger?(logger),
                            errors: true,
                            headers: false,
                            log_level: :debug do |logger|
             logger.filter(logging_regexp('[A-Za-z0-9+/=]{100,}'), '[BASE64 DATA]')
             logger.filter(logging_regexp('[-\\d.e,\\s]{100,}'), '[EMBEDDINGS ARRAY]')
           end
+        end
+
+        def faraday_logger
+          return config.logger if config.respond_to?(:logger) && config.logger
+
+          log
+        end
+
+        def debug_logger?(logger)
+          return logger.debug? if logger.respond_to?(:debug?)
+          return logger.level.to_i <= Logger::DEBUG if logger.respond_to?(:level)
+
+          false
         end
 
         def logging_regexp(pattern)

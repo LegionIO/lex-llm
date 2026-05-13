@@ -75,6 +75,19 @@ module Legion
         def complete(messages, tools:, temperature:, model:, params: {}, headers: {}, schema: nil, thinking: nil,
                      tool_prefs: nil, &)
           normalized_temperature = maybe_normalize_temperature(temperature, model)
+          log_provider_request(
+            messages: messages,
+            tools: tools,
+            temperature: temperature,
+            normalized_temperature: normalized_temperature,
+            model: model,
+            params: params,
+            headers: headers,
+            schema: schema,
+            thinking: thinking,
+            tool_prefs: tool_prefs,
+            streaming: block_given?
+          )
 
           payload = Utils.deep_merge(
             render_payload(
@@ -330,7 +343,8 @@ module Legion
           uri = URI.parse(url)
           Socket.tcp(uri.host, uri.port, connect_timeout: 1).close
           true
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.provider.url_reachable', url:)
           false
         end
 
@@ -352,7 +366,8 @@ module Legion
           return nil unless defined?(Legion::Cache)
 
           cache_local_instance? ? local_cache_get(key) : cache_get(key)
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.provider.model_cache_get', key:)
           nil
         end
 
@@ -368,7 +383,8 @@ module Legion
           return yield unless defined?(Legion::Cache)
 
           cache_local_instance? ? local_cache_fetch(key, ttl: ttl, &) : cache_fetch(key, ttl: ttl, &)
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.provider.model_cache_fetch', key:)
           yield
         end
 
@@ -591,6 +607,51 @@ module Legion
 
         def maybe_normalize_temperature(temperature, _model)
           temperature
+        end
+
+        def log_provider_request(context)
+          log.debug do
+            "Preparing provider completion: provider=#{slug} model=#{debug_model_id(context[:model])} " \
+              "streaming=#{context[:streaming]} messages=#{Array(context[:messages]).size} " \
+              "tools=#{debug_tool_names(context[:tools]).inspect} " \
+              "temperature=#{context[:temperature].inspect} " \
+              "normalized_temperature=#{context[:normalized_temperature].inspect} " \
+              "param_keys=#{debug_hash_keys(context[:params]).inspect} " \
+              "header_keys=#{debug_hash_keys(context[:headers]).inspect} " \
+              "schema=#{debug_value_summary(context[:schema])} " \
+              "thinking=#{debug_value_summary(context[:thinking])} " \
+              "tool_prefs=#{debug_value_summary(context[:tool_prefs])}"
+          end
+        end
+
+        def debug_model_id(model)
+          return model.id if model.respond_to?(:id)
+
+          model
+        end
+
+        def debug_tool_names(tools)
+          Array(tools).filter_map do |tool|
+            if tool.respond_to?(:name)
+              tool.name
+            elsif tool.respond_to?(:[])
+              tool[:name] || tool['name']
+            else
+              tool.class.name
+            end
+          end
+        end
+
+        def debug_hash_keys(value)
+          value.respond_to?(:keys) ? value.keys.map(&:to_s).sort : []
+        end
+
+        def debug_value_summary(value)
+          return 'nil' if value.nil?
+          return "#{value.class}(keys=#{debug_hash_keys(value).inspect})" if value.respond_to?(:keys)
+          return "#{value.class}(size=#{value.size})" if value.respond_to?(:size)
+
+          value.class.name
         end
 
         def endpoint_methods

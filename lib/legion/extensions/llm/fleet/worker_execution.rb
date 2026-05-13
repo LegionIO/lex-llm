@@ -11,6 +11,9 @@ module Legion
       module Fleet
         # Applies responder-side policy and dispatches a fleet request to a local lex-llm provider.
         module WorkerExecution
+          include Legion::Logging::Helper
+          extend Legion::Logging::Helper
+
           class PolicyError < StandardError; end
 
           @idempotency_keys = Concurrent::Map.new
@@ -29,10 +32,12 @@ module Legion
             TokenValidator.mark_replay!(claims[:jti]) if claims.is_a?(Hash)
             response
           rescue TokenError => e
+            handle_exception(e, level: :warn, handled: false, operation: 'llm.fleet.worker_execution.identity')
             release_idempotency!(idempotency_key) if idempotency_key
             release_replay!(claims)
             raise PolicyError, e.message
-          rescue StandardError
+          rescue StandardError => e
+            handle_exception(e, level: :warn, handled: false, operation: 'llm.fleet.worker_execution.call')
             release_idempotency!(idempotency_key) if idempotency_key
             release_replay!(claims)
             raise
