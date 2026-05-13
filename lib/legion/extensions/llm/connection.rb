@@ -79,7 +79,7 @@ module Legion
           faraday.response :logger,
                            logger,
                            bodies: debug_logger?(logger),
-                           errors: true,
+                           errors: false,
                            headers: false,
                            log_level: :debug do |logger|
             logger.filter(logging_regexp('[A-Za-z0-9+/=]{100,}'), '[BASE64 DATA]')

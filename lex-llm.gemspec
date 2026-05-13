@@ -35,6 +35,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'faraday-multipart', '>= 1'
   spec.add_dependency 'faraday-net_http', '>= 1'
   spec.add_dependency 'faraday-retry', '>= 1'
+  spec.add_dependency 'legion-cache', '>= 1.3.0'
   spec.add_dependency 'legion-crypt', '>= 1.5.1'
   spec.add_dependency 'legion-json', '>= 1.2.1'
   spec.add_dependency 'legion-logging', '>= 1.3.2'

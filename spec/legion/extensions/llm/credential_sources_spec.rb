@@ -223,27 +223,16 @@ RSpec.describe Legion::Extensions::Llm::CredentialSources do
 
   describe '.setting' do
     it 'digs into Legion::Settings when defined' do
-      settings_mod = Module.new do
-        def self.dig(*path)
-          { llm: { provider: 'anthropic' } }.dig(*path)
-        end
-      end
-      stub_const('Legion::Settings', settings_mod)
+      Legion::Settings.merge_settings(:llm, { provider: 'anthropic' })
       expect(mod.setting(:llm, :provider)).to eq('anthropic')
     end
 
-    it 'returns nil when Legion::Settings is not defined' do
-      hide_const('Legion::Settings')
-      expect(mod.setting(:llm, :provider)).to be_nil
+    it 'returns nil for missing paths' do
+      expect(mod.setting(:nonexistent, :deep, :path)).to be_nil
     end
 
     it 'returns nil when dig raises an error' do
-      settings_mod = Module.new do
-        def self.dig(*)
-          raise NoMethodError, 'undefined method'
-        end
-      end
-      stub_const('Legion::Settings', settings_mod)
+      allow(Legion::Settings).to receive(:dig).and_raise(NoMethodError, 'undefined method')
       expect(mod.setting(:llm, :provider)).to be_nil
     end
   end

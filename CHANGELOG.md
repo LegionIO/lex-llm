@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.10 - 2026-05-13
+
+- Add cache-backed `model_detail` lookup with 24-hour TTL; nil results are not cached; `fetch_model_detail` hook for subclasses to override with live API calls.
+- Build `model_detail_cache_key` from tier, slug, instance, and credential fingerprint so remote providers never share model detail entries across credentials.
+- Add `credential_cache_fragment` — includes an 8-char SHA-256 credential fingerprint in cache keys for non-local providers.
+- Add `source_tag`, `credential_fingerprint`, and `config_fingerprint` to `CredentialSources` for provenance tracking across discovered instances.
+- Suppress Faraday raw stacktrace dumps on connection failures by setting `errors: false` on the response logger middleware.
+- Rescue `Faraday::ConnectionFailed` in `discover_offerings` and return an empty list with a concise warning instead of propagating the exception.
+- Wire `model_allowed?` filtering into `discover_offerings` so whitelist/blacklist settings are enforced during live discovery (was dead code before).
+- Check instance config first for `model_whitelist`/`model_blacklist` before falling back to provider settings, enabling per-instance override.
+- Add `legion-cache >= 1.3.0` as a runtime dependency and include `Legion::Cache::Helper` in the base `Provider` class.
+
 ## 0.4.9 - 2026-05-13
 
 - Route provider, tool, streaming, model, attachment, connection, credential, and fleet diagnostics through `Legion::Logging::Helper`.

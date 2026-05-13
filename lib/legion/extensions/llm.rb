@@ -9,6 +9,15 @@ require 'faraday/multipart'
 require 'faraday/retry'
 require 'legion/json'
 require 'legion/logging'
+# legion/cache writes DEBUG lines to $stdout on first load; suppress them here
+# so callers that capture our stdout (e.g. Open3-based integration tests) are unaffected.
+begin
+  old_stdout = $stdout
+  $stdout = File.open(File::NULL, 'w')
+  require 'legion/cache'
+ensure
+  $stdout = old_stdout
+end
 require 'logger'
 require 'marcel'
 require 'ruby_llm/schema'

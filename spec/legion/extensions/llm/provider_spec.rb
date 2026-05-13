@@ -502,16 +502,9 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       end
     end
 
-    describe '#model_cache_set' do
-      it 'returns nil when Legion::Cache is not defined' do
-        expect(provider.model_cache_set('key', 'value', ttl: 60)).to be_nil
-      end
-    end
-
-    describe '#model_cache_fetch' do
-      it 'yields when Legion::Cache is not defined' do
-        result = provider.model_cache_fetch('key', ttl: 60) { 'computed' }
-        expect(result).to eq('computed')
+    describe '#model_detail' do
+      it 'returns nil by default (no fetch_model_detail override)' do
+        expect(provider.model_detail('test-model')).to be_nil
       end
     end
   end
