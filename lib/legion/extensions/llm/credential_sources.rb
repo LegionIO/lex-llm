@@ -167,6 +167,30 @@ module Legion
           Digest::SHA256.hexdigest(val.to_s)
         end
 
+        # Build a human-readable source tag describing where a credential was found.
+        # Format: "type:location:key" e.g. "env:ANTHROPIC_API_KEY", "file:~/.claude/settings.json:anthropicApiKey"
+        def source_tag(type, location, key = nil)
+          parts = [type.to_s, location.to_s]
+          parts << key.to_s if key && !key.to_s.empty?
+          parts.join(':')
+        end
+
+        # Generate a short fingerprint (first 8 chars of SHA-256) for a credential value.
+        # Stable for the lifetime of the credential; safe to log and include in audit events.
+        def credential_fingerprint(value)
+          return nil if value.nil? || value.to_s.strip.empty?
+
+          Digest::SHA256.hexdigest(value.to_s)[0, 8]
+        end
+
+        # Extract fingerprint from a config hash by finding the first credential field.
+        def config_fingerprint(config)
+          val = config[:api_key] || config['api_key'] ||
+                config[:bearer_token] || config['bearer_token'] ||
+                config[:access_token] || config['access_token']
+          credential_fingerprint(val)
+        end
+
         # Returns true when the URL points to localhost / 127.0.0.1 / ::1.
         def localhost?(url)
           return false if url.nil?
@@ -185,7 +209,9 @@ module Legion
         module_function :env, :claude_config, :claude_config_value,
                         :claude_env_value, :codex_token, :codex_openai_key,
                         :setting, :socket_open?, :http_ok?,
-                        :dedup_credentials, :credential_hash, :localhost?
+                        :dedup_credentials, :credential_hash,
+                        :source_tag, :credential_fingerprint, :config_fingerprint,
+                        :localhost?
 
         # --- private helpers -----------------------------------------------
 

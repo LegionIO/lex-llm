@@ -28,6 +28,7 @@ module Legion
       class Provider
         include Streaming
         include Legion::Logging::Helper
+        include Legion::Cache::Helper
 
         attr_reader :config, :connection
 
@@ -123,10 +124,14 @@ module Legion
           provider_health = health(live:)
           @cached_offerings = Array(list_models(live:, **filters)).filter_map do |model|
             next unless model_matches_filters?(model, filters)
+            next unless model_allowed?(model.id)
 
             offering_from_model(model, health: provider_health)
           end
           @cached_offerings
+        rescue Faraday::ConnectionFailed => e
+          log.warn("[#{slug}] instance=#{provider_instance_id} unreachable: #{e.message}")
+          []
         end
 
         def health(live: false)
@@ -284,12 +289,14 @@ module Legion
         # ── Model allow-list / deny-list filtering ────────────────────────
 
         def model_whitelist
-          wl = settings[:model_whitelist] if respond_to?(:settings)
+          wl = config.model_whitelist if config.respond_to?(:model_whitelist)
+          wl ||= settings[:model_whitelist] if respond_to?(:settings)
           Array(wl).map { |p| p.to_s.downcase }
         end
 
         def model_blacklist
-          bl = settings[:model_blacklist] if respond_to?(:settings)
+          bl = config.model_blacklist if config.respond_to?(:model_blacklist)
+          bl ||= settings[:model_blacklist] if respond_to?(:settings)
           Array(bl).map { |p| p.to_s.downcase }
         end
 
@@ -371,21 +378,24 @@ module Legion
           nil
         end
 
-        def model_cache_set(key, value, ttl:)
-          return unless defined?(Legion::Cache)
+        def model_detail(model_name)
+          key = model_detail_cache_key(model_name)
+          cached = cache_get(key)
+          return cached if cached
 
-          cache_local_instance? ? local_cache_set(key, value, ttl: ttl) : cache_set(key, value, ttl: ttl)
+          result = fetch_model_detail(model_name)
+          cache_set(key, result, ttl: 86_400) if result
+          result
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'lex.provider.model_cache_set')
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.model_detail',
+                              model: model_name)
+          nil
         end
 
-        def model_cache_fetch(key, ttl:, &)
-          return yield unless defined?(Legion::Cache)
-
-          cache_local_instance? ? local_cache_fetch(key, ttl: ttl, &) : cache_fetch(key, ttl: ttl, &)
-        rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'llm.provider.model_cache_fetch', key:)
-          yield
+        # Override in subclasses to make a live API call for model detail.
+        # Must return a Hash with symbol keys (e.g. { context_window: 128000 }).
+        def fetch_model_detail(_model_name)
+          nil
         end
 
         def cache_instance_key
@@ -447,6 +457,26 @@ module Legion
         end
 
         private
+
+        def model_detail_cache_key(model_name)
+          tier = offering_tier
+          instance_key = cache_instance_key
+          cred_fp = credential_cache_fragment
+          key_parts = ['model_info', tier, slug, instance_key, cred_fp, model_name].compact
+          key_parts.join('.')
+        end
+
+        def credential_cache_fragment
+          return nil if cache_local_instance?
+
+          cred = config.respond_to?(:bearer_token) && config.bearer_token
+          cred ||= config.respond_to?(:api_key) && config.api_key
+          cred ||= config.respond_to?(:bedrock_access_key_id) && config.bedrock_access_key_id
+          return nil unless cred
+
+          require 'digest'
+          Digest::SHA256.hexdigest(cred.to_s)[0, 8]
+        end
 
         def validate_paint_inputs!(with:, mask:)
           return if with.nil? && mask.nil?
