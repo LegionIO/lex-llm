@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.13 - 2026-05-15
+
+- Strip provider thinking from OpenAI-compatible responses when local models emit `<thinking>` tags or untagged initial reasoning preambles, and keep those hidden from live streaming content deltas.
+
+## 0.4.12 - 2026-05-15
+
+- Preserve streamed provider error bodies in a custom Faraday env key so Faraday Net::HTTP finalization cannot replace the buffered body with an empty string before `ErrorMiddleware` parses it.
+
+## 0.4.11 - 2026-05-15
+
+- Fix `handle_failed_response` to preserve non-200 streaming error bodies across chunks instead of swallowing `ParseError` and falling through to a generic "An unknown error occurred". Complete JSON error bodies still raise typed provider errors immediately; incomplete bodies are buffered onto the Faraday response env for final middleware parsing, with regex fallback extraction for vLLM-style partial `message` fields when the env cannot carry the buffered body.
+
 ## 0.4.10 - 2026-05-13
 
 - Add cache-backed `model_detail` lookup with 24-hour TTL; nil results are not cached; `fetch_model_detail` hook for subclasses to override with live API calls.

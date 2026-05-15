@@ -8,9 +8,39 @@ module Legion
         module ThinkingExtractor
           Extraction = Struct.new(:content, :thinking, :signature, :metadata, keyword_init: true)
 
-          THINK_OPEN = '<think>'
-          THINK_CLOSE = '</think>'
-          THINK_PATTERN = %r{<think>(.*?)</think>}m
+          THINK_TAG_PAIRS = [
+            ['<thinking>', '</thinking>'],
+            ['<think>',    '</think>']
+          ].freeze
+          UNTAGGED_PREAMBLE_MAX_LENGTH = 4_000
+          UNTAGGED_PREAMBLE_STARTS = [
+            'the user',
+            'the request',
+            'the prompt',
+            'the question',
+            'i need',
+            'i should',
+            'i will',
+            "i'll",
+            'i can',
+            'we need',
+            'we should',
+            'we will',
+            "we'll",
+            'we can',
+            'let me'
+          ].freeze
+          UNTAGGED_PREAMBLE_PATTERNS = [
+            /
+              \AThe\s+(?:user|request|prompt|question)\b.*\b
+              (?:let\s+me|i'll|i\s+will|i\s+should|i\s+need|i\s+can|respond|answer|reply)\b
+            /imx,
+            /
+              \A(?:I|We)\s+(?:need|should|will|can)\s+(?:to\s+)?
+              (?:answer|respond|reply|confirm|provide|explain|help)\b
+            /imx,
+            /\ALet me\s+(?:answer|respond|reply|confirm|provide|explain|help)\b/im
+          ].freeze
           THINKING_METADATA_KEYS = %i[
             reasoning_content reasoning thinking thinking_text thinking_signature reasoning_signature thought_signature
           ].freeze
@@ -42,20 +72,45 @@ module Legion
             remaining = content.dup
 
             remaining = consume_next_segment(remaining, clean, thinking_parts) until remaining.empty?
+            clean, untagged_thinking = extract_untagged_preamble(clean.strip)
+            thinking_parts << untagged_thinking
 
-            [clean.strip, compact_thinking(thinking_parts)]
+            [clean, compact_thinking(thinking_parts)]
           end
           private_class_method :extract_from_content
 
-          def consume_next_segment(remaining, clean, thinking_parts)
-            close_index = remaining.index(THINK_CLOSE)
-            open_index = remaining.index(THINK_OPEN)
+          def extract_untagged_preamble(content)
+            return [content, nil] unless content.is_a?(String)
 
-            if close_index && (open_index.nil? || close_index < open_index)
-              thinking_parts << remaining.slice(0, close_index)
-              remaining.slice((close_index + THINK_CLOSE.length)..).to_s.sub(/\A[[:space:]]+/, '')
-            elsif open_index
-              consume_open_think_segment(remaining, open_index, clean, thinking_parts)
+            match = content.match(/\A(?<preamble>.+?)\n{2,}(?<visible>.+)\z/m)
+            return [content, nil] unless match
+
+            preamble = match[:preamble].strip
+            return [content, nil] unless untagged_reasoning_preamble?(preamble)
+
+            [match[:visible].sub(/\A[[:space:]]+/, '').strip, preamble]
+          end
+
+          def untagged_reasoning_preamble_candidate?(content)
+            return false unless content.is_a?(String)
+
+            text = content.lstrip.downcase
+            return false if text.empty?
+
+            UNTAGGED_PREAMBLE_STARTS.any? do |start|
+              start.start_with?(text) || text.start_with?(start)
+            end
+          end
+
+          def consume_next_segment(remaining, clean, thinking_parts)
+            close_match = next_tag_match(remaining, :close)
+            open_match = next_tag_match(remaining, :open)
+
+            if close_match && (open_match.nil? || close_match[:index] < open_match[:index])
+              thinking_parts << remaining.slice(0, close_match[:index])
+              remaining.slice((close_match[:index] + close_match[:tag].length)..).to_s.sub(/\A[[:space:]]+/, '')
+            elsif open_match
+              consume_open_think_segment(remaining, open_match, clean, thinking_parts)
             else
               clean << remaining
               +''
@@ -63,19 +118,36 @@ module Legion
           end
           private_class_method :consume_next_segment
 
-          def consume_open_think_segment(remaining, open_index, clean, thinking_parts)
-            clean << remaining.slice(0, open_index)
-            after_open = remaining.slice((open_index + THINK_OPEN.length)..).to_s
-            close_index = after_open.index(THINK_CLOSE)
+          def consume_open_think_segment(remaining, open_match, clean, thinking_parts)
+            clean << remaining.slice(0, open_match[:index])
+            after_open = remaining.slice((open_match[:index] + open_match[:tag].length)..).to_s
+            close_index = after_open.index(open_match[:close_tag])
             unless close_index
               thinking_parts << after_open
               return +''
             end
 
             thinking_parts << after_open.slice(0, close_index)
-            after_open.slice((close_index + THINK_CLOSE.length)..).to_s
+            after_open.slice((close_index + open_match[:close_tag].length)..).to_s
           end
           private_class_method :consume_open_think_segment
+
+          def next_tag_match(text, type)
+            matches = THINK_TAG_PAIRS.filter_map do |open_tag, close_tag|
+              tag = type == :open ? open_tag : close_tag
+              index = text.index(tag)
+              { index: index, tag: tag, close_tag: close_tag } if index
+            end
+            matches.min_by { |match| match[:index] }
+          end
+          private_class_method :next_tag_match
+
+          def untagged_reasoning_preamble?(preamble)
+            return false if preamble.length > UNTAGGED_PREAMBLE_MAX_LENGTH
+
+            UNTAGGED_PREAMBLE_PATTERNS.any? { |pattern| preamble.match?(pattern) }
+          end
+          private_class_method :untagged_reasoning_preamble?
 
           def extract_metadata_thinking(metadata)
             compact_thinking(

@@ -264,6 +264,8 @@ module Legion
               error = part['error']
               error.is_a?(String) ? error : part.dig('error', 'message')
             end.join('. ')
+          when String
+            body[/"message"\s*:\s*"([^"]{1,500})/, 1] || body
           else
             body
           end

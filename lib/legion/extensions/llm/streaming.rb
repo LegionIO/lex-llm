@@ -93,10 +93,48 @@ module Legion
 
         def handle_failed_response(chunk, buffer, env)
           buffer << chunk
+          body_persisted = persist_failed_response_body(buffer, env)
           error_data = Legion::JSON.parse(buffer, symbolize_names: false)
           handle_parsed_error(error_data, env)
-        rescue Legion::JSON::ParseError => e
-          handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.handle_failed_response')
+        rescue Legion::JSON::ParseError
+          return if body_persisted
+
+          raise_partial_streaming_error(buffer, env)
+        end
+
+        def persist_failed_response_body(buffer, env)
+          custom_persisted = persist_failed_response_custom_body?(buffer, env)
+          body_persisted = persist_failed_response_env_body?(buffer, env)
+          custom_persisted || body_persisted
+        end
+
+        def persist_failed_response_env_body?(buffer, env)
+          return false unless env.respond_to?(:body=)
+
+          env.body = buffer.dup
+          true
+        end
+
+        def persist_failed_response_custom_body?(buffer, env)
+          return false unless env.respond_to?(:[]=)
+
+          env[ErrorMiddleware::STREAM_ERROR_BODY_KEY] = buffer.dup
+          true
+        rescue StandardError
+          false
+        end
+
+        def raise_partial_streaming_error(buffer, env)
+          partial = buffer[/"message"\s*:\s*"([^"]{1,200})/, 1]
+          status  = env&.status || 0
+          msg     = if partial
+                      "Provider error (status #{status}): #{partial}"
+                    else
+                      "Provider error (status #{status}) - response body incomplete"
+                    end
+          log.warn "[llm][streaming] action=handle_failed_response status=#{status} " \
+                   "partial_body=#{buffer.length}b msg=#{partial.inspect}"
+          raise Legion::Extensions::Llm::ServerError, msg
         end
 
         def handle_sse(chunk, parser, env, &)
