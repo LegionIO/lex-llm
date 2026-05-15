@@ -10,8 +10,22 @@ RSpec.describe Legion::Extensions::Llm::Responses::ThinkingExtractor do
     expect(result.thinking).to eq('hidden')
   end
 
+  it 'extracts normal thinking tags' do
+    result = described_class.extract("<thinking>hidden</thinking>\n\nvisible")
+
+    expect(result.content).to eq('visible')
+    expect(result.thinking).to eq('hidden')
+  end
+
   it 'extracts malformed trailing close tag' do
     result = described_class.extract("hidden only\n</think>\n\nvisible")
+
+    expect(result.content).to eq('visible')
+    expect(result.thinking).to eq('hidden only')
+  end
+
+  it 'extracts malformed trailing thinking close tag' do
+    result = described_class.extract("hidden only\n</thinking>\n\nvisible")
 
     expect(result.content).to eq('visible')
     expect(result.thinking).to eq('hidden only')
@@ -22,6 +36,17 @@ RSpec.describe Legion::Extensions::Llm::Responses::ThinkingExtractor do
 
     expect(result.content).to eq('visible')
     expect(result.thinking).to eq('hidden only')
+  end
+
+  it 'extracts untagged local-model reasoning preambles' do
+    result = described_class.extract(
+      "The user is just saying \"test\". Let me respond simply and confirm things are working.\n\n" \
+      'Hey! Things are working on my end. What can I help you with?'
+    )
+
+    expect(result.content).to eq('Hey! Things are working on my end. What can I help you with?')
+    expect(result.thinking)
+      .to eq('The user is just saying "test". Let me respond simply and confirm things are working.')
   end
 
   it 'leaves normal text visible' do

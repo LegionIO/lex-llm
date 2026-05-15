@@ -21,6 +21,9 @@ module Legion
           @thinking_tokens = nil
           @inside_think_tag = false
           @pending_think_tag = +''
+          @active_think_close_tag = nil
+          @untagged_preamble_pending = true
+          @untagged_preamble_buffer = +''
           @latest_tool_call_id = nil
         end
 
@@ -55,6 +58,8 @@ module Legion
         end
 
         def to_message(response)
+          flush_pending_untagged_preamble
+
           Message.new(
             role: :assistant,
             content: content.empty? ? nil : content,
@@ -171,12 +176,61 @@ module Legion
 
         def append_text_with_thinking(text)
           content_chunk, thinking_chunk = extract_think_tags(text)
+          content_chunk, untagged_thinking = extract_untagged_preamble(content_chunk)
           @content << content_chunk
           @last_content_delta << content_chunk
+          if untagged_thinking
+            @thinking_text << untagged_thinking
+            @last_thinking_delta << untagged_thinking
+          end
           return unless thinking_chunk
 
           @thinking_text << thinking_chunk
           @last_thinking_delta << thinking_chunk
+        end
+
+        def extract_untagged_preamble(content_chunk)
+          return [content_chunk, nil] unless @untagged_preamble_pending
+          return [content_chunk, nil] unless @content.empty? && @thinking_text.empty?
+          return [content_chunk, nil] if content_chunk.empty?
+
+          candidate = @untagged_preamble_buffer + content_chunk
+          return release_untagged_preamble(candidate) unless candidate_untagged_preamble?(candidate)
+
+          content, thinking = Responses::ThinkingExtractor.extract_untagged_preamble(candidate)
+          return release_untagged_preamble(content, thinking) if thinking
+          return release_untagged_preamble(candidate) if complete_untagged_preamble_candidate?(candidate)
+
+          @untagged_preamble_buffer = candidate
+          ['', nil]
+        end
+
+        def candidate_untagged_preamble?(candidate)
+          Responses::ThinkingExtractor.untagged_reasoning_preamble_candidate?(candidate)
+        end
+
+        def complete_untagged_preamble_candidate?(candidate)
+          candidate.match?(/\n{2,}/) || candidate.length > Responses::ThinkingExtractor::UNTAGGED_PREAMBLE_MAX_LENGTH
+        end
+
+        def release_untagged_preamble(content, thinking = nil)
+          @untagged_preamble_pending = false
+          @untagged_preamble_buffer = +''
+          [content, thinking]
+        end
+
+        def flush_pending_untagged_preamble
+          return if @untagged_preamble_buffer.empty?
+
+          content, thinking = Responses::ThinkingExtractor.extract_untagged_preamble(@untagged_preamble_buffer)
+          if thinking
+            @content << content
+            @thinking_text << thinking
+          else
+            @content << @untagged_preamble_buffer
+          end
+          @untagged_preamble_buffer = +''
+          @untagged_preamble_pending = false
         end
 
         def append_thinking_from_chunk(chunk)
@@ -191,8 +245,6 @@ module Legion
         end
 
         def extract_think_tags(text)
-          start_tag = '<think>'
-          end_tag = '</think>'
           remaining = @pending_think_tag + text
           @pending_think_tag = +''
 
@@ -201,9 +253,9 @@ module Legion
 
           until remaining.empty?
             remaining = if @inside_think_tag
-                          consume_think_content(remaining, end_tag, thinking)
+                          consume_think_content(remaining, @active_think_close_tag, thinking)
                         else
-                          consume_non_think_content(remaining, start_tag, output)
+                          consume_non_think_content(remaining, output)
                         end
           end
 
@@ -215,41 +267,59 @@ module Legion
           if end_index
             thinking << remaining.slice(0, end_index)
             @inside_think_tag = false
+            @active_think_close_tag = nil
             remaining.slice((end_index + end_tag.length)..) || +''
           else
-            suffix_len = longest_suffix_prefix(remaining, end_tag)
+            suffix_len = longest_suffix_prefix(remaining, [end_tag])
             thinking << remaining.slice(0, remaining.length - suffix_len)
             @pending_think_tag = remaining.slice(-suffix_len, suffix_len)
             +''
           end
         end
 
-        def consume_non_think_content(remaining, start_tag, output)
-          unmatched_close = remaining.index('</think>')
-          start_index = remaining.index(start_tag)
-          if unmatched_close && (start_index.nil? || unmatched_close < start_index)
+        def consume_non_think_content(remaining, output)
+          unmatched_close = next_stream_tag_match(remaining, :close)
+          start_match = next_stream_tag_match(remaining, :open)
+          if unmatched_close && (start_match.nil? || unmatched_close[:index] < start_match[:index])
             consume_unmatched_think_close(remaining, unmatched_close)
-          elsif start_index
-            output << remaining.slice(0, start_index)
+          elsif start_match
+            output << remaining.slice(0, start_match[:index])
             @inside_think_tag = true
-            remaining.slice((start_index + start_tag.length)..) || +''
+            @active_think_close_tag = start_match[:close_tag]
+            remaining.slice((start_match[:index] + start_match[:tag].length)..) || +''
           else
-            suffix_len = longest_suffix_prefix(remaining, start_tag)
+            suffix_len = longest_suffix_prefix(remaining, stream_tag_tokens)
             output << remaining.slice(0, remaining.length - suffix_len)
             @pending_think_tag = remaining.slice(-suffix_len, suffix_len)
             +''
           end
         end
 
-        def consume_unmatched_think_close(remaining, close_index)
-          end_tag = '</think>'
-          thinking = remaining.slice(0, close_index)
+        def consume_unmatched_think_close(remaining, close_match)
+          thinking = remaining.slice(0, close_match[:index])
           @thinking_text << thinking
           @last_thinking_delta << thinking
-          remaining.slice((close_index + end_tag.length)..).to_s.sub(/\A[[:space:]]+/, '')
+          remaining.slice((close_match[:index] + close_match[:tag].length)..).to_s.sub(/\A[[:space:]]+/, '')
         end
 
-        def longest_suffix_prefix(text, tag)
+        def next_stream_tag_match(text, type)
+          matches = Responses::ThinkingExtractor::THINK_TAG_PAIRS.filter_map do |open_tag, close_tag|
+            tag = type == :open ? open_tag : close_tag
+            index = text.index(tag)
+            { index: index, tag: tag, close_tag: close_tag } if index
+          end
+          matches.min_by { |match| match[:index] }
+        end
+
+        def stream_tag_tokens
+          Responses::ThinkingExtractor::THINK_TAG_PAIRS.flat_map { |open_tag, close_tag| [open_tag, close_tag] }
+        end
+
+        def longest_suffix_prefix(text, tags)
+          tags.map { |tag| longest_suffix_prefix_for_tag(text, tag) }.max || 0
+        end
+
+        def longest_suffix_prefix_for_tag(text, tag)
           max = [text.length, tag.length - 1].min
           max.downto(1) do |len|
             return len if text.end_with?(tag[0, len])

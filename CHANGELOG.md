@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.13 - 2026-05-15
+
+- Strip provider thinking from OpenAI-compatible responses when local models emit `<thinking>` tags or untagged initial reasoning preambles, and keep those hidden from live streaming content deltas.
+
 ## 0.4.12 - 2026-05-15
 
 - Preserve streamed provider error bodies in a custom Faraday env key so Faraday Net::HTTP finalization cannot replace the buffered body with an empty string before `ErrorMiddleware` parses it.
