@@ -93,23 +93,35 @@ module Legion
 
         def handle_failed_response(chunk, buffer, env)
           buffer << chunk
-          persist_failed_response_body(buffer, env)
+          body_persisted = persist_failed_response_body(buffer, env)
           error_data = Legion::JSON.parse(buffer, symbolize_names: false)
           handle_parsed_error(error_data, env)
         rescue Legion::JSON::ParseError
-          return if failed_response_body_persisted?(env)
+          return if body_persisted
 
           raise_partial_streaming_error(buffer, env)
         end
 
         def persist_failed_response_body(buffer, env)
-          return unless env.respond_to?(:body=)
-
-          env.body = buffer.dup
+          custom_persisted = persist_failed_response_custom_body?(buffer, env)
+          body_persisted = persist_failed_response_env_body?(buffer, env)
+          custom_persisted || body_persisted
         end
 
-        def failed_response_body_persisted?(env)
-          env.respond_to?(:body=)
+        def persist_failed_response_env_body?(buffer, env)
+          return false unless env.respond_to?(:body=)
+
+          env.body = buffer.dup
+          true
+        end
+
+        def persist_failed_response_custom_body?(buffer, env)
+          return false unless env.respond_to?(:[]=)
+
+          env[ErrorMiddleware::STREAM_ERROR_BODY_KEY] = buffer.dup
+          true
+        rescue StandardError
+          false
         end
 
         def raise_partial_streaming_error(buffer, env)

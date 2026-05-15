@@ -35,6 +35,23 @@ RSpec.describe Legion::Extensions::Llm::Streaming do
 
   describe '#handle_failed_response (private)' do
     let(:error_env) { Struct.new(:status, :body).new(500, nil) }
+    let(:faraday_env) do
+      Struct.new(:status, :body) do
+        def [](key)
+          custom[key]
+        end
+
+        def []=(key, value)
+          custom[key] = value
+        end
+
+        private
+
+        def custom
+          @custom ||= {}
+        end
+      end.new(500, nil)
+    end
     let(:non_mutable_env) { Struct.new(:status).new(500) }
 
     it 'raises ServerError with extracted message when JSON is complete' do
@@ -64,6 +81,14 @@ RSpec.describe Legion::Extensions::Llm::Streaming do
         .to raise_error(Legion::Extensions::Llm::ServerError, /overloaded/)
       expect(parsed_error.dig('error', 'message')).to eq('The model is currently overloaded')
       expect(error_env.body).to eq("#{first_chunk}#{second_chunk}")
+    end
+
+    it 'stores partial JSON in a custom Faraday env key that final response handling will not overwrite' do
+      buffer = +''
+      first_chunk = '{"error":{"message":"The model is currently'
+
+      expect { test_obj.send(:handle_failed_response, first_chunk, buffer, faraday_env) }.not_to raise_error
+      expect(faraday_env[Legion::Extensions::Llm::ErrorMiddleware::STREAM_ERROR_BODY_KEY]).to eq(first_chunk)
     end
 
     it 'raises ServerError with partial message when the env cannot carry the buffered body' do

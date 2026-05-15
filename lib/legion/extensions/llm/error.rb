@@ -54,6 +54,8 @@ module Legion
 
       # Faraday middleware that maps provider-specific API errors to Legion::Extensions::Llm errors.
       class ErrorMiddleware < Faraday::Middleware
+        STREAM_ERROR_BODY_KEY = :legion_llm_stream_error_body
+
         def initialize(app, options = {})
           super(app)
           @provider = options[:provider]
@@ -79,6 +81,7 @@ module Legion
           ].freeze
 
           def parse_error(provider:, response:) # rubocop:disable Metrics/PerceivedComplexity
+            response = response_with_stream_error_body(response)
             message = provider&.parse_error(response)
 
             case response.status
@@ -116,10 +119,49 @@ module Legion
 
           private
 
+          def response_with_stream_error_body(response)
+            return response unless empty_body?(response)
+
+            stream_body = preserved_stream_error_body(response)
+            return response if stream_body.to_s.empty?
+
+            ResponseWithBody.new(response, stream_body)
+          end
+
+          def empty_body?(response)
+            !response.respond_to?(:body) || response.body.to_s.empty?
+          end
+
+          def preserved_stream_error_body(response)
+            return unless response.respond_to?(:[])
+
+            response[STREAM_ERROR_BODY_KEY]
+          rescue StandardError
+            nil
+          end
+
           def context_length_exceeded?(message)
             return false if message.to_s.empty?
 
             CONTEXT_LENGTH_PATTERNS.any? { |pattern| message.match?(pattern) }
+          end
+        end
+
+        ResponseWithBody = Struct.new(:response, :body) do
+          def status = response.status
+
+          def [](key)
+            response[key] if response.respond_to?(:[])
+          end
+
+          def method_missing(method_name, ...)
+            return response.public_send(method_name, ...) if response.respond_to?(method_name)
+
+            super
+          end
+
+          def respond_to_missing?(method_name, include_private = false)
+            response.respond_to?(method_name, include_private) || super
           end
         end
       end
