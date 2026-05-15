@@ -95,8 +95,17 @@ module Legion
           buffer << chunk
           error_data = Legion::JSON.parse(buffer, symbolize_names: false)
           handle_parsed_error(error_data, env)
-        rescue Legion::JSON::ParseError => e
-          handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.handle_failed_response')
+        rescue Legion::JSON::ParseError
+          partial = buffer[/"message"\s*:\s*"([^"]{1,200})/, 1]
+          status  = env&.status || 0
+          msg     = if partial
+                      "Provider error (status #{status}): #{partial}"
+                    else
+                      "Provider error (status #{status}) — response body incomplete"
+                    end
+          log.warn "[llm][streaming] action=handle_failed_response status=#{status} " \
+                   "partial_body=#{buffer.length}b msg=#{partial.inspect}"
+          raise Legion::Extensions::Llm::ServerError, msg
         end
 
         def handle_sse(chunk, parser, env, &)
