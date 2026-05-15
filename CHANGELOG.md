@@ -2,7 +2,7 @@
 
 ## 0.4.11 - 2026-05-15
 
-- Fix `handle_failed_response` to raise `ServerError` with a diagnostic message when a provider returns a truncated or partial JSON error body during streaming. Previously, the `ParseError` was swallowed and the caller received a generic "An unknown error occurred" with no context. The partial message field is now extracted via regex fallback so vLLM and other streaming providers surface real error text.
+- Fix `handle_failed_response` to preserve non-200 streaming error bodies across chunks instead of swallowing `ParseError` and falling through to a generic "An unknown error occurred". Complete JSON error bodies still raise typed provider errors immediately; incomplete bodies are buffered onto the Faraday response env for final middleware parsing, with regex fallback extraction for vLLM-style partial `message` fields when the env cannot carry the buffered body.
 
 ## 0.4.10 - 2026-05-13
 

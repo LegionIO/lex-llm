@@ -80,6 +80,25 @@ RSpec.describe Legion::Extensions::Llm::Provider do
     end
   end
 
+  describe '#parse_error' do
+    let(:provider_class) do
+      Class.new(described_class) do
+        def api_base = 'https://provider.invalid'
+      end
+    end
+
+    let(:provider) { provider_class.new(Legion::Extensions::Llm.config) }
+
+    it 'extracts provider message text from incomplete JSON error bodies' do
+      response = Struct.new(:status, :body).new(
+        500,
+        '{"error":{"message":"The model rejected chat_template_kwargs'
+      )
+
+      expect(provider.parse_error(response)).to eq('The model rejected chat_template_kwargs')
+    end
+  end
+
   describe 'canonical provider contract' do
     let(:model) do
       Legion::Extensions::Llm::Model::Info.new(

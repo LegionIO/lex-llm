@@ -34,7 +34,8 @@ RSpec.describe Legion::Extensions::Llm::Streaming do
   end
 
   describe '#handle_failed_response (private)' do
-    let(:error_env) { Struct.new(:status).new(500) }
+    let(:error_env) { Struct.new(:status, :body).new(500, nil) }
+    let(:non_mutable_env) { Struct.new(:status).new(500) }
 
     it 'raises ServerError with extracted message when JSON is complete' do
       buffer = +''
@@ -46,17 +47,36 @@ RSpec.describe Legion::Extensions::Llm::Streaming do
         .to raise_error(Legion::Extensions::Llm::ServerError)
     end
 
-    it 'raises ServerError with partial message when JSON is truncated' do
+    it 'buffers partial JSON on mutable Faraday envs until the error body is complete' do
+      buffer = +''
+      first_chunk = '{"error":{"message":"The model is currently'
+      second_chunk = ' overloaded","code":500}}'
+      parsed_error = nil
+      allow(test_obj).to receive(:handle_parsed_error) do |data, _env|
+        parsed_error = data
+        raise Legion::Extensions::Llm::ServerError, 'The model is currently overloaded'
+      end
+
+      expect { test_obj.send(:handle_failed_response, first_chunk, buffer, error_env) }.not_to raise_error
+      expect(error_env.body).to eq(first_chunk)
+
+      expect { test_obj.send(:handle_failed_response, second_chunk, buffer, error_env) }
+        .to raise_error(Legion::Extensions::Llm::ServerError, /overloaded/)
+      expect(parsed_error.dig('error', 'message')).to eq('The model is currently overloaded')
+      expect(error_env.body).to eq("#{first_chunk}#{second_chunk}")
+    end
+
+    it 'raises ServerError with partial message when the env cannot carry the buffered body' do
       buffer = +''
       truncated_chunk = '{"error":{"message":"The model is currently overloaded'
-      expect { test_obj.send(:handle_failed_response, truncated_chunk, buffer, error_env) }
+      expect { test_obj.send(:handle_failed_response, truncated_chunk, buffer, non_mutable_env) }
         .to raise_error(Legion::Extensions::Llm::ServerError, /Provider error.*The model is currently overloaded/)
     end
 
-    it 'raises ServerError with generic message when no partial message extractable' do
+    it 'raises ServerError with generic message when no partial message is extractable and env cannot buffer' do
       buffer = +''
       partial_chunk = '{"error":{'
-      expect { test_obj.send(:handle_failed_response, partial_chunk, buffer, error_env) }
+      expect { test_obj.send(:handle_failed_response, partial_chunk, buffer, non_mutable_env) }
         .to raise_error(Legion::Extensions::Llm::ServerError, /Provider error.*incomplete/)
     end
   end
