@@ -89,6 +89,17 @@ RSpec.describe Legion::Extensions::Llm::Routing::ModelOffering do
     expect(offering.eligible_for?(required_capabilities: [:vision])).to be false
   end
 
+  it 'treats legacy function-calling capability names as tools support' do
+    legacy_tools = described_class.new(
+      provider_family: :vllm,
+      model: 'qwen-tools',
+      capabilities: %i[chat function_calling]
+    )
+
+    expect(legacy_tools.capabilities).to include(:function_calling, :tools)
+    expect(legacy_tools.eligible_for?(required_capabilities: [:tools])).to be true
+  end
+
   it 'treats disabled offerings as ineligible' do
     disabled = described_class.new(
       provider_family: :ollama,

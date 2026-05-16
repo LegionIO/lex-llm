@@ -92,6 +92,14 @@ RSpec.describe Legion::Extensions::Llm::Model::Info do
       expect(info.capabilities).to eq(%i[completion vision])
     end
 
+    it 'adds the canonical tools capability for function-calling aliases' do
+      info = described_class.new(id: 'x', capabilities: %w[completion function_calling functions])
+
+      expect(info.capabilities).to include(:completion, :function_calling, :functions, :tools)
+      expect(info.tools?).to be true
+      expect(info.supports?(:tools)).to be true
+    end
+
     it 'converts context_length to integer' do
       info = described_class.new(id: 'x', context_length: '128000')
       expect(info.context_length).to eq(128_000)

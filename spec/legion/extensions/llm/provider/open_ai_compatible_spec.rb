@@ -131,7 +131,7 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
     models = provider.send(:parse_list_models_response, fake_response(models_body), :compatible,
                            provider_class.capabilities)
 
-    expect(models.map(&:capabilities)).to eq([%i[streaming function_calling], %i[embeddings]])
+    expect(models.map(&:capabilities)).to eq([%i[streaming function_calling tools], %i[embeddings]])
     expect(models.map { |model| model.modalities.to_h }).to eq([
                                                                  { input: %w[text image], output: %w[text] },
                                                                  { input: %w[text], output: %w[embeddings] }

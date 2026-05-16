@@ -4,6 +4,15 @@ module Legion
   module Extensions
     module Llm
       module Model
+        CAPABILITY_ALIASES = {
+          function_calling: :tools,
+          functions: :tools,
+          tool: :tools,
+          tool_use: :tools,
+          stream: :streaming,
+          stream_chat: :streaming
+        }.freeze
+
         Info = ::Data.define(
           :id, :name, :provider, :instance, :family,
           :capabilities, :context_length, :parameter_count,
@@ -171,7 +180,14 @@ module Legion
           private
 
           def normalize_symbols(value)
-            Array(value).map { |v| v.to_s.downcase.strip.to_sym }.uniq
+            Array(value).compact.each_with_object([]) do |item, normalized|
+              symbol = item.to_s.downcase.strip.to_sym
+              next if symbol.to_s.empty?
+
+              normalized << symbol
+              alias_symbol = CAPABILITY_ALIASES[symbol]
+              normalized << alias_symbol if alias_symbol
+            end.uniq
           end
 
           def to_int(value)
