@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.14 - 2026-05-16
+
+- Normalize `function_calling`, `functions`, and related tool-use capability aliases to include canonical `:tools` on model metadata and routing offerings.
+- Keep provider compatibility aliases while allowing capability filters to reliably match tool-capable models.
+
 ## 0.4.13 - 2026-05-15
 
 - Strip provider thinking from OpenAI-compatible responses when local models emit `<thinking>` tags or untagged initial reasoning preambles, and keep those hidden from live streaming content deltas.

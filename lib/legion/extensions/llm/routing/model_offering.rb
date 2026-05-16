@@ -6,6 +6,15 @@ module Legion
       module Routing
         # Describes one concrete model made available by one provider instance.
         class ModelOffering
+          CAPABILITY_ALIASES = {
+            function_calling: :tools,
+            functions: :tools,
+            tool: :tools,
+            tool_use: :tools,
+            stream: :streaming,
+            stream_chat: :streaming
+          }.freeze
+
           attr_reader :offering_id, :provider_family, :model_family, :provider_instance, :instance_id, :transport,
                       :tier, :model, :canonical_model_alias, :routing_metadata, :usage_type, :capabilities, :limits,
                       :credentials, :health, :cost, :policy_tags, :metadata
@@ -27,7 +36,7 @@ module Legion
                                                            fetch_value(data, :type) ||
                                                            fetch_value(data, :kind) ||
                                                            infer_usage_type(data)))
-            @capabilities = normalize_array(fetch_value(data, :capabilities))
+            @capabilities = normalize_capabilities(fetch_value(data, :capabilities))
             @limits = normalize_hash(fetch_value(data, :limits))
             @credentials = fetch_value(data, :credentials)
             @health = normalize_hash(fetch_value(data, :health))
@@ -57,7 +66,7 @@ module Legion
           end
 
           def supports?(capability)
-            capabilities.include?(capability.to_sym)
+            normalize_capabilities([capability]).any? { |candidate| capabilities.include?(candidate) }
           end
 
           def eligible_for?(usage_type: nil, required_capabilities: [], min_context_window: nil, policy_tags: [])
@@ -120,7 +129,7 @@ module Legion
           end
 
           def infer_usage_type(data)
-            capabilities = normalize_array(fetch_value(data, :capabilities))
+            capabilities = normalize_capabilities(fetch_value(data, :capabilities))
             return :embedding if capabilities.include?(:embedding) || capabilities.include?(:embed)
 
             :inference
@@ -147,6 +156,17 @@ module Legion
             Array(value).compact.map(&:to_sym)
           end
 
+          def normalize_capabilities(value)
+            Array(value).compact.each_with_object([]) do |item, normalized|
+              symbol = item.to_s.downcase.strip.to_sym
+              next if symbol.to_s.empty?
+
+              normalized << symbol
+              alias_symbol = CAPABILITY_ALIASES[symbol]
+              normalized << alias_symbol if alias_symbol
+            end.uniq
+          end
+
           def normalize_hash(value)
             (value || {}).to_h.transform_keys(&:to_sym)
           end
@@ -165,7 +185,7 @@ module Legion
           end
 
           def capabilities_match?(required)
-            Array(required).all? { |capability| supports?(capability) }
+            normalize_capabilities(required).all? { |capability| capabilities.include?(capability) }
           end
 
           def context_window_matches?(minimum)
