@@ -20,6 +20,7 @@ group :development do
   gem 'reline'
   gem 'rspec', '~> 3.12'
   gem 'rubocop', '>= 1.0'
+  gem 'rubocop-legion'
   gem 'rubocop-performance'
   gem 'rubocop-rake', '>= 0.6'
   gem 'rubocop-rspec'

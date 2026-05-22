@@ -43,6 +43,25 @@ module Legion
         end
 
         def headers
+          identity_headers
+        end
+
+        def identity_headers
+          return {} unless defined?(Legion::Identity::Process) && Legion::Identity::Process.respond_to?(:identity_hash)
+
+          id = Legion::Identity::Process.identity_hash
+          hdrs = {
+            'x-legion-identity-canonical-name' => id[:canonical_name].to_s,
+            'x-legion-identity-trust' => id[:trust].to_s,
+            'x-legion-identity-id' => id[:id].to_s,
+            'x-legion-identity-kind' => id[:kind].to_s,
+            'x-legion-identity-mode' => id[:mode].to_s,
+            'x-legion-identity-source' => id[:source].to_s
+          }
+          hdrs['x-legion-identity-db-principal-id'] = id[:db_principal_id].to_s if id[:db_principal_id]
+          hdrs['x-legion-identity-db-identity-id']  = id[:db_identity_id].to_s if id[:db_identity_id]
+          hdrs
+        rescue StandardError
           {}
         end
 
@@ -292,14 +311,31 @@ module Legion
 
         def model_whitelist
           wl = config.model_whitelist if config.respond_to?(:model_whitelist)
-          wl ||= settings[:model_whitelist] if respond_to?(:settings)
+          wl ||= settings[:model_whitelist] if respond_to?(:settings) && settings.is_a?(Hash)
+          wl ||= runtime_provider_setting(:model_whitelist)
           Array(wl).map { |p| p.to_s.downcase }
         end
 
         def model_blacklist
           bl = config.model_blacklist if config.respond_to?(:model_blacklist)
-          bl ||= settings[:model_blacklist] if respond_to?(:settings)
+          bl ||= settings[:model_blacklist] if respond_to?(:settings) && settings.is_a?(Hash)
+          bl ||= runtime_provider_setting(:model_blacklist)
           Array(bl).map { |p| p.to_s.downcase }
+        end
+
+        def runtime_provider_setting(key)
+          return nil unless defined?(Legion::Settings)
+
+          ext = Legion::Settings[:extensions]
+          return nil unless ext.is_a?(Hash) && ext[:llm].is_a?(Hash)
+
+          provider_key = self.class.respond_to?(:slug) ? self.class.slug.to_sym : nil
+          return nil unless provider_key
+
+          provider_conf = ext[:llm][provider_key]
+          provider_conf.is_a?(Hash) ? provider_conf[key] : nil
+        rescue StandardError
+          nil
         end
 
         def model_allowed?(model_name)
@@ -311,6 +347,16 @@ module Legion
           return false if bl.any? && bl.any? { |p| name.include?(p) }
 
           true
+        end
+
+        # ── Offering defaults ─────────────────────────────────────────────
+
+        def offering_transport
+          config.respond_to?(:transport) ? config.transport : self.class.default_transport
+        end
+
+        def offering_tier
+          config.respond_to?(:tier) ? config.tier : self.class.default_tier
         end
 
         # ── Multi-host base_url resolution ────────────────────────────────
@@ -437,6 +483,14 @@ module Legion
             []
           end
 
+          def default_transport
+            :http
+          end
+
+          def default_tier
+            :frontier
+          end
+
           def local?
             false
           end
@@ -501,14 +555,6 @@ module Legion
             health:,
             metadata: offering_metadata(model)
           )
-        end
-
-        def offering_transport
-          local? ? :local : :http
-        end
-
-        def offering_tier
-          local? ? :local : :direct
         end
 
         def offering_usage_type(model)
