@@ -557,7 +557,6 @@ module Legion
           )
         end
 
-
         def offering_usage_type(model)
           model.embedding? ? :embedding : :inference
         end
