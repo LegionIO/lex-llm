@@ -72,15 +72,35 @@ module Legion
             raise TokenError, 'fleet request expires_at is invalid'
           end
 
+          SCALAR_CLAIMS = %i[
+            request_id correlation_id idempotency_key operation provider provider_instance
+            model reply_to timeout_seconds expires_at
+          ].freeze
+          HASHABLE_CLAIMS = %i[message_context params caller trace_context].freeze
+
           def validate_envelope_claims!(claims, envelope)
-            %i[
-              request_id correlation_id idempotency_key operation provider provider_instance
-              model reply_to message_context params caller trace_context timeout_seconds expires_at
-            ].each do |key|
+            SCALAR_CLAIMS.each do |key|
               expected = canonical_value(envelope[key])
               actual = canonical_value(claims[key])
               raise TokenError, "fleet token #{key} claim mismatch" unless actual == expected
             end
+
+            HASHABLE_CLAIMS.each do |key|
+              hash_key = :"#{key}_hash"
+              if claims.key?(hash_key)
+                expected_hash = content_hash(envelope[key])
+                raise TokenError, "fleet token #{key} hash mismatch" unless claims[hash_key] == expected_hash
+              else
+                expected = canonical_value(envelope[key])
+                actual = canonical_value(claims[key])
+                raise TokenError, "fleet token #{key} claim mismatch" unless actual == expected
+              end
+            end
+          end
+
+          def content_hash(value)
+            require 'digest'
+            Digest::SHA256.hexdigest(canonical_value(value).to_s)
           end
 
           def reserve_replay!(jti)
@@ -119,8 +139,16 @@ module Legion
             @replay_mutex.synchronize { purge_replay_cache_locked!(Time.now.to_i) }
           end
 
+          MAX_REPLAY_ENTRIES = 100_000
+
           def purge_replay_cache_locked!(now)
             @seen_jtis.each_pair { |jti, entry| @seen_jtis.delete(jti) unless active_replay?(entry, now) }
+            evict_oldest_replay_entries! if @seen_jtis.size > MAX_REPLAY_ENTRIES
+          end
+
+          def evict_oldest_replay_entries!
+            sorted = @seen_jtis.each_pair.sort_by { |_jti, entry| entry[:expires_at] }
+            sorted.first(@seen_jtis.size - MAX_REPLAY_ENTRIES).each_key { |jti| @seen_jtis.delete(jti) }
           end
 
           def active_replay?(entry, now)

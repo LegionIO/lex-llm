@@ -31,6 +31,7 @@ module Legion
 
             def exchange = Exchanges::Fleet
             def type = Fleet::Protocol::REQUEST_TYPE
+            def encrypt? = Fleet::Settings.value(:fleet, :compliance, :encrypt_fleet, default: true) == true
             def app_id = @options[:app_id] || 'lex-llm'
             def reply_to = @options[:reply_to]
             def correlation_id = @options[:correlation_id]

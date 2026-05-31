@@ -115,12 +115,22 @@ module Legion
             TokenValidator.release_replay!(claims[:jti])
           end
 
+          MAX_IDEMPOTENCY_ENTRIES = 100_000
+
           def purge_idempotency_cache!
             @idempotency_mutex.synchronize do
               now = Time.now.to_i
               @idempotency_keys.each_pair do |key, entry|
                 @idempotency_keys.delete(key) if entry[:expires_at] <= now
               end
+              evict_oldest_idempotency_entries! if @idempotency_keys.size > MAX_IDEMPOTENCY_ENTRIES
+            end
+          end
+
+          def evict_oldest_idempotency_entries!
+            sorted = @idempotency_keys.each_pair.sort_by { |_key, entry| entry[:expires_at] }
+            sorted.first(@idempotency_keys.size - MAX_IDEMPOTENCY_ENTRIES).each_key do |key|
+              @idempotency_keys.delete(key)
             end
           end
 
