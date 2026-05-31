@@ -82,6 +82,7 @@ module Legion
                            errors: false,
                            headers: false,
                            log_level: :debug do |logger|
+            logger.filter(logging_regexp('Bearer [A-Za-z0-9._\\-]+'), 'Bearer [REDACTED]')
             logger.filter(logging_regexp('[A-Za-z0-9+/=]{100,}'), '[BASE64 DATA]')
             logger.filter(logging_regexp('[-\\d.e,\\s]{100,}'), '[EMBEDDINGS ARRAY]')
           end
