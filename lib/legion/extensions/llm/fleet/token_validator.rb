@@ -28,7 +28,7 @@ module Legion
                                       verification_key: signing_key,
                                       issuer: issuer,
                                       algorithm: algorithm,
-                                      verify_issuer: false
+                                      verify_issuer: true
                                     ))
             validate_registered_claims!(claims)
             validate_request_expiry!(claims)
@@ -87,14 +87,9 @@ module Legion
 
             HASHABLE_CLAIMS.each do |key|
               hash_key = :"#{key}_hash"
-              if claims.key?(hash_key)
-                expected_hash = content_hash(envelope[key])
-                raise TokenError, "fleet token #{key} hash mismatch" unless claims[hash_key] == expected_hash
-              else
-                expected = canonical_value(envelope[key])
-                actual = canonical_value(claims[key])
-                raise TokenError, "fleet token #{key} claim mismatch" unless actual == expected
-              end
+              expected_hash = content_hash(envelope[key])
+              actual_hash = claims[hash_key] || content_hash(claims[key])
+              raise TokenError, "fleet token #{key} hash mismatch" unless actual_hash == expected_hash
             end
           end
 

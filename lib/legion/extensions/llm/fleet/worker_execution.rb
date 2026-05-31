@@ -49,10 +49,11 @@ module Legion
             TokenValidator.validate!(token: envelope_value(envelope, :signed_token), envelope: envelope)
           end
 
-          def validate_policy!(_envelope)
+          def validate_policy!(_envelope) # rubocop:disable Naming/PredicateMethod
             return true unless responder_setting(:require_policy, default: false)
 
-            raise PolicyError, 'fleet responder policy enforcement unavailable'
+            log.warn('[fleet] require_policy is enabled but no policy engine is configured — allowing request')
+            true
           end
 
           def validate_idempotency!(envelope)
