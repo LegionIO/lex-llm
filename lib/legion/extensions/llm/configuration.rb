@@ -53,6 +53,10 @@ module Legion
         option :log_stream_debug, -> { ENV['LEGION_LLM_STREAM_DEBUG'] == 'true' }
         option :log_regexp_timeout, -> { Regexp.respond_to?(:timeout) ? (Regexp.timeout || 1.0) : nil }
 
+        # Prompt caching
+        option :llm_cache_enabled, true
+        option :cache_control_prefix_messages, 4
+
         def initialize
           self.class.send(:defaults).each do |key, default|
             value = default.respond_to?(:call) ? instance_exec(&default) : default

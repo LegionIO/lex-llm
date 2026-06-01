@@ -22,5 +22,17 @@ RSpec.describe Legion::Extensions::Llm::Configuration do
         :model_registry_file
       )
     end
+
+    it 'includes prompt caching configuration options' do
+      expect(described_class.options).to include(:llm_cache_enabled, :cache_control_prefix_messages)
+    end
+
+    it 'defaults llm_cache_enabled to true' do
+      expect(config.llm_cache_enabled).to be true
+    end
+
+    it 'defaults cache_control_prefix_messages to 4' do
+      expect(config.cache_control_prefix_messages).to eq(4)
+    end
   end
 end

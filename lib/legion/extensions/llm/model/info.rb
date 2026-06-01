@@ -56,6 +56,12 @@ module Legion
           def tools?      = capabilities.include?(:tools)
           def thinking?   = capabilities.include?(:thinking)
 
+          # Returns true if the model supports prompt caching (Anthropic Claude 4.x, 3.5 Sonnet+).
+          # Checks the explicit `prompt_caching` capability flag in the capabilities array.
+          def prompt_caching_supported?
+            capabilities.include?(:prompt_caching)
+          end
+
           def supports?(capability)
             capabilities.include?(capability.to_s.downcase.to_sym)
           end
@@ -122,7 +128,7 @@ module Legion
           end
 
           # Legacy capability predicates (string-based)
-          %w[function_calling structured_output batch reasoning citations streaming].each do |cap|
+          %w[function_calling structured_output batch reasoning citations streaming prompt_caching].each do |cap|
             define_method "#{cap}?" do
               supports?(cap)
             end
