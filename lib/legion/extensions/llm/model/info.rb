@@ -58,7 +58,7 @@ module Legion
 
           # Returns true if the model supports prompt caching (Anthropic Claude 4.x, 3.5 Sonnet+).
           # Checks the explicit `prompt_caching` capability flag in the capabilities array.
-          def prompt_caching_supported?
+          def supports_prompt_caching?
             capabilities.include?(:prompt_caching)
           end
 

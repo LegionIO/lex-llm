@@ -193,20 +193,20 @@ RSpec.describe Legion::Extensions::Llm::Model::Info do
     end
   end
 
-  describe '#prompt_caching_supported?' do
+  describe '#supports_prompt_caching?' do
     it 'returns true when prompt_caching is in capabilities' do
       info = described_class.new(id: 'claude-sonnet-4-0', capabilities: %w[prompt_caching tools])
-      expect(info.prompt_caching_supported?).to be true
+      expect(info.supports_prompt_caching?).to be true
     end
 
     it 'returns false when prompt_caching is not in capabilities' do
       info = described_class.new(id: 'gpt-5', capabilities: %w[tools vision])
-      expect(info.prompt_caching_supported?).to be false
+      expect(info.supports_prompt_caching?).to be false
     end
 
     it 'returns false for a model with no capabilities' do
       info = described_class.new(id: 'basic-model')
-      expect(info.prompt_caching_supported?).to be false
+      expect(info.supports_prompt_caching?).to be false
     end
 
     it 'supports the legacy string-based predicate' do

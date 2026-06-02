@@ -229,9 +229,9 @@ module Legion
           config.llm_cache_enabled == true
         end
 
-        def cache_control_prefix_messages
-          if config.respond_to?(:cache_control_prefix_messages) && config.cache_control_prefix_messages
-            config.cache_control_prefix_messages
+        def cache_control_prefix_tokens
+          if config.respond_to?(:cache_control_prefix_tokens) && config.cache_control_prefix_tokens
+            config.cache_control_prefix_tokens
           else
             4
           end

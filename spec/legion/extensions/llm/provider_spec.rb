@@ -565,19 +565,19 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       end
     end
 
-    describe '#cache_control_prefix_messages' do
+    describe '#cache_control_prefix_tokens' do
       it 'returns the configured value when set' do
-        Legion::Extensions::Llm.config.cache_control_prefix_messages = 6
+        Legion::Extensions::Llm.config.cache_control_prefix_tokens = 6
         provider = provider_class.new(Legion::Extensions::Llm.config)
 
-        expect(provider.cache_control_prefix_messages).to eq(6)
+        expect(provider.cache_control_prefix_tokens).to eq(6)
       end
 
       it 'defaults to 4 when not explicitly set' do
-        Legion::Extensions::Llm.config.cache_control_prefix_messages = 4
+        Legion::Extensions::Llm.config.cache_control_prefix_tokens = 4
         provider = provider_class.new(Legion::Extensions::Llm.config)
 
-        expect(provider.cache_control_prefix_messages).to eq(4)
+        expect(provider.cache_control_prefix_tokens).to eq(4)
       end
 
       it 'defaults to 4 when config does not respond to the option' do
@@ -585,7 +585,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
                    retry_interval_randomness: 0 }
         provider = provider_class.new(config)
 
-        expect(provider.cache_control_prefix_messages).to eq(4)
+        expect(provider.cache_control_prefix_tokens).to eq(4)
       end
     end
   end

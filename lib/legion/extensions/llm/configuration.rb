@@ -55,7 +55,7 @@ module Legion
 
         # Prompt caching
         option :llm_cache_enabled, true
-        option :cache_control_prefix_messages, 4
+        option :cache_control_prefix_tokens, 4
 
         def initialize
           self.class.send(:defaults).each do |key, default|
