@@ -527,4 +527,66 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       end
     end
   end
+
+  describe 'prompt caching' do
+    let(:provider_class) do
+      Class.new(described_class) do
+        attr_writer :settings
+
+        def api_base = 'https://test.invalid'
+
+        def settings
+          @settings || {}
+        end
+      end
+    end
+
+    describe '#cache_enabled?' do
+      it 'returns true when llm_cache_enabled is true in config' do
+        Legion::Extensions::Llm.config.llm_cache_enabled = true
+        provider = provider_class.new(Legion::Extensions::Llm.config)
+
+        expect(provider.cache_enabled?).to be true
+      end
+
+      it 'returns false when llm_cache_enabled is false in config' do
+        Legion::Extensions::Llm.config.llm_cache_enabled = false
+        provider = provider_class.new(Legion::Extensions::Llm.config)
+
+        expect(provider.cache_enabled?).to be false
+      end
+
+      it 'returns false when llm_cache_enabled is not set on config' do
+        config = { request_timeout: 30, max_retries: 0, retry_interval: 0, retry_backoff_factor: 0,
+                   retry_interval_randomness: 0 }
+        provider = provider_class.new(config)
+
+        expect(provider.cache_enabled?).to be false
+      end
+    end
+
+    describe '#cache_control_prefix_tokens' do
+      it 'returns the configured value when set' do
+        Legion::Extensions::Llm.config.cache_control_prefix_tokens = 6
+        provider = provider_class.new(Legion::Extensions::Llm.config)
+
+        expect(provider.cache_control_prefix_tokens).to eq(6)
+      end
+
+      it 'defaults to 4 when not explicitly set' do
+        Legion::Extensions::Llm.config.cache_control_prefix_tokens = 4
+        provider = provider_class.new(Legion::Extensions::Llm.config)
+
+        expect(provider.cache_control_prefix_tokens).to eq(4)
+      end
+
+      it 'defaults to 4 when config does not respond to the option' do
+        config = { request_timeout: 30, max_retries: 0, retry_interval: 0, retry_backoff_factor: 0,
+                   retry_interval_randomness: 0 }
+        provider = provider_class.new(config)
+
+        expect(provider.cache_control_prefix_tokens).to eq(4)
+      end
+    end
+  end
 end

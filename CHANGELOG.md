@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.16 - 2026-05-31
+
+### Security
+- **FLEET-01**: `FleetRequest`, `FleetResponse`, and `FleetError` now encrypt via `Legion::Crypt` when `fleet.compliance.encrypt_fleet` is true (default). Node-to-node inference traffic with PHI was previously plaintext on AMQP.
+- **FLEET-02**: JWT `verify_issuer` set to `true` — library now validates issuer claim cryptographically.
+- **FLEET-03**: Hashable JWT claims (params, caller, message_context, trace_context) validated via content hash only. No raw PHI values in base64 JWT payloads.
+- **CRED-01**: Credential source probing (claude/codex config files) gated behind `extensions.llm.security.credential_source_probing` setting. Disableable in production.
+- **OPENAI-CRED-01**: Bearer token filter added to Faraday response logger — API keys redacted as `Bearer [REDACTED]` in debug output.
+
+### Fixed
+- **FLEET-04**: `validate_policy!` no longer blocks all traffic when `require_policy` is enabled — logs warning and allows instead of raising unconditionally.
+- **FLEET-IDEMPOTENCY-01**: 100k entry cap on replay JTI cache and idempotency cache with LRU eviction under memory pressure.
+
 ## 0.4.15 - 2026-05-21
 
 - Add `identity_headers` to base provider — all API calls now include x-legion-identity-* headers when Identity is resolved

@@ -18,6 +18,12 @@ module Legion
         CLAUDE_PROJECT  = File.join(Dir.pwd, '.claude', 'settings.json')
         CODEX_AUTH      = File.expand_path('~/.codex/auth.json')
 
+        def credential_source_probing_enabled?
+          return true unless defined?(::Legion::Settings)
+
+          ::Legion::Settings.dig(:extensions, :llm, :security, :credential_source_probing) != false
+        end
+
         # --- public helpers ------------------------------------------------
 
         # Fetch an environment variable, stripping whitespace.
@@ -30,9 +36,9 @@ module Legion
           stripped.empty? ? nil : stripped
         end
 
-        # Merged Claude config (user-level + project-level).  Project settings
-        # override user settings.  Memoized for the lifetime of the process.
         def claude_config
+          return {} unless credential_source_probing_enabled?
+
           @claude_config ||= merge_claude_configs
         end
 
@@ -52,9 +58,9 @@ module Legion
           env_hash[key.to_sym] || env_hash[key.to_s]
         end
 
-        # Read the bearer token from ~/.codex/auth.json when auth_mode is
-        # "chatgpt" and the JWT is not expired.
         def codex_token
+          return nil unless credential_source_probing_enabled?
+
           data = read_json(CODEX_AUTH)
           mode = data[:auth_mode] || data['auth_mode']
           return nil unless mode == 'chatgpt'
@@ -66,8 +72,9 @@ module Legion
           token
         end
 
-        # Read the OPENAI_API_KEY from ~/.codex/auth.json.
         def codex_openai_key
+          return nil unless credential_source_probing_enabled?
+
           data = read_json(CODEX_AUTH)
           val = data[:OPENAI_API_KEY] || data['OPENAI_API_KEY']
           return nil if val.nil?
@@ -206,7 +213,8 @@ module Legion
           false
         end
 
-        module_function :env, :claude_config, :claude_config_value,
+        module_function :env, :credential_source_probing_enabled?,
+                        :claude_config, :claude_config_value,
                         :claude_env_value, :codex_token, :codex_openai_key,
                         :setting, :socket_open?, :http_ok?,
                         :dedup_credentials, :credential_hash,

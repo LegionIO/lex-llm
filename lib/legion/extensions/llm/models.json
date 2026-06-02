@@ -124,7 +124,8 @@
     },
     "capabilities": [
       "function_calling",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -176,7 +177,8 @@
     },
     "capabilities": [
       "function_calling",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -229,7 +231,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -438,7 +441,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -491,7 +495,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -544,7 +549,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -597,7 +603,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -650,7 +657,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -703,7 +711,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -756,7 +765,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -809,7 +819,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -862,7 +873,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -915,7 +927,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -968,7 +981,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -1021,7 +1035,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -1074,7 +1089,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -1127,7 +1143,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -4303,7 +4320,9 @@
       "input": [],
       "output": []
     },
-    "capabilities": [],
+    "capabilities": [
+      "prompt_caching"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
@@ -4330,7 +4349,9 @@
       "input": [],
       "output": []
     },
-    "capabilities": [],
+    "capabilities": [
+      "prompt_caching"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
@@ -4357,7 +4378,9 @@
       "input": [],
       "output": []
     },
-    "capabilities": [],
+    "capabilities": [
+      "prompt_caching"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
@@ -4384,7 +4407,9 @@
       "input": [],
       "output": []
     },
-    "capabilities": [],
+    "capabilities": [
+      "prompt_caching"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
@@ -4411,7 +4436,9 @@
       "input": [],
       "output": []
     },
-    "capabilities": [],
+    "capabilities": [
+      "prompt_caching"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
@@ -4438,7 +4465,9 @@
       "input": [],
       "output": []
     },
-    "capabilities": [],
+    "capabilities": [
+      "prompt_caching"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
@@ -9956,7 +9985,8 @@
     },
     "capabilities": [
       "function_calling",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10008,7 +10038,8 @@
     },
     "capabilities": [
       "function_calling",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10060,7 +10091,8 @@
     },
     "capabilities": [
       "function_calling",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10378,7 +10410,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10431,7 +10464,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10484,7 +10518,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10538,7 +10573,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10592,7 +10628,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10645,7 +10682,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10699,7 +10737,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -10752,7 +10791,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11198,7 +11238,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11252,7 +11293,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11306,7 +11348,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11359,7 +11402,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11413,7 +11457,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11466,7 +11511,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11520,7 +11566,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11574,7 +11621,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11628,7 +11676,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11681,7 +11730,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11735,7 +11785,8 @@
       "function_calling",
       "structured_output",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -11788,7 +11839,8 @@
     "capabilities": [
       "function_calling",
       "reasoning",
-      "vision"
+      "vision",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -15451,7 +15503,8 @@
     "capabilities": [
       "function_calling",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -15512,7 +15565,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -15591,7 +15645,8 @@
       "function_calling",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -15670,7 +15725,8 @@
       "function_calling",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -15731,7 +15787,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -15811,7 +15868,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -15890,7 +15948,8 @@
       "function_calling",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -15970,7 +16029,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -16050,7 +16110,8 @@
       "reasoning",
       "vision",
       "streaming",
-      "structured_output"
+      "structured_output",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -29286,7 +29347,8 @@
       "function_calling",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -29369,7 +29431,8 @@
     },
     "capabilities": [
       "streaming",
-      "function_calling"
+      "function_calling",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -29437,7 +29500,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -29523,7 +29587,8 @@
       "function_calling",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -29609,7 +29674,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -29697,7 +29763,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -29785,7 +29852,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -29877,7 +29945,8 @@
     "capabilities": [
       "streaming",
       "function_calling",
-      "structured_output"
+      "structured_output",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -29946,7 +30015,8 @@
       "function_calling",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -30038,7 +30108,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {
@@ -30131,7 +30202,8 @@
       "structured_output",
       "reasoning",
       "vision",
-      "streaming"
+      "streaming",
+      "prompt_caching"
     ],
     "pricing": {
       "text_tokens": {

@@ -223,6 +223,20 @@ module Legion
           configuration_requirements.all? { |req| @config.send(req) }
         end
 
+        def cache_enabled?
+          return false unless config.respond_to?(:llm_cache_enabled)
+
+          config.llm_cache_enabled == true
+        end
+
+        def cache_control_prefix_tokens
+          if config.respond_to?(:cache_control_prefix_tokens) && config.cache_control_prefix_tokens
+            config.cache_control_prefix_tokens
+          else
+            4
+          end
+        end
+
         def local?
           self.class.local?
         end

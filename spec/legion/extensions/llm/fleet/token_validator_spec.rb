@@ -47,7 +47,7 @@ RSpec.describe Legion::Extensions::Llm::Fleet::TokenValidator do
       verification_key: 'secret',
       issuer: 'legion-llm',
       algorithm: 'HS256',
-      verify_issuer: false
+      verify_issuer: true
     )
   end
 
@@ -85,8 +85,8 @@ RSpec.describe Legion::Extensions::Llm::Fleet::TokenValidator do
   end
 
   %i[
-    request_id correlation_id idempotency_key operation provider provider_instance model reply_to message_context params
-    caller trace_context timeout_seconds expires_at
+    request_id correlation_id idempotency_key operation provider provider_instance model reply_to
+    timeout_seconds expires_at
   ].each do |claim|
     it "rejects envelope claim mismatch for #{claim}" do
       value = claim == :expires_at ? (Time.now.utc + 120).iso8601 : 'different'
@@ -95,6 +95,16 @@ RSpec.describe Legion::Extensions::Llm::Fleet::TokenValidator do
       expect do
         validate_token
       end.to raise_error(Legion::Extensions::Llm::Fleet::TokenError, /#{claim} claim mismatch/)
+    end
+  end
+
+  %i[message_context params caller trace_context].each do |claim|
+    it "rejects envelope hash mismatch for #{claim}" do
+      allow(Legion::Crypt::JWT).to receive(:verify).and_return(claims.merge(claim => 'different'))
+
+      expect do
+        validate_token
+      end.to raise_error(Legion::Extensions::Llm::Fleet::TokenError, /#{claim} hash mismatch/)
     end
   end
 
