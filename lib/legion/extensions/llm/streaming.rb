@@ -212,7 +212,11 @@ module Legion
 
           def v2_on_data(on_chunk, on_failed_response)
             proc do |chunk, _bytes, env|
-              if env&.status == 200
+              # Typhoeus/libcurl sends on_data callbacks before headers arrive, so env&.status
+              # may be nil or 0 during streaming. Only treat as failure when we have a
+              # definitive non-200 status (e.g. 400, 500) and still have data to process.
+              status = env&.status
+              if status == 200 || status.nil? || status.zero?
                 on_chunk.call(chunk, env)
               else
                 on_failed_response.call(chunk, env)

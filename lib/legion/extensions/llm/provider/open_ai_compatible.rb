@@ -66,7 +66,11 @@ module Legion
           def sanitize_openai_text(text, role:)
             return text unless role.to_sym == :assistant && text.is_a?(String)
 
-            Responses::ThinkingExtractor.extract(text).content
+            # Preserve thinking tags in the content — qwen3.6 outputs thinking in
+            # <think> tags and expects to see its own reasoning on subsequent rounds.
+            # The Anthropic API layer separates thinking into distinct content blocks
+            # for client-facing responses; the OpenAI compat layer passes them through.
+            text
           end
 
           def format_openai_tool_calls(tool_calls)

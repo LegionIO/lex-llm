@@ -2,42 +2,35 @@
 
 [![CI](https://github.com/LegionIO/lex-llm/actions/workflows/ci.yml/badge.svg)](https://github.com/LegionIO/lex-llm/actions/workflows/ci.yml)
 
-Shared LegionIO framework for LLM provider extensions.
+Base provider framework for all LegionIO LLM provider extensions.
 
-`lex-llm` is a standard Legion extension gem. It does not expose a standalone RubyLLM-compatible API, Rails integration, generators, rake tasks, or concrete providers. Its runtime contract is `Legion::Extensions::Llm`, which provider gems extend through nested namespaces such as `Legion::Extensions::Llm::Ollama`.
+`lex-llm` is a standard Legion extension gem that provides provider-neutral primitives for LLM integration. It does not include concrete provider implementations -- those live in `lex-llm-*` gems (e.g. `lex-llm-ollama`, `lex-llm-openai`, `lex-llm-bedrock`). The routing unit is a **model offering**, not a provider, enabling Legion to reason about any combination of local instances, remote servers, cloud providers, and fleet workers.
 
-The routing principle is simple: provider is not the routing unit anymore. A concrete model offering is.
+---
 
-That lets Legion reason about one local Ollama instance with many models, multiple remote Ollama or vLLM instances, Bedrock accounts in different regions, direct frontier providers, and fleet workers on MacBooks, GPU servers, or cloud-side proxy nodes.
+## Quick Index
 
-## What This Gem Owns
+| Topic | Section |
+|-------|---------|
+| Install & depend | [Install](#install) |
+| Extension namespace | [Namespace](#namespace) |
+| Core classes & files | [Class Index](#class-index) |
+| Model offerings (routing) | [Model Offerings](#model-offerings) |
+| In-memory offering registry | [Offering Registry](#offering-registry) |
+| Fleet lanes & work routing | [Fleet Lanes](#fleet-lanes) |
+| Fleet protocol v2 | [Fleet Protocol](#fleet-protocol) |
+| Registry events | [Registry Events](#registry-events) |
+| Provider contract | [Provider Extension Contract](#provider-extension-contract) |
+| Streaming & accumulator | [Streaming](#streaming) |
+| Credential discovery | [Credential Sources](#credential-sources) |
+| Auto-registration | [Auto Registration](#auto-registration) |
+| Provider settings | [Provider Settings](#provider-settings) |
+| Schema & tools | [Schema & Tools](#schema--tools) |
+| Response objects | [Response Objects](#response-objects) |
+| Configuration | [Configuration](#configuration) |
+| Running tests | [Development](#development) |
 
-`lex-llm` provides provider-neutral primitives only. Provider-specific behavior belongs in provider gems.
-
-This gem owns:
-
-- `Legion::Extensions::Llm`, the Legion extension namespace used by autoloading and settings
-- provider-neutral request, response, message, content, token, and tool objects
-- schema bridging through `Legion::Extensions::Llm::Schema`
-- model metadata and capability normalization
-- routing structures such as `Legion::Extensions::Llm::Routing::ModelOffering`
-- fleet lane key generation for shared RabbitMQ work lanes
-- shared chat, embedding, moderation, image, transcription, streaming, and OpenAI-compatible adapter helpers
-- shared runtime dependencies such as `legion-json`, `legion-settings`, and `legion-logging`
-
-Concrete provider gems should depend on this gem and implement the provider-specific transport, authentication, model discovery, request translation, response translation, and health checks.
-
-Expected provider gems include:
-
-- `lex-llm-ollama`
-- `lex-llm-vllm`
-- `lex-llm-anthropic`
-- `lex-llm-openai`
-- `lex-llm-gemini`
-- `lex-llm-mlx`
-- `lex-llm-bedrock`
-- `lex-llm-vertex`
-- `lex-llm-azure-foundry`
+---
 
 ## Install
 
@@ -61,9 +54,7 @@ Load the extension through the Legion namespace:
 require 'legion/extensions/llm'
 ```
 
-Provider gems must use nested Legion extension namespaces so LegionIO autoloading can find them consistently.
-
-Example for `lex-llm-ollama`:
+All classes live under `Legion::Extensions::Llm`. Provider gems must use nested Legion extension namespaces so LegionIO autoloading finds them consistently:
 
 ```ruby
 require 'legion/extensions/llm'
@@ -83,6 +74,113 @@ module Legion
   end
 end
 ```
+
+---
+
+## Class Index
+
+### Core
+| Class | File | Purpose |
+|-------|------|---------|
+| `Provider` | `lib/.../provider.rb` | Base class for all provider adapters. Includes `Legion::Cache::Helper` and `Legion::Logging::Helper`. Mixin entry point for credentials, model caching, and model whitelist/blacklist. |
+| `Provider::OpenAICompatible` | `lib/.../provider/open_ai_compatible.rb` | Shared adapter for OpenAI-compatible servers (vLLM, Ollama, MLX, local proxies). Handles request/response translation, streaming, tool calls, embedding, image, transcription, and thinking extraction. |
+| `ProviderContract` | `lib/.../provider_contract.rb` | Defines the canonical provider interface: `chat`, `stream_chat`, `embed`, `image`, `count_tokens`, `health`, `discover_offerings`. Raises `UnsupportedCapability` for unimplemented methods. |
+| `Configuration` | `lib/.../configuration.rb` | Hash-backed provider config wrapper; normalizes instance-level and fleet-level settings. |
+| `ProviderSettings` | `lib/.../provider_settings.rb` | Builds complete provider settings from `family`, `instance`, and nested fleet settings. Includes `infer_tier_from_endpoint(url)` to detect `:local` vs `:direct`. |
+
+### Requests & Data Types
+| Class | File | Purpose |
+|-------|------|---------|
+| `Message` | `lib/.../message.rb` | Structured message (role, content, tool calls, attachments, thinking). |
+| `Content` | `lib/.../content.rb` | Content part (text, image, file, tool result) with MIME type support. |
+| `Tool` | `lib/.../tool.rb` | Tool definition (name, description, parameters, strict mode). |
+| `ToolCall` | `lib/.../tool_call.rb` | Tool call result (id, function name, arguments, result). |
+| `Attachment` | `lib/.../attachment.rb` | File attachment with content, filename, and MIME type. |
+| `Chunk` | `lib/.../chunk.rb` | Streaming chunk wrapper (content delta, reasoning, tool call delta, usage). |
+| `Context` | `lib/.../context.rb` | Conversation context builder; normalizes history and strips thinking. |
+| `Thinking` | `lib/.../thinking.rb` | Thinking/reasoning metadata extracted from provider output. |
+| `MimeType` | `lib/.../mime_type.rb` | MIME type utilities for image and file content. |
+
+### Model & Routing
+| Class | File | Purpose |
+|-------|------|---------|
+| `Model::Info` | `lib/.../model/info.rb` | Immutable `Data.define` struct: `instance`, `provider_family`, `provider_model`, `parameter_count`, `quantization`, `size_bytes`, `modalities_input/output`, `context_window`, `max_output_tokens`, `pricing`, `capabilities`, `created_at`, `knowledge_cutoff`. Factory: `Model::Info.from_hash` for legacy hash compatibility. |
+| `Model::Modalities` | `lib/.../model/modalities.rb` | Canonical modality symbols and helpers. |
+| `Model::Pricing` | `lib/.../model/pricing.rb` | Pricing data struct with `PricingCategory` and `PricingTier`. |
+| `Models` | `lib/.../models.rb` | Shared model listing and metadata normalization. Uses `Call::Registry` with namespace-scanning fallback. |
+| `Routing::ModelOffering` | `lib/.../routing/model_offering.rb` | Concrete offering: one model on one provider instance. Routing/filtering/health/policy unit. See [Model Offerings](#model-offerings). |
+| `Routing::OfferingRegistry` | `lib/.../routing/offering_registry.rb` | In-memory index for offerings. See [Offering Registry](#offering-registry). |
+| `Routing::LaneKey` | `lib/.../routing/lane_key.rb` | Derives fleet lane key strings from offerings. |
+| `Aliases` | `lib/.../aliases.rb` | Canonical model alias normalization from `aliases.json`. |
+| `Routing::RegistryEvent` | `lib/.../routing/registry_event.rb` | Envelope builder for registry availability events. |
+
+### Responses
+| Class | File | Purpose |
+|-------|------|---------|
+| `Responses::ChatResponse` | `lib/.../responses/chat_response.rb` | Normalized chat response: message, usage, thinking, finish_reason. |
+| `Responses::EmbeddingResponse` | `lib/.../responses/embedding_response.rb` | Normalized embedding response: vectors, usage, model. |
+| `Responses::StreamChunk` | `lib/.../responses/stream_chunk.rb` | Normalized stream chunk with delta fields and metadata. |
+| `Responses::ThinkingExtractor` | `lib/.../responses/thinking_extractor.rb` | Extracts thinking/reasoning from provider output (reasoning_content, `</think>` tags, untagged preambles). |
+
+### Streaming
+| Class | File | Purpose |
+|-------|------|---------|
+| `Streaming` | `lib/.../streaming.rb` | Streaming framework: Faraday middleware, chunk parsing, retry on status 500, thinking extraction, error handling. Handles both Net::HTTP and Typhoeus adapters. |
+| `StreamAccumulator` | `lib/.../stream_accumulator.rb` | Accumulates streaming deltas into complete messages; assembles partial tool-call arguments, separates thinking from content, builds tool call arrays. |
+
+### Fleet (Protocol v2)
+| Class | File | Purpose |
+|-------|------|---------|
+| `Fleet::Protocol` | `lib/.../fleet/protocol.rb` | Protocol v2 constants, field names, and versioning. |
+| `Fleet::EnvelopeValidation` | `lib/.../fleet/envelope_validation.rb` | Validates v2 envelopes; rejects legacy fields. |
+| `Fleet::TokenValidator` | `lib/.../fleet/token_validator.rb` | Validates JWT replay tokens with issuer verification and hash-based claims. |
+| `Fleet::TokenError` | `lib/.../fleet/token_error.rb` | Token validation error types. |
+| `Fleet::Settings` | `lib/.../fleet/settings.rb` | Default fleet settings builder (consumer, auth, endpoint). |
+| `Fleet::ProviderResponder` | `lib/.../fleet/provider_responder.rb` | Responder-side execution: receives fleet requests, validates tokens, dispatches to provider, publishes responses. |
+| `Fleet::WorkerExecution` | `lib/.../fleet/worker_execution.rb` | Worker-side execution: binds to lanes, pulls/consumes messages, manages backpressure. |
+| `Fleet::DefaultExchangeReply` | `lib/.../fleet/default_exchange_reply.rb` | Publishes replies via AMQP default exchange with publisher confirms. |
+| `Fleet::PublishSafety` | `lib/.../fleet/publish_safety.rb` | Guards against infinite requeues on publish failure. |
+| `Transport::Messages::FleetRequest` | `lib/.../transport/messages/fleet_request.rb` | Encrypted fleet request envelope (v2). |
+| `Transport::Messages::FleetResponse` | `lib/.../transport/messages/fleet_response.rb` | Encrypted fleet response envelope (v2). |
+| `Transport::Messages::FleetError` | `lib/.../transport/messages/fleet_error.rb` | Encrypted fleet error envelope (v2). |
+| `Transport::Exchanges::Fleet` | `lib/.../transport/exchanges/fleet.rb` | Fleet exchange declarations. |
+| `Transport::Exchanges::LlmRegistry` | `lib/.../transport/exchanges/llm_registry.rb` | Registry exchange for offering availability events. |
+| `Transport::FleetLane` | `lib/.../transport/fleet_lane.rb` | Fleet lane declaration and binding. |
+| `RegistryPublisher` | `lib/.../registry_publisher.rb` | Publishes registry events to `llm.registry` exchange. |
+| `RegistryEventBuilder` | `lib/.../registry_event_builder.rb` | Builds sanitized registry event messages. |
+
+### Credentials & Discovery
+| Class | File | Purpose |
+|-------|------|---------|
+| `CredentialSources` | `lib/.../credential_sources.rb` | Read-only probes: env vars, `~/.claude/settings.json`, `~/.codex/auth.json`, `Legion::Settings`, socket/HTTP probes. SHA-256 credential dedup via `credential_fingerprint`. Includes `source_tag(type, location, key)` for provenance. Probing gated behind `extensions.llm.security.credential_source_probing`. |
+| `AutoRegistration` | `lib/.../auto_registration.rb` | Mixin for provider self-registration into `Call::Registry`. Discovers instances, builds offerings, handles rediscovery. Pure discovery -- no upward registry mutation. |
+
+### Capabilities
+| Class | File | Purpose |
+|-------|------|---------|
+| `Chat` | `lib/.../chat.rb` | Shared chat request builder and parameter normalization. |
+| `Embedding` | `lib/.../embedding.rb` | Embedding request builder. |
+| `Image` | `lib/.../image.rb` | Image generation request builder. |
+| `Moderation` | `lib/.../moderation.rb` | Moderation request builder. |
+| `Tokens` | `lib/.../tokens.rb` | Token counting request builder. |
+| `Transcription` | `lib/.../transcription.rb` | Audio transcription request builder. |
+| `Agent` | `lib/.../agent.rb` | Agent-specific context and parameter helpers. |
+
+### Connection
+| Class | File | Purpose |
+|-------|------|---------|
+| `Connection` | `lib/.../connection.rb` | Faraday connection builder with `:typhoeus` adapter preference, bearer token redaction in logs, middleware stack, and error handling. |
+
+### Misc
+| Class | File | Purpose |
+|-------|------|---------|
+| `Schema` | `lib/.../schema.rb` | Bridge to `ruby_llm-schema` for JSON schema tool definitions. |
+| `Error` | `lib/.../error.rb` | Base error class for lex-llm. |
+| `Errors::UnsupportedCapability` | `lib/.../errors/unsupported_capability.rb` | Raised when a provider lacks a requested capability. |
+| `Utils` | `lib/.../utils.rb` | Shared utility methods. |
+| `VERSION` | `lib/.../version.rb` | Current gem version (`0.4.18`). |
+
+---
 
 ## Model Offerings
 
@@ -132,30 +230,28 @@ offering.eligible_for?(
 
 Common offering fields:
 
-- `offering_id`: stable identifier for the concrete offering; generated from provider, instance, usage type, and canonical alias when omitted
-- `provider_family`: provider implementation family, such as `:ollama`, `:vllm`, `:bedrock`, `:anthropic`, or `:openai`
+- `offering_id`: stable identifier; generated from provider, instance, usage type, and canonical alias when omitted
+- `provider_family`: `:ollama`, `:vllm`, `:bedrock`, `:anthropic`, `:openai`, etc.
 - `provider_instance`: concrete provider instance, account, node, region, or local runtime
 - `instance_id`: compatibility alias for `provider_instance`
-- `model_family`: provider-neutral family such as `:openai`, `:anthropic`, `:gemini`, `:qwen`, or `:llama`
-- `transport`: `:local`, `:http`, `:rabbitmq`, `:sdk`, or another provider-supported transport
-- `tier`: `:local`, `:private`, `:fleet`, `:cloud`, `:frontier`, or deployment-specific policy tier
-- `model`: provider model name or normalized model alias
-- `canonical_model_alias`: provider-neutral alias used by routers and shared fleet lane keys when a provider deployment hides the base model
+- `model_family`: provider-neutral family such as `:openai`, `:anthropic`, `:qwen`, `:llama`
+- `transport`: `:local`, `:http`, `:rabbitmq`, `:sdk`
+- `tier`: `:local`, `:private`, `:fleet`, `:cloud`, `:frontier`
+- `model`: provider model name or normalized alias
+- `canonical_model_alias`: provider-neutral alias for routers and fleet lanes
 - `usage_type`: `:inference` or `:embedding`
-- `capabilities`: normalized feature flags such as `:chat`, `:tools`, `:json_schema`, `:vision`, `:thinking`, or `:embedding`
-- `limits`: context window, output token limits, rate limits, concurrency limits, and provider-specific bounds
-- `health`: readiness, latency, recent failures, and provider-specific health metadata
-- `policy_tags`: routing and compliance tags such as `:internal_only`, `:phi_allowed`, or `:hipaa`
-- `routing_metadata`: provider-neutral scheduling metadata for routers; persistence is intentionally out of scope
-- `metadata`: extension-specific metadata; sensitive values are excluded from fleet eligibility fingerprints
+- `capabilities`: `:chat`, `:tools`, `:json_schema`, `:vision`, `:thinking`, `:embedding`, `:function_calling`
+- `limits`: context window, output token limits, rate limits, concurrency
+- `health`: readiness, latency, recent failures
+- `policy_tags`: `:internal_only`, `:phi_allowed`, `:hipaa`
+- `routing_metadata`: scheduling metadata for routers
+- `metadata`: extension metadata; sensitive values excluded from fleet fingerprints
 
-Provider gems that still pass `instance_id`, or that store `model_family`, `canonical_model_alias`, or `alias` under `metadata`, remain compatible. `ModelOffering` lifts those values into first-class readers for routers.
-
-`Legion::Extensions::Llm::Aliases.canonical_model_alias(model, provider)` provides shared alias normalization from `aliases.json`, with an explicit model string fallback.
+`Legion::Extensions::Llm::Aliases.canonical_model_alias(model, provider)` normalizes aliases from `aliases.json`.
 
 ## Offering Registry
 
-`Legion::Extensions::Llm::Routing::OfferingRegistry` is an in-memory index for discovered or configured offerings. It does not persist state.
+`Legion::Extensions::Llm::Routing::OfferingRegistry` is an in-memory index.
 
 ```ruby
 registry = Legion::Extensions::Llm::Routing::OfferingRegistry.new
@@ -171,39 +267,9 @@ registry.filter(
 )
 ```
 
-## Registry Events
-
-`Legion::Extensions::Llm::Routing::RegistryEvent` builds dependency-light envelopes for future `llm.registry` publishing. It does not persist registry state or publish messages by itself.
-
-```ruby
-event = Legion::Extensions::Llm::Routing::RegistryEvent.available(
-  offering,
-  runtime: { host_id: 'macbook-m4-max', process: { pid: 12_345 } },
-  capacity: { concurrency: 4, queued: 0 },
-  health: { ready: true, latency_ms: 180 },
-  lane: offering.lane_key,
-  metadata: { observed_by: :lex_llm_ollama }
-)
-
-event.to_h
-# => {
-#      event_id: "...",
-#      event_type: :offering_available,
-#      occurred_at: "2026-04-28T14:30:15.123456Z",
-#      offering: { ... },
-#      runtime: { host_id: "macbook-m4-max", process: { pid: 12345 } },
-#      capacity: { concurrency: 4, queued: 0 },
-#      health: { ready: true, latency_ms: 180 },
-#      lane: "llm.fleet.inference.qwen3-6-27b-q4-k-m.ctx32768",
-#      metadata: { observed_by: :lex_llm_ollama }
-#    }
-```
-
-Supported event types are `:offering_available`, `:offering_unavailable`, `:offering_degraded`, and `:offering_heartbeat`. Event offerings are derived from `ModelOffering#to_h`, with sensitive offering fields removed. Optional `runtime`, `capacity`, `health`, `lane`, and `metadata` values are intended for non-secret operational context and reject sensitive keys such as credentials, tokens, secrets, URLs, endpoint paths, prompts, and reply queues.
-
 ## Fleet Lanes
 
-Fleet routing uses shared work lanes derived from model offerings. A lane describes the work required, not the worker that happens to do it.
+Fleet routing uses shared work lanes derived from offerings. A lane describes the work, not the worker:
 
 ```ruby
 offering.lane_key
@@ -224,80 +290,155 @@ Legion::Extensions::Llm::Routing::ModelOffering.new(
 # => "llm.fleet.embed.nomic-embed-text"
 ```
 
-The intent is that any eligible worker can bind to the same lane:
+Any eligible worker can bind to the same lane: local MacBooks, GPU servers, vLLM workers, Ollama workers, or cloud-side LegionIO workers near Bedrock/Vertex/Azure.
 
-- local MacBook workers
-- GPU servers in a datacenter
-- vLLM workers
-- Ollama workers
-- cloud-side LegionIO workers near Bedrock, Vertex, Azure, or another provider
+## Fleet Protocol
 
-Busy endpoint workers should not reject/requeue in a hot loop. Endpoint fleet workers can use pull-style scheduling, while server-class workers can use normal consumers with prefetch and consumer priority.
+Fleet communication uses protocol v2 envelopes with strict validation:
 
-## Default Fleet Settings
+- `FleetRequest`: encrypted request envelope with `operation`, `request_id`, `correlation_id`, `idempotency_key`, `message_context`, and signed JWT replay token
+- `FleetResponse`: encrypted response envelope with provider output
+- `FleetError`: encrypted error envelope with typed error metadata
 
-`Legion::Extensions::Llm.default_settings` provides defaults that provider extensions inherit and override:
+When `fleet.compliance.encrypt_fleet` is true (default), all envelopes are encrypted via `Legion::Crypt`. JWT replay tokens validate the `issuer` claim and use hash-based claim validation (no raw PHI in base64 payloads).
+
+`Fleet::ProviderResponder` handles the responder side: token validation, idempotency, provider dispatch, response publishing. `Fleet::WorkerExecution` handles the worker side: lane binding, message consumption, backpressure.
+
+Default fleet settings via `Legion::Extensions::Llm.default_settings` -- fleet and endpoint modes are disabled by default:
 
 ```ruby
-Legion::Extensions::Llm.default_settings
-# => {
-#      fleet: {
-#        enabled: false,
-#        scheduler: :basic_get,
-#        consumer_priority: 0,
-#        queue_expires_ms: 60_000,
-#        message_ttl_ms: 120_000,
-#        queue_max_length: 100,
-#        delivery_limit: 3,
-#        consumer_ack_timeout_ms: 300_000,
-#        endpoint: {
-#          enabled: false,
-#          empty_lane_backoff_ms: 250,
-#          idle_backoff_ms: 1_000,
-#          max_consecutive_pulls_per_lane: 0,
-#          accept_when: []
-#        }
-#      }
-#    }
+{
+  fleet: {
+    enabled: false,
+    scheduler: :basic_get,
+    consumer_priority: 0,
+    queue_expires_ms: 60_000,
+    message_ttl_ms: 120_000,
+    queue_max_length: 100,
+    delivery_limit: 3,
+    consumer_ack_timeout_ms: 300_000,
+    endpoint: {
+      enabled: false,
+      empty_lane_backoff_ms: 250,
+      idle_backoff_ms: 1_000,
+      max_consecutive_pulls_per_lane: 0,
+      accept_when: []
+    }
+  }
+}
 ```
 
-The defaults are conservative:
+## Registry Events
 
-- fleet participation is off unless configured
-- endpoint fleet mode is separately disabled by default
-- queue and message TTLs are bounded
-- pull scheduling is the default for endpoint-style workers
-- provider gems can override defaults through `Legion::Settings`
-
-Provider gems can build a complete provider settings hash without duplicating merge logic:
+`Legion::Extensions::Llm::Routing::RegistryEvent` builds envelopes for `llm.registry` publishing.
 
 ```ruby
-Legion::Extensions::Llm.provider_settings(
-  family: :ollama,
-  instance: {
-    base_url: 'http://localhost:11434',
-    fleet: { enabled: true, consumer_priority: 10 }
+event = Legion::Extensions::Llm::Routing::RegistryEvent.available(
+  offering,
+  runtime: { host_id: 'macbook-m4-max', process: { pid: 12_345 } },
+  capacity: { concurrency: 4, queued: 0 },
+  health: { ready: true, latency_ms: 180 },
+  lane: offering.lane_key,
+  metadata: { observed_by: :lex_llm_ollama }
+)
+
+event.to_h
+# => { event_id: "...", event_type: :offering_available, offering: { ... }, ... }
+```
+
+Supported types: `:offering_available`, `:offering_unavailable`, `:offering_degraded`, `:offering_heartbeat`. Sensitive keys (credentials, tokens, secrets, URLs, prompts) are rejected during sanitization.
+
+Publishing is handled by `RegistryPublisher` (parameterized by `provider_family`) through the `llm.registry` exchange.
+
+## Credential Sources
+
+`CredentialSources` provides read-only credential discovery:
+
+```ruby
+Legion::Extensions::Llm::CredentialSources.discover_credentials(
+  family: :openai,
+  setting_key: 'OPENAI_API_KEY'
+)
+```
+
+Probes env vars, `~/.claude/settings.json`, `~/.codex/auth.json`, `Legion::Settings`, and optional socket/HTTP endpoints. Credentials are deduplicated via `credential_fingerprint` (first 8 chars of SHA-256). Probing is gated behind `extensions.llm.security.credential_source_probing`.
+
+Each source gets a provenance tag: `CredentialSources.source_tag(type, location, key)`.
+
+## Auto Registration
+
+`AutoRegistration` mixin enables providers to self-discover instances and register offerings into `Call::Registry`:
+
+```ruby
+class MyProvider < Legion::Extensions::Llm::Provider
+  extend Legion::Extensions::Llm::AutoRegistration
+end
+
+MyProvider.rediscover!  # Re-probe all instances
+```
+
+Discovers instances from settings, builds model offerings via `discover_offerings`, and registers them. Passes tier and capabilities metadata to the registry.
+
+## Streaming
+
+`Streaming` provides the streaming framework for OpenAI-compatible SSE responses:
+
+- Faraday middleware handles chunk parsing, thinking extraction, and error handling
+- `StreamAccumulator` accumulates deltas into complete messages with tool-call assembly
+- Retries on HTTP 500 with partial body preservation
+- Handles both Net::HTTP and Typhoeus adapters (Typhoeus chunks arrive with nil/0 status during streaming)
+- Provider thinking (`</think>` tags, `reasoning_content`) is stripped from caller-visible content
+
+```ruby
+provider.stream_chat(messages:, model:, tools: []) do |chunk|
+  # chunk is a Chunk or StreamChunk with content_delta, reasoning_delta, tool_call_delta
+end
+```
+
+## Schema & Tools
+
+`Legion::Extensions::Llm::Schema` bridges `ruby_llm-schema` for JSON schema tool definitions. Tools are defined as:
+
+```ruby
+Legion::Extensions::Llm::Tool.new(
+  name: 'search',
+  description: 'Search the knowledge base',
+  parameters: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Search query' }
+    },
+    required: %w[query]
   }
 )
 ```
 
+## Response Objects
+
+All provider responses should normalize through the shared response objects:
+
+- `Responses::ChatResponse` -- chat completions with message, usage, thinking, finish_reason
+- `Responses::EmbeddingResponse` -- vectors, usage, model
+- `Responses::StreamChunk` -- streaming deltas
+- `Responses::ThinkingExtractor` -- extracts thinking from multiple formats (reasoning_content, `</think>` tags, untagged preambles)
+
+Provider-specific thinking is always separated from caller-visible content.
+
+---
+
 ## Provider Extension Contract
 
-A provider gem should use `lex-llm` for shared behavior and implement only the provider-specific pieces.
+A provider gem uses `lex-llm` for shared behavior and implements only provider-specific transport, authentication, model discovery, and translation.
 
-At minimum, a provider extension should define:
+At minimum, a provider extension defines:
 
-- `Legion::Extensions::Llm::<Provider>`
-- provider default settings
-- model discovery or a static model offering registry
-- provider request translation
-- provider response translation
-- health and readiness checks
-- embedding support separately from inference support when the provider exposes both
+- `Legion::Extensions::Llm::<Provider>` namespace
+- Provider default settings
+- Model discovery or static model offering registry
+- Provider request/response translation
+- Health and readiness checks
 
-Provider extensions should avoid duplicating shared classes, schema logic, fleet lane construction, JSON handling, or common request/response objects.
-
-Canonical provider calls are keyword-based:
+Canonical provider calls (all keyword-based):
 
 ```ruby
 provider.chat(messages:, model:, tools: [], temperature: nil, params: {}, headers: {}, schema: nil, thinking: nil)
@@ -309,27 +450,63 @@ provider.health(live: false)
 provider.discover_offerings(live: false, **filters)
 ```
 
-Provider responses should normalize through the shared response objects before they reach callers. Visible assistant text and provider reasoning are separate values: provider-specific thinking fields, OpenAI-compatible `reasoning_content`, and literal `<think>...</think>` text are removed from caller-visible content and preserved as thinking metadata when present.
+Inherited from `Provider`:
 
-Fleet envelopes also live here. `FleetRequest`, `FleetResponse`, and `FleetError` are protocol-v2 transport messages with `operation`, `request_id`, `correlation_id`, `idempotency_key`, `message_context`, and signed-token fields. Provider gems should consume and publish these shared envelopes instead of defining local fleet message shapes.
+- `#readiness(live: false)` -- configured state, locality, base URL, non-live health metadata
+- `#model_detail(model_name)` -- cache-backed lookup (24h TTL; nil results not cached)
+- `#model_allowed?(model_name)` -- whitelist/blacklist check
+- `#discover_offerings(live: false)` -- cached live discovery when `live: false`, probes endpoints when `true`
+- `#offering_transport` / `#offering_tier` -- instance methods with class-level `default_transport`/`default_tier` overrides
+- `#runtime_provider_setting(key)` -- fallback to `Legion::Settings` for model whitelist/blacklist
 
-All providers inherit `#readiness(live: false)`, which returns configured state, provider locality, API base, endpoint helpers, and non-live health metadata without probing remote services. Providers with a cheap health endpoint can pass `live: true` to include that endpoint response. OpenAI-compatible providers also inherit shared model-list parsing that maps discovered models into normalized capabilities and modalities for Legion routing.
+Inherited from `Provider::OpenAICompatible`:
 
-## Schema Status
+- Full OpenAI-compatible API translation
+- Model list parsing with capability/modality normalization
+- Streaming with thinking extraction
+- Embedding, image, transcription, moderation support
+- `fetch_model_detail` override hook for live API model metadata
 
-`lex-llm` still depends on `ruby_llm-schema` because the current schema bridge exposes:
+## Configuration
+
+Provider settings are built with `Legion::Extensions::Llm.provider_settings`:
 
 ```ruby
-Legion::Extensions::Llm::Schema
+Legion::Extensions::Llm.provider_settings(
+  family: :ollama,
+  instance: {
+    base_url: 'http://localhost:11434',
+    fleet: { enabled: true, consumer_priority: 10 }
+  }
+)
 ```
 
-as:
+`ProviderSettings.infer_tier_from_endpoint(url)` returns `:local` for localhost/loopback, `:direct` for all other hosts.
 
-```ruby
-RubyLLM::Schema
-```
+Key settings paths:
 
-That dependency should stay until LegionIO owns or replaces the schema layer directly.
+- `extensions.llm.fleet` -- fleet participation and behavior
+- `extensions.llm.fleet.endpoint` -- endpoint-style worker configuration
+- `extensions.llm.fleet.compliance.encrypt_fleet` -- encrypt fleet envelopes (default true)
+- `extensions.llm.fleet.auth.verify_issuer` -- validate JWT issuer (default true)
+- `extensions.llm.security.credential_source_probing` -- gate credential probing (default true)
+- `extensions.llm.model_whitelist` / `model_blacklist` -- provider-level model filters
+- `extensions.llm.<family>.instance.<name>.model_whitelist` -- per-instance override
+
+---
+
+## Provider Dependencies
+
+| Extension | Depends on |
+|-----------|-----------|
+| `Provider` | `Legion::Cache::Helper`, `Legion::Logging::Helper`, `Legion::Settings`, `Legion::JSON` |
+| `Streaming` | Faraday (`:typhoeus` or `:net_http`), Typhoeus |
+| `Connection` | Faraday, Faraday::Typhoeus |
+| `CredentialSources` | `Legion::Settings` (for Legion-settings probes) |
+| `Fleet::*` | `Legion::Crypt` (when `encrypt_fleet` is true), `Legion::Transport` (AMQP via bunny) |
+| `Schema` | `ruby_llm-schema` |
+
+Runtime gem dependencies: `legion-json`, `legion-settings`, `legion-logging`, `legion-cache`, `faraday`, `faraday-typhoeus`, `ruby_llm-schema`.
 
 ## Development
 
@@ -339,19 +516,38 @@ Install dependencies:
 bundle install
 ```
 
-Run lint:
+Run the full test suite:
+
+```bash
+bundle exec rspec
+```
+
+Run lint and auto-correct:
 
 ```bash
 bundle exec rubocop -A
 ```
 
-Run the full test suite:
-
-```bash
-bundle exec rspec --format json --out tmp/rspec_results.json --format progress --out tmp/rspec_progress.txt
-```
-
 `Gemfile.lock` is intentionally not committed for this repo.
+
+### Testing Rules
+
+- Do NOT mock `Legion::Settings`, `Legion::Logging`, `Legion::JSON`, or `Legion::Cache` -- require the real gems
+- `Legion::Cache.setup` activates the Memory adapter in test (no Redis needed)
+- `Faraday::ConnectionFailed` is rescued in `discover_offerings` with a concise log
+- `bundle exec rspec && bundle exec rubocop -A` is the gate before committing
+
+## Key Patterns
+
+- `Provider` includes `Legion::Cache::Helper` -- use `cache_get`/`cache_set` directly
+- `model_detail(model_name)` -- cache-backed lookup (cache_get -> fetch_model_detail -> cache_set if non-nil)
+- `fetch_model_detail` -- override in subclass for live API calls; return `{ context_window: N }` or nil
+- `model_detail_cache_key` includes credential fingerprint for non-local providers
+- `model_whitelist`/`model_blacklist` -- checks instance config first, then provider settings
+- `discover_offerings` filters via `model_allowed?` and rescues `Faraday::ConnectionFailed`
+- Faraday response logger: `errors: false` -- never dump raw stacktraces from HTTP failures
+- `CredentialSources.source_tag(type, location, key)` -- provenance tag for discovered credentials
+- `CredentialSources.credential_fingerprint(value)` -- first 8 chars of SHA-256
 
 ## Attribution
 
