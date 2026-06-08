@@ -1,9 +1,19 @@
 # frozen_string_literal: true
 
-require 'dotenv/load'
-require 'simplecov'
-require 'simplecov-cobertura'
-require_relative 'support/simplecov_configuration'
+begin
+  require 'dotenv/load'
+rescue LoadError
+  nil
+end
+
+begin
+  require 'simplecov'
+  require 'simplecov-cobertura'
+  require_relative 'support/simplecov_configuration'
+rescue LoadError
+  nil
+end
+
 require 'bundler/setup'
 require 'fileutils'
 require 'tempfile'

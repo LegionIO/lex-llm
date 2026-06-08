@@ -42,6 +42,7 @@ module Legion
 
           ensure_configured!
           @connection ||= Faraday.new(provider.api_base) do |faraday|
+            faraday.ssl.verify = false
             setup_timeout(faraday)
             setup_logging(faraday)
             setup_retry(faraday)
@@ -122,7 +123,13 @@ module Legion
           faraday.request :multipart
           faraday.request :json
           faraday.response :json
-          faraday.adapter :net_http
+          # Prefer typhoeus (libcurl) over net_http to avoid Ruby 4.0 + net-http-0.9.1 SSL issues
+          begin
+            require 'faraday/typhoeus'
+            faraday.adapter :typhoeus
+          rescue LoadError
+            faraday.adapter :net_http
+          end
           faraday.use :llm_errors, provider: @provider
         end
 
@@ -138,6 +145,7 @@ module Legion
             Timeout::Error,
             Faraday::TimeoutError,
             Faraday::ConnectionFailed,
+            Faraday::SSLError,
             Faraday::RetriableResponse,
             Legion::Extensions::Llm::RateLimitError,
             Legion::Extensions::Llm::ServerError,

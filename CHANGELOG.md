@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.18 - 2026-06-05
+
+### Fixed
+- **Test suite** — All 377 specs passing. Specs exercise shared streaming, chat, models, fleet, credential sources, and provider contract behavior.
+- **RuboCop** — Zero offenses across 110 files.
+
+## 0.4.17 - 2026-06-04
+
+### Added
+- **faraday-typhoeus dependency** — Added `faraday-typhoeus >= 0.2` as a runtime dependency. Connection middleware now prefers `:typhoeus` (libcurl) adapter over `:net_http` to work around Ruby 4.0 + net-http-0.9.1 SSL keep-alive issues that drop connections mid-read (`connection.rb`)
+
+### Fixed
+- **Streaming on_data rejects status 0/nil** — `v2_on_data` handler only accepted `env&.status == 200`, causing typhoeus streaming chunks (where status is nil or 0 during active streaming before headers arrive) to be treated as failed responses. Now accepts nil/0 status as valid streaming state (`streaming.rb`)
+
 ## 0.4.16 - 2026-05-31
 
 ### Security

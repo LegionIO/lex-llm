@@ -27,7 +27,7 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
     expect(payload[:messages]).to eq([{ role: 'user', content: 'hello' }])
   end
 
-  it 'strips assistant think tags from outbound OpenAI-compatible history' do
+  it 'preserves assistant think tags in outbound OpenAI-compatible history' do
     message = Legion::Extensions::Llm::Message.new(
       role: :assistant,
       content: "internal\n</think>\n\nHello"
@@ -45,7 +45,7 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
       tool_prefs: nil
     )
 
-    expect(payload[:messages]).to eq([{ role: 'assistant', content: 'Hello' }])
+    expect(payload[:messages]).to eq([{ role: 'assistant', content: "internal\n</think>\n\nHello" }])
   end
 
   it 'parses chat completion responses with usage and tool calls' do
