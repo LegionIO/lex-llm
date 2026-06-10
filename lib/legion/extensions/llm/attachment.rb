@@ -196,7 +196,7 @@ module Legion
           end
         end
 
-        def extract_filename_from_active_storage # rubocop:disable Metrics/PerceivedComplexity
+        def extract_filename_from_active_storage
           return 'attachment' unless defined?(ActiveStorage)
 
           case @source

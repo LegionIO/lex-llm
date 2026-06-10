@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# rubocop:disable Metrics/ParameterLists, Metrics/PerceivedComplexity -- factory methods have many params
+# rubocop:disable Metrics/ParameterLists, -- factory methods have many params
 module Legion
   module Extensions
     module Llm
@@ -181,4 +181,4 @@ module Legion
     end
   end
 end
-# rubocop:enable Metrics/ParameterLists, Metrics/PerceivedComplexity
+# rubocop:enable Metrics/ParameterLists

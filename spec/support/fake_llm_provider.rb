@@ -29,7 +29,7 @@ module SpecSupport
       config.fake_llm_api_base || 'https://fake-llm.invalid/v1'
     end
 
-    # rubocop:disable Metrics/ParameterLists, Metrics/PerceivedComplexity, Lint/UnusedMethodArgument
+    # rubocop:disable Metrics/ParameterLists, Lint/UnusedMethodArgument
     def complete(messages, tools:, temperature:, model:, params: {}, headers: {}, schema: nil, thinking: nil,
                  tool_prefs: nil)
       if block_given?
@@ -70,7 +70,7 @@ module SpecSupport
         output_tokens: 5
       )
     end
-    # rubocop:enable Metrics/ParameterLists, Metrics/PerceivedComplexity, Lint/UnusedMethodArgument
+    # rubocop:enable Metrics/ParameterLists, Lint/UnusedMethodArgument
 
     def embed(text:, model:, dimensions: nil)
       size = dimensions || 3

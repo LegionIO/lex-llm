@@ -14,9 +14,7 @@ module Legion
 
           def reject_legacy_options!
             LEGACY_OPTIONS.each do |key|
-              if @options.key?(key) || @options.key?(key.to_s)
-                raise ArgumentError, "#{key} is not supported by fleet protocol v2"
-              end
+              raise ArgumentError, "#{key} is not supported by fleet protocol v2" if @options.key?(key) || @options.key?(key.to_s)
             end
           end
 

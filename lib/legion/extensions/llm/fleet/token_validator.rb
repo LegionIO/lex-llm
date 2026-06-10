@@ -186,9 +186,7 @@ module Legion
           end
 
           def signing_key
-            if defined?(::Legion::Crypt) && ::Legion::Crypt.respond_to?(:cluster_secret)
-              return ::Legion::Crypt.cluster_secret
-            end
+            return ::Legion::Crypt.cluster_secret if defined?(::Legion::Crypt) && ::Legion::Crypt.respond_to?(:cluster_secret)
 
             raise TokenError, 'no signing key available - Legion::Crypt not initialized'
           rescue TokenError

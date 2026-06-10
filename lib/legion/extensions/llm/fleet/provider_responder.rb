@@ -119,9 +119,7 @@ module Legion
               raise ConfigurationError,
                     "fleet provider instance is not configured: #{instance_id}"
             end
-            unless truthy?(dig(instance_settings, :fleet, :respond_to_requests))
-              raise ConfigurationError, "fleet responses are disabled for provider instance: #{instance_id}"
-            end
+            raise ConfigurationError, "fleet responses are disabled for provider instance: #{instance_id}" unless truthy?(dig(instance_settings, :fleet, :respond_to_requests))
 
             provider_class.new(deep_symbolize(instance_settings))
           end

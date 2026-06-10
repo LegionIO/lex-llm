@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# rubocop:disable Metrics/PerceivedComplexity -- from_hash normalization is intentional
+# -- from_hash normalization is intentional
 module Legion
   module Extensions
     module Llm
@@ -79,4 +79,3 @@ module Legion
     end
   end
 end
-# rubocop:enable Metrics/PerceivedComplexity

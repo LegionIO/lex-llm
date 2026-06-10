@@ -13,12 +13,18 @@ AllCops:
     - lib/generators/**/templates/**/*
   SuggestExtensions: false
 
+Layout/LineLength:
+  Max: 190
 Metrics/ClassLength:
   Enabled: false
 Metrics/AbcSize:
-  Enabled: false
+  Enabled: true
+  Max: 50
+Metrics/PerceivedComplexity:
+  Max: 50
 Metrics/CyclomaticComplexity:
-  Enabled: false
+  Enabled: true
+  Max: 50
 Metrics/MethodLength:
   Enabled: false
 Metrics/ModuleLength:
