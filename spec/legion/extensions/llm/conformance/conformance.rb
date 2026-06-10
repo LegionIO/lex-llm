@@ -25,7 +25,9 @@ module Canonical
         path = File.join(fixtures_path, "#{name}.json")
         raise ArgumentError, "Fixture not found: #{name}" unless File.exist?(path)
 
-        ::JSON.parse(File.read(path))
+        # Explicit encoding: fixtures contain UTF-8; a bare File.read obeys the
+        # ambient locale and breaks in shells without LANG set (CI, tool runners).
+        ::JSON.parse(File.read(path, encoding: 'UTF-8'))
       end
 
       def fixture_symbolized(name)
