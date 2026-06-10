@@ -25,7 +25,7 @@ Gem::Specification.new do |spec|
   spec.metadata['rubygems_mfa_required'] = 'true'
 
   spec.files = `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(test|features|tmp|coverage)/}) }
-  spec.require_paths = %w[lib spec]
+  spec.require_paths = %w[lib]
 
   # Runtime dependencies
   spec.add_dependency 'base64'

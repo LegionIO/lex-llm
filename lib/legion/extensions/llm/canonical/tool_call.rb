@@ -64,9 +64,9 @@ module Legion
             args = h[:arguments]
             if args.is_a?(String) && !args.empty?
               begin
-                h[:arguments] = ::JSON.parse(args)
-              rescue JSON::ParserError
-                # Leave as-is; downstream will handle malformed args
+                h[:arguments] = Legion::JSON.load(args)
+              rescue Legion::JSON::ParseError => e
+                Legion::Logging.debug("[lex-llm][canonical][tool_call] arguments not parseable as JSON, leaving as string: #{e.message}")
               end
             end
 

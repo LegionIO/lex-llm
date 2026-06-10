@@ -74,13 +74,13 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ToolCall do
       expect(tc.status).to eq(:success)
     end
 
-    it 'parses JSON string arguments' do
+    it 'parses JSON string arguments to symbol keys per Legion::JSON convention' do
       tc = described_class.from_hash(
         name: 'search',
         arguments: '{"query":"test","limit":10}'
       )
 
-      expect(tc.arguments).to eq({ 'query' => 'test', 'limit' => 10 })
+      expect(tc.arguments).to eq({ query: 'test', limit: 10 })
     end
 
     it 'handles string keys' do
