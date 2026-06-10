@@ -148,6 +148,11 @@ module Legion
               require_policy: false,
               require_idempotency: true,
               idempotency_ttl_seconds: 600
+            },
+            request: {
+              logger: {
+                request_payload: false
+              }
             }
           }
         }

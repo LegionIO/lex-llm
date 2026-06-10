@@ -77,9 +77,13 @@ module Legion
 
         def setup_logging(faraday)
           logger = faraday_logger
+          # Enable request body logging when the logger is at DEBUG level,
+          # or when explicitly enabled via fleet request_payload setting.
+          request_payload = Legion::Extensions::Llm.default_settings.dig(:fleet, :request, :logger, :request_payload)
+          bodies_enabled = request_payload == true || debug_logger?(logger)
           faraday.response :logger,
                            logger,
-                           bodies: debug_logger?(logger),
+                           bodies: bodies_enabled,
                            errors: false,
                            headers: false,
                            log_level: :debug do |logger|

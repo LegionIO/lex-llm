@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.19 - 2026-06-10
+
+### Fixed
+- **Connection logging bodies** — `setup_logging` now enables request body logging when the logger is at DEBUG level OR when `fleet.request.logger.request_payload` is explicitly true. Previously relied solely on log-level check; the new `request_payload` setting provides explicit control for fleet worker scenarios.
+- **OpenAI-compatible tool formatting** — `format_openai_tools` now handles both `ToolDefinition` objects and plain Hashes (from `native_dispatch`) by checking `respond_to?` for method access and falling back to symbol/string key access. Prevents `NoMethodError` when tools arrive as hash-backed definitions.
+
+### Added
+- **Fleet request_payload setting** — Added `fleet.request.logger.request_payload` (default: `false`) to `default_settings` for explicit control over request body logging in Faraday middleware.
+
 ## 0.4.18 - 2026-06-05
 
 ### Fixed
