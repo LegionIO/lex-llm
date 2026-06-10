@@ -40,3 +40,8 @@ RSpec/MultipleExpectations:
   Enabled: false
 RSpec/LeakyLocalVariable:
   Enabled: false
+# Conformance kit specs live under spec/legion/extensions/llm/conformance/
+# but the test classes use Canonical::Conformance:: namespace — path can't match.
+RSpec/SpecFilePathFormat:
+  Exclude:
+    - 'spec/legion/extensions/llm/conformance/**/*'
