@@ -44,6 +44,7 @@ module Legion
       loader.ignore("#{__dir__}/llm/credential_sources.rb")
       loader.ignore("#{__dir__}/llm/transport/exchanges")
       loader.ignore("#{__dir__}/llm/transport/messages")
+      loader.ignore("#{__dir__}/llm/canonical")
       loader.push_dir("#{__dir__}/llm", namespace: self)
       loader.setup
 
@@ -164,6 +165,7 @@ module Legion
 
       require_relative 'llm/auto_registration'
       require_relative 'llm/credential_sources'
+      require_relative 'llm/canonical'
       loader.eager_load
 
       module Transport
