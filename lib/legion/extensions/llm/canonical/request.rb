@@ -2,7 +2,7 @@
 
 require 'securerandom'
 
-# rubocop:disable Metrics/ParameterLists, -- factory methods have many params
+# rubocop:disable Metrics/ParameterLists -- factory methods have many params
 module Legion
   module Extensions
     module Llm
