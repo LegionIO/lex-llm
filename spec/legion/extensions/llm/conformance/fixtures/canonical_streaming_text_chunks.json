@@ -1,0 +1,33 @@
+{
+  "description": "Streaming text-only chunk sequence — sanitized from real E2E traffic",
+  "request_id": "req_stream_text_001",
+  "chunks": [
+    {
+      "request_id": "req_stream_text_001",
+      "index": 0,
+      "type": "text_delta",
+      "delta": "Hello"
+    },
+    {
+      "request_id": "req_stream_text_001",
+      "index": 1,
+      "type": "text_delta",
+      "delta": ", world!"
+    },
+    {
+      "request_id": "req_stream_text_001",
+      "index": 2,
+      "type": "text_delta",
+      "delta": " How can I help you today?"
+    },
+    {
+      "request_id": "req_stream_text_001",
+      "type": "done",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 12,
+        "output_tokens": 10
+      }
+    }
+  ]
+}

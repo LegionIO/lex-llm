@@ -1,0 +1,101 @@
+{
+  "description": "Metering/audit event schemas — G15e",
+  "schemas": {
+    "metering_event": {
+      "event_type": "metering",
+      "required_fields": {
+        "exchange_id": "string",
+        "request_id": "string",
+        "conversation_id": "string | nil",
+        "model": "string",
+        "provider": "string",
+        "usage": {
+          "input_tokens": "integer",
+          "output_tokens": "integer",
+          "cache_read_tokens": "integer | nil",
+          "cache_write_tokens": "integer | nil",
+          "thinking_tokens": "integer | nil"
+        },
+        "cost": {
+          "input_cost_usd": "float | nil",
+          "output_cost_usd": "float | nil",
+          "total_cost_usd": "float | nil"
+        },
+        "latency_ms": "integer",
+        "timestamp": "ISO8601 string"
+      }
+    },
+    "audit_event": {
+      "event_type": "audit",
+      "required_fields": {
+        "exchange_id": "string",
+        "request_id": "string",
+        "conversation_id": "string | nil",
+        "model": "string",
+        "provider": "string",
+        "caller": "hash",
+        "status": "symbol — :success, :error, :partial",
+        "stop_reason": "symbol | nil",
+        "timestamp": "ISO8601 string"
+      }
+    },
+    "tool_call_audit_event": {
+      "event_type": "tool_call_audit",
+      "required_fields": {
+        "exchange_id": "string",
+        "tool_call_id": "string",
+        "name": "string",
+        "source": "symbol — :client, :registry, :special, :extension, :mcp",
+        "status": "symbol — :pending, :running, :success, :error",
+        "arguments": "hash",
+        "timestamp": "ISO8601 string"
+      }
+    }
+  },
+  "example_events": {
+    "metering_success": {
+      "event_type": "metering",
+      "exchange_id": "exch_meter_001",
+      "request_id": "req_meter_001",
+      "conversation_id": "conv_001",
+      "model": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "usage": { "input_tokens": 150, "output_tokens": 85, "cache_read_tokens": 20 },
+      "cost": { "input_cost_usd": 0.0015, "output_cost_usd": 0.00765, "total_cost_usd": 0.00915 },
+      "latency_ms": 1250,
+      "stop_reason": "end_turn",
+      "routing": { "tier": "primary", "provider": "anthropic" },
+      "tool_calls_count": 0,
+      "timestamp": "2026-06-10T12:00:00Z"
+    },
+    "audit_success": {
+      "event_type": "audit",
+      "exchange_id": "exch_audit_001",
+      "request_id": "req_audit_001",
+      "conversation_id": "conv_001",
+      "model": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "caller": { "type": "anthropic_messages", "client_id": "test_client" },
+      "status": "success",
+      "stop_reason": "end_turn",
+      "routing": { "tier": "primary", "provider": "anthropic" },
+      "usage": { "input_tokens": 150, "output_tokens": 85 },
+      "route_attempts": [
+        { "attempt": 1, "provider": "anthropic", "model": "claude-sonnet-4-6", "status": "success" }
+      ],
+      "timestamp": "2026-06-10T12:00:00Z"
+    },
+    "tool_call_audit": {
+      "event_type": "tool_call_audit",
+      "exchange_id": "exch_tc_audit_001",
+      "tool_call_id": "call_tc_audit_001",
+      "name": "get_weather",
+      "source": "client",
+      "status": "success",
+      "arguments": { "location": "San Francisco, CA", "unit": "fahrenheit" },
+      "result": { "temperature": 68, "unit": "fahrenheit", "conditions": "partly cloudy" },
+      "duration_ms": 250,
+      "timestamp": "2026-06-10T12:00:01Z"
+    }
+  }
+}

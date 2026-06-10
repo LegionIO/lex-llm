@@ -1,0 +1,26 @@
+{
+  "description": "Streaming error mid-chunk sequence — provider errors during stream per G5/G6",
+  "request_id": "req_stream_error_001",
+  "chunks": [
+    {
+      "request_id": "req_stream_error_001",
+      "index": 0,
+      "type": "text_delta",
+      "delta": "The weather"
+    },
+    {
+      "request_id": "req_stream_error_001",
+      "index": 1,
+      "type": "error",
+      "stop_reason": "error",
+      "metadata": {
+        "error": {
+          "type": "overloaded",
+          "message": "Upstream provider timed out",
+          "code": 504
+        },
+        "partial_text": "The weather"
+      }
+    }
+  ]
+}

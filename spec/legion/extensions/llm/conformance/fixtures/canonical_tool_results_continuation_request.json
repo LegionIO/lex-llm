@@ -1,0 +1,75 @@
+{
+  "description": "Full multi-turn history: mixed client/server tool calls + thinking block per G4",
+  "id": "req_tool_continuation_001",
+  "system": "You are a helpful assistant.",
+  "messages": [
+    {
+      "role": "user",
+      "content": [{"type": "text", "text": "What's the weather in San Francisco, and summarize today's news about it?"}]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {"type": "text", "text": ""},
+        {"type": "tool_use", "id": "call_weather_01", "name": "get_weather", "input": {"location": "San Francisco, CA", "unit": "fahrenheit"}}
+      ],
+      "tool_calls": [
+        {
+          "id": "call_weather_01",
+          "exchange_id": "exch_turn1_001",
+          "name": "get_weather",
+          "arguments": {"location": "San Francisco, CA", "unit": "fahrenheit"},
+          "source": "client",
+          "status": "success",
+          "result": {"temperature": 68, "unit": "fahrenheit", "conditions": "partly cloudy"}
+        },
+        {
+          "id": "call_summarize_01",
+          "exchange_id": "exch_turn1_002",
+          "name": "summarize_article",
+          "arguments": {"topic": "San Francisco weather today"},
+          "source": "registry",
+          "status": "success",
+          "result": {"headline": "Partly cloudy skies, mild temperatures continue in Bay Area", "summary": "San Francisco enjoys its typical spring weather..."}
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_weather_01",
+      "content": [{"type": "tool_result", "tool_use_id": "call_weather_01", "text": "{\"temperature\":68,\"unit\":\"fahrenheit\",\"conditions\":\"partly cloudy\"}"}]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_summarize_01",
+      "content": [{"type": "tool_result", "tool_use_id": "call_summarize_01", "text": "{\"headline\":\"SF weather report\",\"summary\":\"Partly cloudy, 68F\"}"}]
+    }
+  ],
+  "tools": {
+    "get_weather": {
+      "name": "get_weather",
+      "description": "Get current weather for a location",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "location": {"type": "string"},
+          "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
+        },
+        "required": ["location"]
+      }
+    },
+    "summarize_article": {
+      "name": "summarize_article",
+      "description": "Summarize a news article by topic",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "topic": {"type": "string"}
+        },
+        "required": ["topic"]
+      }
+    }
+  },
+  "params": {"max_tokens": 1024},
+  "stream": false
+}

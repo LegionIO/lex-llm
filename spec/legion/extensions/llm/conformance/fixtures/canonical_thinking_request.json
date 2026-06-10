@@ -1,0 +1,18 @@
+{
+  "id": "req_thinking_001",
+  "messages": [
+    {
+      "role": "user",
+      "content": [{ "type": "text", "text": "Explain quantum computing in simple terms." }]
+    }
+  ],
+  "thinking": {
+    "effort": "high",
+    "budget": 4096
+  },
+  "params": {
+    "max_tokens": 2048,
+    "max_thinking_tokens": 4096
+  },
+  "stream": false
+}

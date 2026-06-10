@@ -1,0 +1,41 @@
+{
+  "description": "Streaming tool-call chunk sequence — multi-chunk stateful tool-loop per A7. Each tool_call_delta carries the complete current state (not raw incremental fragments); the assembler merges deltas via buffer_policy.",
+  "request_id": "req_stream_tool_001",
+  "chunks": [
+    {
+      "request_id": "req_stream_tool_001",
+      "index": 0,
+      "type": "text_delta",
+      "delta": "Let me check the weather for you."
+    },
+    {
+      "request_id": "req_stream_tool_001",
+      "index": 1,
+      "type": "tool_call_delta",
+      "tool_call": {
+        "id": "call_def456",
+        "name": "get_weather",
+        "arguments": {"location": "San Francisco, CA"}
+      }
+    },
+    {
+      "request_id": "req_stream_tool_001",
+      "index": 2,
+      "type": "tool_call_delta",
+      "tool_call": {
+        "id": "call_def456",
+        "name": "get_weather",
+        "arguments": {"location": "San Francisco, CA", "unit": "fahrenheit"}
+      }
+    },
+    {
+      "request_id": "req_stream_tool_001",
+      "type": "done",
+      "stop_reason": "tool_use",
+      "usage": {
+        "input_tokens": 45,
+        "output_tokens": 28
+      }
+    }
+  ]
+}

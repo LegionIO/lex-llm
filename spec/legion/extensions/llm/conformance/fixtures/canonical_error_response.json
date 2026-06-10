@@ -1,0 +1,19 @@
+{
+  "text": "",
+  "thinking": null,
+  "tool_calls": [],
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  "stop_reason": "error",
+  "model": "test-model-1",
+  "routing": {},
+  "metadata": {
+    "error": {
+      "type": "invalid_request_error",
+      "message": "Model nonexistent-model-xyz-12345 not found",
+      "code": 404
+    }
+  }
+}

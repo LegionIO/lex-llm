@@ -1,0 +1,14 @@
+{
+  "id": "req_system_prompt_001",
+  "system": "You are a helpful assistant that always responds in haiku form.",
+  "messages": [
+    {
+      "role": "user",
+      "content": [{ "type": "text", "text": "Tell me about Ruby." }]
+    }
+  ],
+  "params": {
+    "max_tokens": 512
+  },
+  "stream": false
+}
