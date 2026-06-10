@@ -23,30 +23,125 @@ require 'marcel'
 require 'ruby_llm/schema'
 require 'securerandom'
 require 'time'
-require 'zeitwerk'
 require_relative 'llm/version'
 
 module Legion
   module Extensions
     # Legion-native namespace for the shared LLM provider framework.
     module Llm
-      loader = Zeitwerk::Loader.new
-      loader.tag = 'lex-llm'
-      loader.inflector.inflect(
-        'api' => 'API',
-        'llm' => 'Llm',
-        'open_ai_compatible' => 'OpenAICompatible',
-        'pdf' => 'PDF',
-        'ui' => 'UI'
-      )
-      loader.ignore("#{__dir__}/llm/version.rb")
-      loader.ignore("#{__dir__}/llm/auto_registration.rb")
-      loader.ignore("#{__dir__}/llm/credential_sources.rb")
-      loader.ignore("#{__dir__}/llm/transport/exchanges")
-      loader.ignore("#{__dir__}/llm/transport/messages")
-      loader.ignore("#{__dir__}/llm/canonical")
-      loader.push_dir("#{__dir__}/llm", namespace: self)
-      loader.setup
+      # ------------------------------------------------------------------ #
+      #  Explicit requires (replaces Zeitwerk autoloading).                 #
+      #  Load order: base classes & canonical types first, then anything    #
+      #  that references them. All live under Legion::Extensions::Llm so    #
+      #  unqualified constant lookups resolve via Ruby scope.               #
+      # ------------------------------------------------------------------ #
+
+      # --- Base value objects (no internal deps) ---
+      require_relative 'llm/mime_type'
+      require_relative 'llm/model/info'
+      require_relative 'llm/model/modalities'
+      require_relative 'llm/model/pricing_category'
+      require_relative 'llm/model/pricing_tier'
+      require_relative 'llm/model/pricing'
+      require_relative 'llm/configuration'
+      require_relative 'llm/thinking'
+      require_relative 'llm/tokens'
+      require_relative 'llm/message'
+      require_relative 'llm/tool_call'
+      require_relative 'llm/content'
+      require_relative 'llm/errors/unsupported_capability'
+      require_relative 'llm/error'
+
+      # --- Build on message/base types ---
+      require_relative 'llm/chunk'
+      require_relative 'llm/model'
+      require_relative 'llm/attachment'
+
+      # --- Streaming fundamentals (must load before streaming/provider) ---
+      require_relative 'llm/stream_accumulator'
+      require_relative 'llm/responses/stream_chunk'
+      require_relative 'llm/streaming'
+
+      # --- Context, Connection ---
+      require_relative 'llm/context'
+      require_relative 'llm/connection'
+
+      # --- Response normalizers ---
+      require_relative 'llm/responses/chat_response'
+      require_relative 'llm/responses/embedding_response'
+      require_relative 'llm/responses/thinking_extractor'
+
+      # --- Provider base & allied modules ---
+      require_relative 'llm/provider_contract'
+      require_relative 'llm/provider_settings'
+      require_relative 'llm/provider'
+
+      # --- Provider subtypes ---
+      require_relative 'llm/provider/open_ai_compatible'
+
+      # --- Routing ---
+      require_relative 'llm/routing'
+      require_relative 'llm/routing/lane_key'
+      require_relative 'llm/routing/offering_registry'
+      require_relative 'llm/routing/registry_event'
+      require_relative 'llm/routing/model_offering'
+
+      # --- Models (scans for Provider subclasses) ---
+      require_relative 'llm/models'
+
+      # --- Agent & Chat (reference Provider, Context, Chat at method-time) ---
+      require_relative 'llm/agent'
+      require_relative 'llm/chat'
+
+      # --- Domain services ---
+      require_relative 'llm/embedding'
+      require_relative 'llm/moderation'
+      require_relative 'llm/image'
+      require_relative 'llm/transcription'
+
+      # --- Registry & misc support ---
+      require_relative 'llm/registry_event_builder'
+      require_relative 'llm/registry_publisher'
+      require_relative 'llm/auto_registration'
+      require_relative 'llm/credential_sources'
+      require_relative 'llm/tool'
+      require_relative 'llm/utils'
+      require_relative 'llm/aliases'
+
+      # --- Fleet protocol (depends on Provider, Models) ---
+      require_relative 'llm/fleet/protocol'
+      require_relative 'llm/fleet/settings'
+      require_relative 'llm/fleet/token_error'
+      require_relative 'llm/fleet/envelope_validation'
+      require_relative 'llm/fleet/publish_safety'
+      require_relative 'llm/fleet/default_exchange_reply'
+      require_relative 'llm/fleet/token_validator'
+      require_relative 'llm/fleet/worker_execution'
+      require_relative 'llm/fleet/provider_responder'
+
+      # --- Transport lane (references Fleet exchange/message autoloads) ---
+      require_relative 'llm/transport/fleet_lane'
+
+      # --- Canonical types — explicit self-contained loader ---
+      require_relative 'llm/canonical'
+
+      # --- Transport modules (lazy — depend on optional legion-transport) ---
+      # These remain as autoload so boot-time does not force legion-transport.
+      module Transport
+        # Shared AMQP exchange definitions for fleet routing.
+        # Lazy-loaded; only instantiated when legion-transport is available.
+        module Exchanges
+          autoload :Fleet, File.expand_path('llm/transport/exchanges/fleet', __dir__)
+        end
+
+        # Shared AMQP message envelopes for fleet request/response cycles.
+        # Lazy-loaded; only instantiated when legion-transport is available.
+        module Messages
+          autoload :FleetRequest, File.expand_path('llm/transport/messages/fleet_request', __dir__)
+          autoload :FleetResponse, File.expand_path('llm/transport/messages/fleet_response', __dir__)
+          autoload :FleetError, File.expand_path('llm/transport/messages/fleet_error', __dir__)
+        end
+      end
 
       Schema = ::RubyLLM::Schema unless const_defined?(:Schema, false)
 
@@ -161,25 +256,6 @@ module Legion
 
       def self.provider_settings(...)
         ProviderSettings.build(...)
-      end
-
-      require_relative 'llm/auto_registration'
-      require_relative 'llm/credential_sources'
-      require_relative 'llm/canonical'
-      loader.eager_load
-
-      module Transport
-        # Local autoloads for fleet exchange classes that depend on legion-transport.
-        module Exchanges
-          autoload :Fleet, File.expand_path('llm/transport/exchanges/fleet', __dir__)
-        end
-
-        # Local autoloads for fleet message classes that depend on legion-transport.
-        module Messages
-          autoload :FleetRequest, File.expand_path('llm/transport/messages/fleet_request', __dir__)
-          autoload :FleetResponse, File.expand_path('llm/transport/messages/fleet_response', __dir__)
-          autoload :FleetError, File.expand_path('llm/transport/messages/fleet_error', __dir__)
-        end
       end
     end
   end

@@ -44,5 +44,4 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'legion-transport', '>= 1.4.14'
   spec.add_dependency 'marcel', '~> 1'
   spec.add_dependency 'ruby_llm-schema', '~> 0'
-  spec.add_dependency 'zeitwerk', '~> 2'
 end
