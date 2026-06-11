@@ -1,0 +1,13 @@
+{
+  "text": "",
+  "thinking": null,
+  "tool_calls": [],
+  "usage": {
+    "input_tokens": 8,
+    "output_tokens": 0
+  },
+  "stop_reason": "end_turn",
+  "model": "test-model-1",
+  "routing": {},
+  "metadata": {}
+}

@@ -1,0 +1,36 @@
+{
+  "description": "Stop reason mapping matrix — every provider value maps to a canonical enum",
+  "canonical_stop_reasons": ["end_turn", "tool_use", "max_tokens", "stop_sequence", "content_filter", "error"],
+  "provider_mappings": {
+    "anthropic": {
+      "end_turn": "end_turn",
+      "tool_use": "tool_use",
+      "max_tokens": "max_tokens",
+      "stop_sequence": "stop_sequence",
+      "content_filter": "content_filter"
+    },
+    "openai": {
+      "stop": "end_turn",
+      "tool_calls": "tool_use",
+      "length": "max_tokens",
+      "content_filter": "content_filter"
+    },
+    "openai_responses": {
+      "completed": "end_turn",
+      "incomplete": "max_tokens",
+      "cancelled": "stop_sequence",
+      "failed": "error"
+    },
+    "vllm": {
+      "stop": "end_turn",
+      "tool_use": "tool_use",
+      "length": "max_tokens"
+    },
+    "bedrock_converse": {
+      "end_turn": "end_turn",
+      "tool_use": "tool_use",
+      "max_tokens": "max_tokens",
+      "guardrail_intervened": "content_filter"
+    }
+  }
+}

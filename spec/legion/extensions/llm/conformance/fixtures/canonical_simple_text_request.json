@@ -1,0 +1,13 @@
+{
+  "id": "req_simple_text_001",
+  "messages": [
+    {
+      "role": "user",
+      "content": [{ "type": "text", "text": "Hello, how are you?" }]
+    }
+  ],
+  "params": {
+    "max_tokens": 1024
+  },
+  "stream": false
+}

@@ -16,9 +16,7 @@ module Legion
           response = connection.post stream_url, payload do |req|
             req.headers = additional_headers.merge(req.headers) unless additional_headers.empty?
             on_chunk = build_stream_callback(accumulator, block)
-            if Legion::Extensions::Llm.config.log_stream_debug
-              log.debug { "Stream callback prepared: #{on_chunk.inspect}" }
-            end
+            log.debug { "Stream callback prepared: #{on_chunk.inspect}" } if Legion::Extensions::Llm.config.log_stream_debug
             if faraday_1?
               req.options[:on_data] = handle_stream(&on_chunk)
             else

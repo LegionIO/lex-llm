@@ -1,0 +1,20 @@
+{
+  "description": "Expected accumulated Canonical::Response after processing canonical_streaming_tool_call_chunks.json — verify accumulate(chunks) == parse(full)",
+  "text": "Let me check the weather for you.",
+  "thinking": null,
+  "tool_calls": [
+    {
+      "id": "call_def456",
+      "name": "get_weather",
+      "arguments": {"location": "San Francisco, CA", "unit": "fahrenheit"},
+      "source": "client",
+      "status": "pending"
+    }
+  ],
+  "usage": {
+    "input_tokens": 45,
+    "output_tokens": 28
+  },
+  "stop_reason": "tool_use",
+  "model": "test-model-1"
+}

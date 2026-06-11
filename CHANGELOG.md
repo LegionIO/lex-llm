@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.0 - 2026-06-10
+
+### Added
+- **Canonical types module** — `Legion::Extensions::Llm::Canonical` provides immutable `Data.define` value objects (Thinking, Usage, Params, ContentBlock, ToolDefinition, ToolCall, Message, Request, Response, Chunk) forming the single N×N client↔provider routing contract. Includes `from_hash`/`to_h` for serialization, `CONTRACT_VERSION` for provider gem compatibility checks, and explicit factory validation per Amendment A.
+- **Conformance kit** — Shared RSpec example groups shipped under `spec/legion/extensions/llm/conformance/` (provider_translator_examples, client_translator_examples) with JSON fixtures for canonical↔provider translation contract testing. Packaged via gemspec `spec.files`; `gemspec.require_paths` remains `['lib']` only — conformance specs are consumed by provider gems at test time via `Gem.loaded_specs['lex-llm'].full_gem_path`.
+- **Conformance kit coordinator** — Fixtures read with explicit UTF-8 encoding so locale-less CI shells do not fail on JSON.parse.
+
+### Changed
+- **Zeitwerk autoloading removed** — Replaced lazy Zeitwerk::Loader with deterministic explicit `require_relative` for every file in `lib/`. Contract constants now exist at `require` time so provider gems can subclass against them during phased extension loading (core → lex-identity → lex-llm → lex-llm-*). Removed undeclared `zeitwerk ~> 2` runtime dependency from gemspec. Load order: canonical types and base classes first, then components referencing them. Transport exchange/message modules remain as Ruby `autoload` to avoid forcing `legion-transport` at boot time.
+
+## 0.4.19 - 2026-06-10
+
+### Fixed
+- **Connection logging bodies** — `setup_logging` now enables request body logging when the logger is at DEBUG level OR when `fleet.request.logger.request_payload` is explicitly true. Previously relied solely on log-level check; the new `request_payload` setting provides explicit control for fleet worker scenarios.
+- **OpenAI-compatible tool formatting** — `format_openai_tools` now handles both `ToolDefinition` objects and plain Hashes (from `native_dispatch`) by checking `respond_to?` for method access and falling back to symbol/string key access. Prevents `NoMethodError` when tools arrive as hash-backed definitions.
+
+### Added
+- **Fleet request_payload setting** — Added `fleet.request.logger.request_payload` (default: `false`) to `default_settings` for explicit control over request body logging in Faraday middleware.
+
 ## 0.4.18 - 2026-06-05
 
 ### Fixed

@@ -1,0 +1,17 @@
+{
+  "text": "Quantum computing uses quantum bits (qubits) that can represent both 0 and 1 simultaneously, unlike classical bits.",
+  "thinking": {
+    "content": "I need to explain quantum computing simply. Start with the basic difference between classical and quantum bits, then mention superposition and entanglement as key concepts.",
+    "signature": "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9"
+  },
+  "tool_calls": [],
+  "usage": {
+    "input_tokens": 15,
+    "output_tokens": 45,
+    "thinking_tokens": 120
+  },
+  "stop_reason": "end_turn",
+  "model": "test-model-thinking-1",
+  "routing": {},
+  "metadata": {}
+}

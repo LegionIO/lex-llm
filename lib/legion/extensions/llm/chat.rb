@@ -11,9 +11,7 @@ module Legion
         attr_reader :model, :messages, :tools, :tool_prefs, :params, :headers, :schema
 
         def initialize(model: nil, provider: nil, assume_model_exists: false, context: nil)
-          if assume_model_exists && !provider
-            raise ArgumentError, 'Provider must be specified if assume_model_exists is true'
-          end
+          raise ArgumentError, 'Provider must be specified if assume_model_exists is true' if assume_model_exists && !provider
 
           @context = context
           @config = context&.config || Legion::Extensions::Llm.config
@@ -139,7 +137,7 @@ module Legion
           messages.each(&)
         end
 
-        def complete(&) # rubocop:disable Metrics/PerceivedComplexity
+        def complete(&)
           response = @provider.complete(
             messages,
             tools: @tools,
@@ -234,7 +232,7 @@ module Legion
           end
         end
 
-        def handle_tool_calls(response, &) # rubocop:disable Metrics/PerceivedComplexity
+        def handle_tool_calls(response, &)
           halt_result = nil
 
           response.tool_calls.each_value do |tool_call|

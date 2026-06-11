@@ -1,0 +1,81 @@
+{
+  "description": "Fleet round-trip field mapping — R6",
+  "round_trip_request": {
+    "id": "req_fleet_rt_001",
+    "messages": [
+      {
+        "role": "user",
+        "content": [{ "type": "text", "text": "Fleet round-trip test message" }]
+      }
+    ],
+    "system": "You are a test assistant.",
+    "tools": {
+      "test_tool": {
+        "name": "test_tool",
+        "description": "A test tool for round-trip validation",
+        "parameters": {
+          "type": "object",
+          "properties": { "input": { "type": "string" } },
+          "required": ["input"]
+        }
+      }
+    },
+    "params": { "max_tokens": 1024, "temperature": 0.5 },
+    "thinking": { "effort": "low", "budget": 1024 },
+    "stream": false,
+    "conversation_id": "conv_fleet_rt_001",
+    "caller": { "type": "anthropic_messages", "client_id": "test_client" },
+    "routing": { "tier": "primary", "provider": "anthropic", "model": "claude-sonnet-4-6" },
+    "metadata": { "trace_id": "trace_abc123", "span_id": "span_def456" }
+  },
+  "round_trip_response": {
+    "text": "This is a fleet round-trip test response.",
+    "thinking": { "content": "Processing fleet round-trip test.", "signature": "sig_test_001" },
+    "tool_calls": [
+      {
+        "id": "call_fleet_rt_001",
+        "exchange_id": "exch_fleet_rt_001",
+        "name": "test_tool",
+        "arguments": { "input": "round_trip_test" },
+        "source": "client",
+        "status": "pending"
+      }
+    ],
+    "usage": {
+      "input_tokens": 50,
+      "output_tokens": 30,
+      "cache_read_tokens": 10,
+      "cache_write_tokens": 5,
+      "thinking_tokens": 20
+    },
+    "stop_reason": "tool_use",
+    "model": "claude-sonnet-4-6",
+    "routing": { "tier": "primary", "provider": "anthropic", "instance": "us-east-1" },
+    "metadata": { "trace_id": "trace_abc123", "span_id": "span_def456", "latency_ms": 1250 }
+  },
+  "field_mapping": {
+    "request": {
+      "id": "string — unique request identifier",
+      "messages": "array[Message] — conversation history",
+      "system": "string | nil — system prompt",
+      "tools": "hash[name -> ToolDefinition] — available tools",
+      "params": "Params — sampling parameters",
+      "thinking": "Thinking::Config | nil — thinking configuration",
+      "stream": "boolean — streaming mode",
+      "conversation_id": "string | nil — conversation grouping",
+      "caller": "hash — client translator identity",
+      "routing": "hash — routing hints",
+      "metadata": "hash — passthrough metadata"
+    },
+    "response": {
+      "text": "string — assistant text content",
+      "thinking": "Thinking | nil — thinking block with content and signature",
+      "tool_calls": "array[ToolCall] — tool call requests",
+      "usage": "Usage — token usage breakdown",
+      "stop_reason": "symbol — why generation stopped",
+      "model": "string — resolved model identifier",
+      "routing": "hash — actual routing used",
+      "metadata": "hash — provider passthrough quirks"
+    }
+  }
+}

@@ -123,7 +123,7 @@ module Legion
             fetch_provider_models(remote_only: remote_only)[:models]
           end
 
-          def resolve(model_id, provider: nil, assume_exists: false, config: nil) # rubocop:disable Metrics/PerceivedComplexity
+          def resolve(model_id, provider: nil, assume_exists: false, config: nil)
             config ||= Legion::Extensions::Llm.config
             provider_class = provider ? resolve_provider_class(provider) : nil
 
@@ -168,7 +168,7 @@ module Legion
             instance.respond_to?(method, include_private) || super
           end
 
-          def fetch_models_dev_models(existing_models) # rubocop:disable Metrics/PerceivedComplexity
+          def fetch_models_dev_models(existing_models)
             log.info 'Fetching models from models.dev API...'
 
             connection = Connection.basic do |f|
@@ -300,7 +300,7 @@ module Legion
             end
           end
 
-          def add_provider_metadata(models_dev_model, provider_model) # rubocop:disable Metrics/PerceivedComplexity
+          def add_provider_metadata(models_dev_model, provider_model)
             data = models_dev_model.to_h
             data[:name] = provider_model.name if blank_value?(data[:name])
             data[:family] = provider_model.family if blank_value?(data[:family])

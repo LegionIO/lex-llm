@@ -80,7 +80,7 @@ module Legion
             /reduce the length of messages/i
           ].freeze
 
-          def parse_error(provider:, response:) # rubocop:disable Metrics/PerceivedComplexity
+          def parse_error(provider:, response:)
             response = response_with_stream_error_body(response)
             message = provider&.parse_error(response)
 
@@ -88,9 +88,7 @@ module Legion
             when 200..399
               message
             when 400
-              if context_length_exceeded?(message)
-                raise ContextLengthExceededError.new(response, message || 'Context length exceeded')
-              end
+              raise ContextLengthExceededError.new(response, message || 'Context length exceeded') if context_length_exceeded?(message)
 
               raise BadRequestError.new(response, message || 'Invalid request - please check your input')
             when 401
@@ -101,9 +99,7 @@ module Legion
               raise ForbiddenError.new(response,
                                        message || 'Forbidden - you do not have permission to access this resource')
             when 429
-              if context_length_exceeded?(message)
-                raise ContextLengthExceededError.new(response, message || 'Context length exceeded')
-              end
+              raise ContextLengthExceededError.new(response, message || 'Context length exceeded') if context_length_exceeded?(message)
 
               raise RateLimitError.new(response, message || 'Rate limit exceeded - please wait a moment')
             when 500

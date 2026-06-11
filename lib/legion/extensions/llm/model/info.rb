@@ -19,7 +19,7 @@ module Legion
           :parameter_size, :quantization, :size_bytes,
           :modalities_input, :modalities_output, :metadata
         ) do
-          # rubocop:disable Metrics/ParameterLists, Metrics/PerceivedComplexity
+          # rubocop:disable Metrics/ParameterLists
           def initialize(
             id:, name: nil, provider: nil, instance: :default,
             family: nil, capabilities: [], context_length: nil,
@@ -46,7 +46,7 @@ module Legion
               metadata: metadata.is_a?(Hash) ? metadata : {}
             )
           end
-          # rubocop:enable Metrics/ParameterLists, Metrics/PerceivedComplexity
+          # rubocop:enable Metrics/ParameterLists
 
           # ── Capability predicates ─────────────────────────────────────
 
@@ -206,11 +206,9 @@ module Legion
           class << self
             private
 
-            def extract_modalities(data) # rubocop:disable Metrics/PerceivedComplexity
+            def extract_modalities(data)
               # New-style keys take priority (round-trip from to_h)
-              if data.key?(:modalities_input) || data.key?(:modalities_output)
-                return [Array(data[:modalities_input]), Array(data[:modalities_output])]
-              end
+              return [Array(data[:modalities_input]), Array(data[:modalities_output])] if data.key?(:modalities_input) || data.key?(:modalities_output)
 
               # Legacy: modalities is a hash or Modalities object
               modalities_data = data[:modalities]

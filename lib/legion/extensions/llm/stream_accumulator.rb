@@ -39,7 +39,7 @@ module Legion
           log.debug { inspect } if Legion::Extensions::Llm.config.log_stream_debug
         end
 
-        def filtered_chunk(chunk) # rubocop:disable Metrics/PerceivedComplexity
+        def filtered_chunk(chunk)
           has_content = !@last_content_delta.empty?
           has_thinking = !@last_thinking_delta.empty?
           has_tokens = chunk.input_tokens&.positive? || chunk.output_tokens&.positive?

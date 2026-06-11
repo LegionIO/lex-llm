@@ -10,9 +10,7 @@ module Legion
 
           def for(offering, prefix: 'llm.fleet', include_context: true, include_fingerprint: false)
             parts = [prefix, lane_kind(offering), model_slug(lane_model(offering))]
-            if include_context && offering.inference? && offering.context_window
-              parts << "ctx#{offering.context_window}"
-            end
+            parts << "ctx#{offering.context_window}" if include_context && offering.inference? && offering.context_window
             parts.push('elig', eligibility_fingerprint(offering)) if include_fingerprint
             parts.join('.')
           end

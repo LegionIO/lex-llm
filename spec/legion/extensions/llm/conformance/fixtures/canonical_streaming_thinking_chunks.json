@@ -1,0 +1,42 @@
+{
+  "description": "Streaming thinking + text chunk sequence — sanitized from real E2E traffic",
+  "request_id": "req_stream_thinking_001",
+  "chunks": [
+    {
+      "request_id": "req_stream_thinking_001",
+      "index": 0,
+      "type": "thinking_delta",
+      "delta": "Let me think about this step by step.",
+      "signature": null
+    },
+    {
+      "request_id": "req_stream_thinking_001",
+      "index": 1,
+      "type": "thinking_delta",
+      "delta": "The key concepts are superposition and entanglement.",
+      "signature": "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9"
+    },
+    {
+      "request_id": "req_stream_thinking_001",
+      "index": 2,
+      "type": "text_delta",
+      "delta": "Quantum computing uses qubits that can be in multiple states at once."
+    },
+    {
+      "request_id": "req_stream_thinking_001",
+      "index": 3,
+      "type": "text_delta",
+      "delta": " This enables parallel computation on a massive scale."
+    },
+    {
+      "request_id": "req_stream_thinking_001",
+      "type": "done",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 15,
+        "output_tokens": 45,
+        "thinking_tokens": 80
+      }
+    }
+  ]
+}

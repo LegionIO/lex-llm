@@ -1,0 +1,13 @@
+{
+  "text": "I'm doing well, thank you for asking!",
+  "thinking": null,
+  "tool_calls": [],
+  "usage": {
+    "input_tokens": 12,
+    "output_tokens": 10
+  },
+  "stop_reason": "end_turn",
+  "model": "test-model-1",
+  "routing": {},
+  "metadata": {}
+}

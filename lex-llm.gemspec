@@ -24,8 +24,8 @@ Gem::Specification.new do |spec|
 
   spec.metadata['rubygems_mfa_required'] = 'true'
 
-  spec.files = `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(spec|test|features|tmp|coverage)/}) }
-  spec.require_paths = ['lib']
+  spec.files = `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(test|features|tmp|coverage)/}) }
+  spec.require_paths = %w[lib]
 
   # Runtime dependencies
   spec.add_dependency 'base64'
@@ -44,5 +44,4 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'legion-transport', '>= 1.4.14'
   spec.add_dependency 'marcel', '~> 1'
   spec.add_dependency 'ruby_llm-schema', '~> 0'
-  spec.add_dependency 'zeitwerk', '~> 2'
 end
