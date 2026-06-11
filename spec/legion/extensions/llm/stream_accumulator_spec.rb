@@ -100,4 +100,56 @@ RSpec.describe Legion::Extensions::Llm::StreamAccumulator do
       expect(message.thinking).to be_nil
     end
   end
+
+  describe '#filtered_chunk' do
+    it 'returns a chunk for a plain text delta' do
+      accumulator = described_class.new
+      chunk = Legion::Extensions::Llm::Chunk.new(role: :assistant, content: 'Hello', model_id: 'm')
+
+      accumulator.add(chunk)
+      filtered = accumulator.filtered_chunk(chunk)
+
+      expect(filtered).not_to be_nil
+      expect(filtered.content.to_s).to eq('Hello')
+    end
+  end
+
+  describe '#flush_pending_chunk' do
+    it 'returns nil when nothing is buffered' do
+      accumulator = described_class.new
+      chunk = Legion::Extensions::Llm::Chunk.new(role: :assistant, content: 'Hello', model_id: 'm')
+      accumulator.add(chunk)
+
+      expect(accumulator.flush_pending_chunk).to be_nil
+    end
+
+    it 'releases text held by the untagged-preamble heuristic as a final delta' do
+      accumulator = described_class.new
+      deltas = []
+      ['I can help', ' with that.'].each do |text|
+        chunk = Legion::Extensions::Llm::Chunk.new(role: :assistant, content: text, model_id: 'm')
+        accumulator.add(chunk)
+        filtered = accumulator.filtered_chunk(chunk)
+        deltas << filtered.content.to_s if filtered
+      end
+
+      final = accumulator.flush_pending_chunk
+      deltas << final.content.to_s if final
+      message = accumulator.to_message(nil)
+
+      expect(deltas.join).to eq('I can help with that.')
+      expect(message.content).to eq('I can help with that.')
+    end
+
+    it 'does not double-append flushed text in to_message' do
+      accumulator = described_class.new
+      chunk = Legion::Extensions::Llm::Chunk.new(role: :assistant, content: 'The answer', model_id: 'm')
+      accumulator.add(chunk)
+
+      accumulator.flush_pending_chunk
+      message = accumulator.to_message(nil)
+
+      expect(message.content).to eq('The answer')
+    end
+  end
 end
