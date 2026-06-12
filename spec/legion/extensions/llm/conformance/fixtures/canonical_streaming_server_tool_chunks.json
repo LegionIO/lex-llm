@@ -1,0 +1,52 @@
+{
+  "description": "G24 — streaming sequence for a server-executed LegionIO tool. The server-side exchange streams as tool_call_delta(s) (with the result attached on close) followed by trailing text from round-2. Client translators must turn this into completed (non-actionable) blocks: Claude server_tool_use+server_tool_result blocks, Codex completed function_call items with results visible.",
+  "request_id": "req_stream_legion_001",
+  "chunks": [
+    {
+      "request_id": "req_stream_legion_001",
+      "index": 0,
+      "type": "tool_call_delta",
+      "tool_call": {
+        "id": "call_legion_stream_001",
+        "name": "legion_list_all_tools",
+        "arguments": {"filter": "all"},
+        "source": "registry",
+        "status": "running"
+      }
+    },
+    {
+      "request_id": "req_stream_legion_001",
+      "index": 0,
+      "type": "tool_call_delta",
+      "tool_call": {
+        "id": "call_legion_stream_001",
+        "name": "legion_list_all_tools",
+        "arguments": {"filter": "all"},
+        "source": "registry",
+        "status": "success",
+        "result": "tools: legion_list_all_tools, legion_apollo_search"
+      }
+    },
+    {
+      "request_id": "req_stream_legion_001",
+      "index": 1,
+      "type": "text_delta",
+      "delta": "I called the "
+    },
+    {
+      "request_id": "req_stream_legion_001",
+      "index": 1,
+      "type": "text_delta",
+      "delta": "legion_list_all_tools tool."
+    },
+    {
+      "request_id": "req_stream_legion_001",
+      "type": "done",
+      "stop_reason": "end_turn",
+      "usage": {
+        "input_tokens": 50,
+        "output_tokens": 25
+      }
+    }
+  ]
+}

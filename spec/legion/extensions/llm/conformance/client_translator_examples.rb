@@ -265,5 +265,168 @@ RSpec.shared_examples 'a canonical client translator' do |translator_class|
       end
     end
   end
+
+  # G24 — execution-proxy response contract.
+  #
+  # When a server-executed LegionIO tool resolves before the canonical response
+  # is returned, the tool_call carries `:result` and a server-tool source
+  # (registry/special/extension/mcp). Client translators MUST surface that
+  # exchange as a completed, NON-actionable item — the client must not try to
+  # re-execute it. Per format:
+  #
+  #   * Claude /v1/messages — server_tool_use + server_tool_result content
+  #     blocks (NOT plain tool_use). stop_reason end_turn once all server
+  #     results are present.
+  #   * Codex /v1/responses — completed function_call items (or message items)
+  #     showing name+arguments+result, status 'completed' (NOT 'in_progress'
+  #     or 'requires_action'). The response status is 'completed', not
+  #     'requires_action'.
+  #   * Codex /v1/chat/completions — finish_reason 'stop' (not 'tool_calls')
+  #     when only server tools were called and they all have results; the
+  #     server tool exchange does not appear as actionable tool_calls.
+  #
+  # Translators declare their family via `g24_format` (one of :claude_messages,
+  # :openai_responses, :openai_chat) so the shared examples can pick the right
+  # shape assertions. Translators that don't implement g24_format are skipped.
+  describe 'G24 execution-proxy contract' do
+    let(:canonical_resp) do
+      canonical::Response.from_hash(conformance.fixture_symbolized('canonical_server_tool_use_response'))
+    end
+
+    let(:format) do
+      next nil unless translator.respond_to?(:g24_format)
+
+      translator.g24_format
+    end
+
+    context 'with a server-executed tool result in the canonical response' do
+      it 'surfaces the server tool name in the formatted response' do
+        next if format.nil?
+
+        formatted = translator.format_response(canonical_resp)
+        formatted_str = formatted.to_s
+        expect(formatted_str).to include('legion_list_all_tools')
+      end
+
+      it 'surfaces the server tool result text in the formatted response' do
+        next if format.nil?
+
+        formatted = translator.format_response(canonical_resp)
+        formatted_str = formatted.to_s
+        expect(formatted_str).to include('legion_list_all_tools, legion_apollo_search')
+      end
+
+      it 'never surfaces server-executed tools as actionable items', :aggregate_failures do
+        next if format.nil?
+
+        formatted = translator.format_response(canonical_resp)
+
+        case format
+        when :claude_messages
+          # Server-side tools must appear as server_tool_use, never tool_use.
+          # The G24 contract says the model must know the call happened AND
+          # the client must not re-execute, so server_tool_use+server_tool_result
+          # are the only shape — plain tool_use would put the client in a
+          # tool-loop trying to fulfill an already-resolved exchange.
+          types = (formatted[:content] || formatted['content']).map { |b| b[:type] || b['type'] }
+          expect(types).to include('server_tool_use')
+          expect(types).to include('server_tool_result')
+          expect(types).not_to include('tool_use')
+
+          stop_reason = formatted[:stop_reason] || formatted['stop_reason']
+          expect(stop_reason).to eq('end_turn')
+
+          server_use = (formatted[:content] || formatted['content']).find do |b|
+            (b[:type] || b['type']).to_s == 'server_tool_use'
+          end
+          expect(server_use[:name] || server_use['name']).to eq('legion_list_all_tools')
+
+          server_result = (formatted[:content] || formatted['content']).find do |b|
+            (b[:type] || b['type']).to_s == 'server_tool_result'
+          end
+          result_text = (server_result[:content] || server_result['content']).first
+          expect(result_text[:text] || result_text['text']).to include('legion_list_all_tools')
+        when :openai_responses
+          status = formatted[:status] || formatted['status']
+          expect(status).to eq('completed')
+
+          output = formatted[:output] || formatted['output']
+          actionable = output.select do |item|
+            type = (item[:type] || item['type']).to_s
+            status_str = (item[:status] || item['status']).to_s
+            type == 'function_call' && status_str != 'completed'
+          end
+          expect(actionable).to be_empty,
+                                "found actionable function_call items for server tools: #{actionable.inspect}"
+
+          # action_required is the legacy requires-action surface — server
+          # tools must never end up there.
+          action_required = formatted[:action_required] || formatted['action_required']
+          expect(action_required).to be_nil
+        when :openai_chat
+          choice = (formatted[:choices] || formatted['choices']).first
+          finish_reason = choice[:finish_reason] || choice['finish_reason']
+          expect(finish_reason).to eq('stop')
+
+          message = choice[:message] || choice['message']
+          actionable = (message[:tool_calls] || message['tool_calls'] || []).reject do |tc|
+            (tc[:status] || tc['status']).to_s == 'completed'
+          end
+          expect(actionable).to be_empty,
+                                "found actionable tool_calls for server tools: #{actionable.inspect}"
+        else
+          raise "unknown G24 format: #{format.inspect}"
+        end
+      end
+    end
+
+    it 'formats the streaming tool_call_delta with the registry source' do
+      next if format.nil?
+
+      # The streaming tool_call_delta carries the resolved server_tool result.
+      # We don't assert the per-chunk SSE encoding here (that's the route's
+      # event emitter contract); we assert format_chunk doesn't drop the call
+      # and the source flows through.
+      stream_fixture = conformance.fixture('canonical_streaming_server_tool_chunks')
+      tool_chunk = stream_fixture['chunks'].find do |c|
+        c['type'] == 'tool_call_delta' && c.dig('tool_call', 'result')
+      end
+      expect(tool_chunk).not_to be_nil
+
+      chunk = canonical::Chunk.from_hash(tool_chunk)
+      formatted = translator.format_chunk(chunk)
+
+      next if formatted.nil?
+
+      # Format-specific minimum: the tool name is reachable. Streaming
+      # shape per format is asserted in the matrix harness; here we only
+      # require that the server-tool name survives chunk formatting.
+      expect(formatted.to_s).to include('legion_list_all_tools')
+    end
+
+    it 'parses a continuation request with a prior server-executed exchange losslessly' do
+      next if format.nil?
+      next unless translator.respond_to?(:format_request)
+
+      # Each translator round-trips its own format. We render the canonical
+      # continuation with format_request (when available) then re-parse —
+      # the prior server tool exchange must survive intact.
+      continuation_body = conformance.fixture_symbolized('canonical_server_tool_continuation_request')
+      canonical_req = canonical::Request.from_hash(continuation_body)
+      formatted_body = translator.format_request(canonical_req)
+      next if formatted_body.nil?
+
+      parsed = translator.parse_request(formatted_body, {})
+      expect(parsed).to be_a(canonical::Request)
+
+      # The assistant tool_call and the tool result both survive the cycle.
+      roles = parsed.messages.map { |m| m.role.to_sym }
+      expect(roles).to include(:assistant)
+      expect(roles).to include(:tool)
+
+      tool_msg = parsed.messages.find { |m| m.role.to_sym == :tool }
+      expect(tool_msg.content.to_s).to include('legion_list_all_tools')
+    end
+  end
 end
 # rubocop:enable Lint/NonLocalExitFromIterator

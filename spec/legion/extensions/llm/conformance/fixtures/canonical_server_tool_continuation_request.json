@@ -1,0 +1,43 @@
+{
+  "description": "G24 round-trip — when a client sends back a history that contains a completed server-side exchange (Claude: server_tool_use+server_tool_result blocks; Codex: completed function_call+function_call_output items), the client translator must parse them into canonical messages losslessly so the next turn rendering still attributes the call to the assistant and its result to the tool role. Tools array is empty because the server-side exchange is already closed; this request is just continuing the conversation.",
+  "id": "req_g24_continuation_001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "what legionio tools do you have available?"
+    },
+    {
+      "role": "assistant",
+      "content": "I called the legion_list_all_tools tool.",
+      "tool_calls": [
+        {
+          "id": "call_legion_001",
+          "name": "legion_list_all_tools",
+          "arguments": {"filter": "all"},
+          "source": "registry",
+          "status": "success",
+          "result": "tools: legion_list_all_tools, legion_apollo_search"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_legion_001",
+      "content": "tools: legion_list_all_tools, legion_apollo_search"
+    },
+    {
+      "role": "user",
+      "content": "thanks — anything else?"
+    }
+  ],
+  "system": null,
+  "tools": null,
+  "params": null,
+  "thinking": null,
+  "stream": false,
+  "conversation_id": "conv_g24_001",
+  "routing": {},
+  "metadata": {
+    "g24": "continuation"
+  }
+}
