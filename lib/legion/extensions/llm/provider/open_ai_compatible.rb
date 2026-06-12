@@ -76,7 +76,12 @@ module Legion
           def format_openai_tool_calls(tool_calls)
             return nil unless tool_calls&.any?
 
-            tool_calls.values.map do |tool_call|
+            # Array is the canonical shape (per canonical/message.rb); Hash
+            # is the legacy lex-llm shape (id => ToolCall). Both flow through
+            # this renderer depending on caller.
+            calls = tool_calls.is_a?(Hash) ? tool_calls.values : Array(tool_calls)
+
+            calls.map do |tool_call|
               {
                 id: tool_call.id,
                 type: 'function',
