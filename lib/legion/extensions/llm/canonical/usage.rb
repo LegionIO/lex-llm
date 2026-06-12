@@ -30,6 +30,12 @@ module Legion
             h[:cache_write_tokens] ||= h.delete(:cache_creation) || h.delete(:cache_write)
             h[:thinking_tokens] ||= h.delete(:thinking) || h.delete(:reasoning)
 
+            # Extract nested details (OpenAI prompt_tokens_details / input_tokens_details)
+            h[:cache_read_tokens] ||= dig_nested(h, :prompt_tokens_details, :cached_tokens) ||
+                                      dig_nested(h, :input_tokens_details, :cached_tokens)
+            h[:thinking_tokens] ||= dig_nested(h, :completion_tokens_details, :reasoning_tokens) ||
+                                    dig_nested(h, :output_tokens_details, :reasoning_tokens)
+
             # Extract units (non-token extension point — G20b)
             units = h.delete(:units) || {}
 
@@ -41,6 +47,13 @@ module Legion
               thinking_tokens: h[:thinking_tokens],
               units: units
             )
+          end
+
+          def self.dig_nested(hash, details_key, value_key)
+            details = hash[details_key]
+            return nil unless details.is_a?(Hash)
+
+            details[value_key] || details[value_key.to_s]
           end
 
           # Serialize to a Hash for AMQP/fleet/wire transport.
