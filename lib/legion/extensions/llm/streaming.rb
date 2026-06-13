@@ -24,6 +24,11 @@ module Legion
             end
           end
 
+          # Release any text held by the untagged-preamble heuristic so short
+          # responses still stream at least one delta to the caller.
+          final_chunk = accumulator.flush_pending_chunk
+          block&.call(final_chunk) if final_chunk
+
           message = accumulator.to_message(response)
           log.debug { "Stream completed: #{message.content}" }
           message
@@ -31,6 +36,8 @@ module Legion
 
         def build_stream_callback(accumulator, block)
           proc do |chunk|
+            next unless chunk
+
             accumulator.add chunk
             filtered = accumulator.filtered_chunk(chunk)
             block.call(filtered) if filtered
@@ -39,7 +46,10 @@ module Legion
 
         def handle_stream(&block)
           build_on_data_handler do |data|
-            block.call(build_chunk(data)) if data.is_a?(Hash)
+            next unless data.is_a?(Hash)
+
+            chunk = build_chunk(data)
+            block.call(chunk) if chunk
           end
         end
 
@@ -183,7 +193,7 @@ module Legion
         def build_stream_error_response(parsed_data, env, status)
           error_status = status || env&.status || 500
 
-          if faraday_1?
+          if faraday_1? || env.nil?
             Struct.new(:body, :status).new(parsed_data, error_status)
           else
             env.merge(body: parsed_data, status: error_status)

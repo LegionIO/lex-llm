@@ -114,6 +114,46 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Usage do
     end
   end
 
+  describe 'OpenAI nested details extraction' do
+    it 'extracts cached_tokens from prompt_tokens_details (Chat API)' do
+      usage = described_class.from_hash(
+        prompt_tokens: 1000,
+        completion_tokens: 200,
+        prompt_tokens_details: { cached_tokens: 800 },
+        completion_tokens_details: { reasoning_tokens: 50 }
+      )
+
+      expect(usage.input_tokens).to eq(1000)
+      expect(usage.output_tokens).to eq(200)
+      expect(usage.cache_read_tokens).to eq(800)
+      expect(usage.thinking_tokens).to eq(50)
+    end
+
+    it 'extracts cached_tokens from input_tokens_details (Responses API)' do
+      usage = described_class.from_hash(
+        input_tokens: 500,
+        output_tokens: 100,
+        input_tokens_details: { cached_tokens: 400 },
+        output_tokens_details: { reasoning_tokens: 30 }
+      )
+
+      expect(usage.input_tokens).to eq(500)
+      expect(usage.output_tokens).to eq(100)
+      expect(usage.cache_read_tokens).to eq(400)
+      expect(usage.thinking_tokens).to eq(30)
+    end
+
+    it 'prefers top-level cache_read_tokens over nested details' do
+      usage = described_class.from_hash(
+        input_tokens: 500,
+        cache_read_tokens: 300,
+        prompt_tokens_details: { cached_tokens: 400 }
+      )
+
+      expect(usage.cache_read_tokens).to eq(300)
+    end
+  end
+
   describe 'round-trip' do
     it 'preserves values through from_hash/to_h' do
       original = { input_tokens: 100, output_tokens: 50, cache_read_tokens: 10 }

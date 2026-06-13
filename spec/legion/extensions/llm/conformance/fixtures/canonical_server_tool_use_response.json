@@ -1,0 +1,29 @@
+{
+  "description": "G24 — server-executed LegionIO tool. The provider returned tool_use, the executor ran the tool registry-side, and the canonical response carries both the call AND its result so client translators can surface it as a completed exchange (Claude: server_tool_use+server_tool_result, Codex: completed function_call+function_call_output non-actionable). stop_reason is end_turn because the server-side exchange is closed by the time the canonical response is built.",
+  "text": "I called the legion_list_all_tools tool and here is the list.",
+  "thinking": null,
+  "tool_calls": [
+    {
+      "id": "call_legion_001",
+      "exchange_id": "exch_legion_001",
+      "name": "legion_list_all_tools",
+      "arguments": {
+        "filter": "all"
+      },
+      "source": "registry",
+      "status": "success",
+      "result": "tools: legion_list_all_tools, legion_apollo_search, legion_runner_dispatch",
+      "duration_ms": 42
+    }
+  ],
+  "usage": {
+    "input_tokens": 50,
+    "output_tokens": 22
+  },
+  "stop_reason": "end_turn",
+  "model": "test-model-1",
+  "routing": {},
+  "metadata": {
+    "g24": true
+  }
+}

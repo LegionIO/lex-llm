@@ -137,7 +137,7 @@ module Legion
           parse_list_models_response response, slug, capabilities
         end
 
-        def discover_offerings(live: false, **filters)
+        def discover_offerings(live: false, raise_on_unreachable: false, **filters)
           return filter_cached_offerings(Array(@cached_offerings), filters) unless live
 
           provider_health = health(live:)
@@ -148,8 +148,10 @@ module Legion
             offering_from_model(model, health: provider_health)
           end
           @cached_offerings
-        rescue Faraday::ConnectionFailed => e
+        rescue Faraday::ConnectionFailed, Faraday::TimeoutError => e
           log.warn("[#{slug}] instance=#{provider_instance_id} unreachable: #{e.message}")
+          raise if raise_on_unreachable
+
           []
         end
 
@@ -224,9 +226,16 @@ module Legion
         end
 
         def cache_enabled?
-          return false unless config.respond_to?(:llm_cache_enabled)
+          explicit = config.llm_cache_enabled if config.respond_to?(:llm_cache_enabled)
 
-          config.llm_cache_enabled == true
+          unless explicit.nil?
+            log.debug { "[#{slug}] cache_enabled? source=per_provider value=#{explicit}" }
+            return explicit == true
+          end
+
+          global = global_prompt_caching_enabled?
+          log.debug { "[#{slug}] cache_enabled? source=global value=#{global}" }
+          global
         end
 
         def cache_control_prefix_tokens
@@ -527,6 +536,14 @@ module Legion
         end
 
         private
+
+        def global_prompt_caching_enabled?
+          return false unless defined?(Legion::Settings)
+
+          Legion::Settings.dig(:llm, :prompt_caching, :enabled) == true
+        rescue StandardError
+          false
+        end
 
         def model_detail_cache_key(model_name)
           tier = offering_tier

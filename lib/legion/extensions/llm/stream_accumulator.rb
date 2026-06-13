@@ -57,6 +57,27 @@ module Legion
           )
         end
 
+        # Flush any text still held in the untagged-preamble buffer as a final
+        # streamed chunk. Without this, short responses that match the
+        # untagged-reasoning heuristic (e.g. starting with "I", "The", "Let me")
+        # and never hit a double newline are buffered for the entire stream and
+        # the caller's block never receives a single delta.
+        def flush_pending_chunk
+          return nil if @untagged_preamble_buffer.empty?
+
+          @last_content_delta = +''
+          @last_thinking_delta = +''
+          flush_pending_untagged_preamble_into_deltas
+          return nil if @last_content_delta.empty? && @last_thinking_delta.empty?
+
+          Chunk.new(
+            role: :assistant,
+            content: @last_content_delta.empty? ? nil : @last_content_delta,
+            thinking: @last_thinking_delta.empty? ? nil : Thinking.build(text: @last_thinking_delta),
+            model_id: model_id
+          )
+        end
+
         def to_message(response)
           flush_pending_untagged_preamble
 
@@ -228,6 +249,24 @@ module Legion
             @thinking_text << thinking
           else
             @content << @untagged_preamble_buffer
+          end
+          @untagged_preamble_buffer = +''
+          @untagged_preamble_pending = false
+        end
+
+        # Same as flush_pending_untagged_preamble, but also records the flushed
+        # text in the per-chunk delta accumulators so flush_pending_chunk can
+        # surface it to the streaming block.
+        def flush_pending_untagged_preamble_into_deltas
+          content, thinking = Responses::ThinkingExtractor.extract_untagged_preamble(@untagged_preamble_buffer)
+          if thinking
+            @content << content
+            @last_content_delta << content
+            @thinking_text << thinking
+            @last_thinking_delta << thinking
+          else
+            @content << @untagged_preamble_buffer
+            @last_content_delta << @untagged_preamble_buffer
           end
           @untagged_preamble_buffer = +''
           @untagged_preamble_pending = false

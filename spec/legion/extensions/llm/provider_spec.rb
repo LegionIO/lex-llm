@@ -542,25 +542,46 @@ RSpec.describe Legion::Extensions::Llm::Provider do
     end
 
     describe '#cache_enabled?' do
-      it 'returns true when llm_cache_enabled is true in config' do
+      it 'returns true when llm_cache_enabled is true in config (per-provider explicit)' do
         Legion::Extensions::Llm.config.llm_cache_enabled = true
         provider = provider_class.new(Legion::Extensions::Llm.config)
 
         expect(provider.cache_enabled?).to be true
       end
 
-      it 'returns false when llm_cache_enabled is false in config' do
+      it 'returns false when llm_cache_enabled is false in config (per-provider explicit)' do
         Legion::Extensions::Llm.config.llm_cache_enabled = false
         provider = provider_class.new(Legion::Extensions::Llm.config)
 
         expect(provider.cache_enabled?).to be false
       end
 
-      it 'returns false when llm_cache_enabled is not set on config' do
+      it 'falls through to global prompt_caching.enabled when config has no llm_cache_enabled' do
         config = { request_timeout: 30, max_retries: 0, retry_interval: 0, retry_backoff_factor: 0,
                    retry_interval_randomness: 0 }
         provider = provider_class.new(config)
 
+        Legion::Settings.loader.settings[:llm] ||= {}
+        Legion::Settings.loader.settings[:llm][:prompt_caching] = { enabled: true }
+        expect(provider.cache_enabled?).to be true
+      end
+
+      it 'returns false when global prompt_caching.enabled is false and no per-provider setting' do
+        config = { request_timeout: 30, max_retries: 0, retry_interval: 0, retry_backoff_factor: 0,
+                   retry_interval_randomness: 0 }
+        provider = provider_class.new(config)
+
+        Legion::Settings.loader.settings[:llm] ||= {}
+        Legion::Settings.loader.settings[:llm][:prompt_caching] = { enabled: false }
+        expect(provider.cache_enabled?).to be false
+      end
+
+      it 'per-provider setting overrides global when both present' do
+        Legion::Extensions::Llm.config.llm_cache_enabled = false
+        provider = provider_class.new(Legion::Extensions::Llm.config)
+
+        Legion::Settings.loader.settings[:llm] ||= {}
+        Legion::Settings.loader.settings[:llm][:prompt_caching] = { enabled: true }
         expect(provider.cache_enabled?).to be false
       end
     end

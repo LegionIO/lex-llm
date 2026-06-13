@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 - 2026-06-12
+
+### Fixed
+- **ToolDefinition constants** — Move `OBJECT_SCHEMA_KEYWORDS` and `COMPOSITE_SCHEMA_KEYWORDS` out of `Data.define` block to satisfy `Lint/ConstantDefinitionInBlock`.
+- **ToolSchema documentation** — Add top-level module documentation comment.
+- **Conformance spec cleanup** — Remove unused block argument from shared examples, fix duplicate describe block and context wording in tool_definition_spec.
+- **RuboCop clean** — Zero offenses across 140 files.
+
 ## 0.5.0 - 2026-06-10
 
 ### Added

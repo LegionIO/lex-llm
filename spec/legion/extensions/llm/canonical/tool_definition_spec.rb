@@ -9,7 +9,7 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ToolDefinition do
 
       expect(tool.name).to eq('search')
       expect(tool.description).to eq('Search the web')
-      expect(tool.parameters).to eq({})
+      expect(tool.parameters).to eq(type: 'object', properties: {})
       expect(tool.source).to eq({ type: :builtin })
     end
 
@@ -113,7 +113,7 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ToolDefinition do
       entry = {
         name: 'custom',
         description: 'Custom tool',
-        parameters: {},
+        parameters: { type: 'object', properties: { name: { type: 'string' } } },
         extension: 'custom-ext'
       }
       tool = described_class.from_registry_entry(entry)
@@ -157,6 +157,53 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ToolDefinition do
       hash = tool.to_h
 
       expect(hash).to eq(name: 'search')
+    end
+  end
+
+  describe '.normalize_parameters' do
+    it 'injects type: object when a schema has properties but no type' do
+      schema = { properties: { task: { type: 'string' } }, required: ['task'] }
+      result = described_class.normalize_parameters(schema)
+      expect(result[:type]).to eq('object')
+      expect(result[:properties]).to eq(task: { type: 'string' })
+      expect(result[:required]).to eq(['task'])
+    end
+
+    it 'passes schemas with an explicit type through unchanged' do
+      schema = { type: 'object', properties: { a: { type: 'string' } } }
+      expect(described_class.normalize_parameters(schema)).to eq(schema)
+    end
+
+    it 'wraps a bare property map under type:object/properties' do
+      expect(described_class.normalize_parameters(location: { type: 'string' }))
+        .to eq(type: 'object', properties: { location: { type: 'string' } })
+    end
+
+    it 'returns an empty object schema for nil/empty' do
+      expect(described_class.normalize_parameters(nil)).to eq(type: 'object', properties: {})
+      expect(described_class.normalize_parameters({})).to eq(type: 'object', properties: {})
+    end
+
+    it 'symbolizes top-level string keys' do
+      result = described_class.normalize_parameters('properties' => { 'a' => { 'type' => 'string' } })
+      expect(result[:type]).to eq('object')
+      expect(result).to have_key(:properties)
+    end
+
+    it 'leaves composite schemas (oneOf etc.) without forcing type' do
+      schema = { oneOf: [{ type: 'string' }, { type: 'integer' }] }
+      expect(described_class.normalize_parameters(schema)).to eq(schema)
+    end
+
+    it 'normalizes parameters at construction via .build' do
+      td = described_class.build(name: 'multi_agent_v1',
+                                 parameters: { properties: { task: { type: 'string' } } })
+      expect(td.parameters[:type]).to eq('object')
+    end
+
+    it 'normalizes nil parameters to empty object schema via .build' do
+      td = described_class.build(name: 'bare_tool')
+      expect(td.parameters).to eq(type: 'object', properties: {})
     end
   end
 
