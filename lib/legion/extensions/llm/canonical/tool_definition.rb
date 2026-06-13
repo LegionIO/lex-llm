@@ -76,6 +76,14 @@ module Legion
             name.empty? ? 'tool' : name
           end
 
+          def params_schema
+            parameters
+          end
+
+          def input_schema
+            parameters
+          end
+
           # Serialize to a Hash for AMQP/fleet/wire transport.
           def to_h
             {
