@@ -54,6 +54,8 @@ module Legion
 
       # Faraday middleware that maps provider-specific API errors to Legion::Extensions::Llm errors.
       class ErrorMiddleware < Faraday::Middleware
+        extend Legion::Logging::Helper
+
         STREAM_ERROR_BODY_KEY = :legion_llm_stream_error_body
 
         def initialize(app, options = {})
