@@ -137,7 +137,7 @@ module Legion
           parse_list_models_response response, slug, capabilities
         end
 
-        def discover_offerings(live: false, **filters)
+        def discover_offerings(live: false, raise_on_unreachable: false, **filters)
           return filter_cached_offerings(Array(@cached_offerings), filters) unless live
 
           provider_health = health(live:)
@@ -148,8 +148,10 @@ module Legion
             offering_from_model(model, health: provider_health)
           end
           @cached_offerings
-        rescue Faraday::ConnectionFailed => e
+        rescue Faraday::ConnectionFailed, Faraday::TimeoutError => e
           log.warn("[#{slug}] instance=#{provider_instance_id} unreachable: #{e.message}")
+          raise if raise_on_unreachable
+
           []
         end
 
