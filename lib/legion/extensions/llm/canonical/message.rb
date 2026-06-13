@@ -72,11 +72,24 @@ module Legion
               h[:content] = ContentBlock.from_hash(content)
             end
 
-            # Parse tool calls if they're an array of hashes
+            # Parse tool calls — Array is canonical; Hash is legacy lex-llm format (name → ToolCall)
             tool_calls = h[:tool_calls]
-            if tool_calls.is_a?(Array)
+            if tool_calls.is_a?(Hash)
+              h[:tool_calls] = tool_calls.values.map do |tc|
+                next tc if tc.is_a?(ToolCall)
+
+                raw = tc.respond_to?(:to_h) ? tc.to_h : tc
+                ToolCall.from_hash(raw)
+              end
+            elsif tool_calls.is_a?(Array)
               h[:tool_calls] = tool_calls.map do |tc|
-                tc.is_a?(ToolCall) ? tc : ToolCall.from_hash(tc)
+                next tc if tc.is_a?(ToolCall)
+
+                if tc.is_a?(Hash)
+                  ToolCall.from_hash(tc)
+                else
+                  ToolCall.from_hash(tc.respond_to?(:to_h) ? tc.to_h : tc)
+                end
               end
             end
 
