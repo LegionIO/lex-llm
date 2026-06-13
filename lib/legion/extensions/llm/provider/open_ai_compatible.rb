@@ -97,16 +97,12 @@ module Legion
             return nil if tools.empty?
 
             tools.values.map do |tool|
-              # Tools can be ToolDefinition objects or plain Hashes from native_dispatch.
-              tool_name = tool.respond_to?(:name) ? tool.name : (tool[:name] || tool['name'])
-              tool_desc = tool.respond_to?(:description) ? tool.description : (tool[:description] || tool['description'] || '')
-              tool_params = tool.respond_to?(:params_schema) ? tool.params_schema : (tool[:parameters] || tool['parameters'] || {})
               {
                 type: 'function',
                 function: {
-                  name: tool_name,
-                  description: tool_desc,
-                  parameters: tool_params || { type: 'object', properties: {} }
+                  name: Canonical::ToolSchema.tool_name(tool),
+                  description: Canonical::ToolSchema.tool_description(tool),
+                  parameters: Canonical::ToolSchema.extract(tool)
                 }
               }
             end
