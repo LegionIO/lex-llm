@@ -7,7 +7,7 @@
 # Usage in provider specs:
 #   it_behaves_like 'canonical tool rendering', described_class.new(...)
 #
-RSpec.shared_examples 'canonical tool rendering' do |provider_instance|
+RSpec.shared_examples 'canonical tool rendering' do # rubocop:disable RSpec/MultipleMemoizedHelpers
   let(:full_schema) { { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] } }
 
   let(:canonical_tool) do
@@ -32,7 +32,7 @@ RSpec.shared_examples 'canonical tool rendering' do |provider_instance|
 
   let(:tools_map) { { 'get_weather' => canonical_tool } }
 
-  describe 'canonical tool rendering' do
+  describe 'canonical tool rendering' do # rubocop:disable RSpec/MultipleMemoizedHelpers
     it 'accepts Canonical::ToolDefinition without raising' do
       expect { render_tools(tools_map) }.not_to raise_error
     end

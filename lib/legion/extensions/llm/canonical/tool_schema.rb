@@ -4,6 +4,7 @@ module Legion
   module Extensions
     module Llm
       module Canonical
+        # Extracts and normalizes tool schemas from heterogeneous sources.
         module ToolSchema
           EMPTY_OBJECT = { type: 'object', properties: {} }.freeze
 
@@ -19,10 +20,10 @@ module Legion
             return tool.params_schema if tool.respond_to?(:params_schema) && tool.params_schema
             return tool.parameters if tool.respond_to?(:parameters) && tool.parameters
 
-            if tool.respond_to?(:[])
-              tool[:parameters] || tool['parameters'] || tool[:input_schema] || tool['input_schema'] ||
-                tool[:params_schema] || tool['params_schema']
-            end
+            return unless tool.respond_to?(:[])
+
+            tool[:parameters] || tool['parameters'] || tool[:input_schema] || tool['input_schema'] ||
+              tool[:params_schema] || tool['params_schema']
           end
 
           def tool_name(tool)

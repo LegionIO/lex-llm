@@ -194,20 +194,16 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ToolDefinition do
       schema = { oneOf: [{ type: 'string' }, { type: 'integer' }] }
       expect(described_class.normalize_parameters(schema)).to eq(schema)
     end
-  end
 
-  describe '.build' do
-    context 'parameter normalization' do
-      it 'normalizes parameters at construction' do
-        td = described_class.build(name: 'multi_agent_v1',
-                                   parameters: { properties: { task: { type: 'string' } } })
-        expect(td.parameters[:type]).to eq('object')
-      end
+    it 'normalizes parameters at construction via .build' do
+      td = described_class.build(name: 'multi_agent_v1',
+                                 parameters: { properties: { task: { type: 'string' } } })
+      expect(td.parameters[:type]).to eq('object')
+    end
 
-      it 'normalizes nil parameters to empty object schema' do
-        td = described_class.build(name: 'bare_tool')
-        expect(td.parameters).to eq(type: 'object', properties: {})
-      end
+    it 'normalizes nil parameters to empty object schema via .build' do
+      td = described_class.build(name: 'bare_tool')
+      expect(td.parameters).to eq(type: 'object', properties: {})
     end
   end
 

@@ -5,13 +5,12 @@ module Legion
     module Llm
       module Canonical
         TOOL_NAME_MAX_LENGTH = 64
+        OBJECT_SCHEMA_KEYWORDS    = %i[properties required additionalProperties].freeze
+        COMPOSITE_SCHEMA_KEYWORDS = %i[oneOf anyOf allOf enum $ref $defs definitions].freeze
 
         # Canonical tool definition.
         # Ports field vocabulary from Legion::LLM::Types::ToolDefinition.
         ToolDefinition = ::Data.define(:name, :description, :parameters, :source) do
-          OBJECT_SCHEMA_KEYWORDS    = %i[properties required additionalProperties].freeze
-          COMPOSITE_SCHEMA_KEYWORDS = %i[oneOf anyOf allOf enum $ref $defs definitions].freeze
-
           def self.normalize_parameters(parameters)
             empty = { type: 'object', properties: {} }
             return empty if parameters.nil?
