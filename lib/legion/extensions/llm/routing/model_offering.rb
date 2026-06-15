@@ -16,8 +16,8 @@ module Legion
           }.freeze
 
           attr_reader :offering_id, :provider_family, :model_family, :provider_instance, :instance_id, :transport,
-                      :tier, :model, :canonical_model_alias, :routing_metadata, :usage_type, :capabilities, :limits,
-                      :credentials, :health, :cost, :policy_tags, :metadata
+                      :tier, :model, :canonical_model_alias, :routing_metadata, :usage_type, :capabilities,
+                      :capability_sources, :limits, :credentials, :health, :cost, :policy_tags, :metadata
 
           def initialize(data)
             @metadata = normalize_hash(fetch_value(data, :metadata))
@@ -37,6 +37,7 @@ module Legion
                                                            fetch_value(data, :kind) ||
                                                            infer_usage_type(data)))
             @capabilities = normalize_capabilities(fetch_value(data, :capabilities))
+            @capability_sources = normalize_capability_sources(fetch_value(data, :capability_sources))
             @limits = normalize_hash(fetch_value(data, :limits))
             @credentials = fetch_value(data, :credentials)
             @health = normalize_hash(fetch_value(data, :health))
@@ -106,6 +107,7 @@ module Legion
               routing_metadata: routing_metadata,
               usage_type: usage_type,
               capabilities: capabilities,
+              capability_sources: capability_sources,
               limits: limits,
               credentials: credentials,
               health: health,
@@ -165,6 +167,16 @@ module Legion
               alias_symbol = CAPABILITY_ALIASES[symbol]
               normalized << alias_symbol if alias_symbol
             end.uniq
+          end
+
+          def normalize_capability_sources(value)
+            normalize_hash(value).to_h do |capability, source_data|
+              normalized_source = normalize_hash(source_data)
+              [
+                capability.to_s.downcase.tr('-', '_').to_sym,
+                { value: normalized_source[:value], source: normalized_source[:source]&.to_sym }.compact
+              ]
+            end
           end
 
           def normalize_hash(value)

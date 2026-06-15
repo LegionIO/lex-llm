@@ -578,6 +578,10 @@ module Legion
         end
 
         def offering_from_model(model, health: {})
+          capability_sources = Array(model.capabilities).to_h do |cap|
+            [cap.to_sym, { value: true, source: :model_metadata }]
+          end
+
           Routing::ModelOffering.new(
             provider_family: slug.to_sym,
             provider_instance: model.instance || provider_instance_id,
@@ -588,6 +592,7 @@ module Legion
             model_family: model.family,
             usage_type: offering_usage_type(model),
             capabilities: model.capabilities,
+            capability_sources: capability_sources,
             limits: offering_limits(model),
             health:,
             metadata: offering_metadata(model)

@@ -219,4 +219,62 @@ RSpec.describe Legion::Extensions::Llm::Routing::ModelOffering do
       limits: { context_window: 32_768, max_output_tokens: 8192 }
     )
   end
+
+  describe 'capability_sources' do
+    it 'accepts and exposes capability source metadata' do
+      sourced = described_class.new(
+        provider_family: :vllm,
+        provider_instance: :apollo,
+        model: 'gemma-4-12b-it',
+        capabilities: %i[streaming tools],
+        capability_sources: {
+          streaming: { value: true, source: :provider_envelope },
+          tools: { value: true, source: :instance_override },
+          embeddings: { value: false, source: :default_false }
+        }
+      )
+
+      expect(sourced.capabilities).to include(:streaming, :tools)
+      expect(sourced.capability_sources[:tools]).to eq(value: true, source: :instance_override)
+      expect(sourced.capability_sources[:embeddings]).to eq(value: false, source: :default_false)
+    end
+
+    it 'includes capability_sources in to_h' do
+      sourced = described_class.new(
+        provider_family: :vllm,
+        provider_instance: :apollo,
+        model: 'gemma-4-12b-it',
+        capabilities: %i[streaming],
+        capability_sources: {
+          streaming: { value: true, source: :provider_envelope }
+        }
+      )
+
+      expect(sourced.to_h[:capability_sources]).to eq(
+        streaming: { value: true, source: :provider_envelope }
+      )
+    end
+
+    it 'normalizes string-keyed capability sources' do
+      sourced = described_class.new(
+        provider_family: :vllm,
+        model: 'test',
+        capability_sources: {
+          'streaming' => { 'value' => true, 'source' => 'provider_envelope' }
+        }
+      )
+
+      expect(sourced.capability_sources[:streaming]).to eq(value: true, source: :provider_envelope)
+    end
+
+    it 'defaults to empty hash when not provided' do
+      plain = described_class.new(
+        provider_family: :ollama,
+        model: 'test',
+        capabilities: %i[streaming]
+      )
+
+      expect(plain.capability_sources).to eq({})
+    end
+  end
 end
