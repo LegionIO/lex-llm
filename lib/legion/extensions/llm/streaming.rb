@@ -142,7 +142,30 @@ module Legion
                     end
           log.warn "[llm][streaming] action=handle_failed_response status=#{status} " \
                    "partial_body=#{buffer.length}b msg=#{partial.inspect}"
-          raise Legion::Extensions::Llm::ServerError, msg
+          raise_streaming_status_error(status, msg)
+        end
+
+        def raise_streaming_status_error(status, message)
+          response = Struct.new(:body, :status).new({ 'error' => { 'message' => message } }, status)
+          case status
+          when 400
+            raise Legion::Extensions::Llm::BadRequestError.new(response, message)
+          when 401
+            raise Legion::Extensions::Llm::UnauthorizedError.new(response, message)
+          when 403
+            raise Legion::Extensions::Llm::ForbiddenError.new(response, message)
+          when 429
+            raise Legion::Extensions::Llm::RateLimitError.new(response, message)
+          when 500
+            raise Legion::Extensions::Llm::ServerError.new(response, message)
+          when 502..504
+            raise Legion::Extensions::Llm::ServiceUnavailableError.new(response, message)
+          when 529
+            raise Legion::Extensions::Llm::OverloadedError.new(response, message)
+          else
+            provider = respond_to?(:parse_error) ? self : nil
+            Legion::Extensions::Llm::ErrorMiddleware.parse_error(provider: provider, response: response)
+          end
         end
 
         def handle_sse(chunk, parser, env, &)

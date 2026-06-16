@@ -98,6 +98,15 @@ RSpec.describe Legion::Extensions::Llm::Streaming do
         .to raise_error(Legion::Extensions::Llm::ServerError, /Provider error.*The model is currently overloaded/)
     end
 
+    it 'raises UnauthorizedError for partial 401 streaming responses' do
+      buffer = +''
+      auth_env = Struct.new(:status).new(401)
+      truncated_chunk = '{"error":{"message":"Unauthorized'
+
+      expect { test_obj.send(:handle_failed_response, truncated_chunk, buffer, auth_env) }
+        .to raise_error(Legion::Extensions::Llm::UnauthorizedError, /Unauthorized/)
+    end
+
     it 'raises ServerError with generic message when no partial message is extractable and env cannot buffer' do
       buffer = +''
       partial_chunk = '{"error":{'

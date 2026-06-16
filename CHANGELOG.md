@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.3 - 2026-06-16
+
+### Fixed
+- **Streaming error classification** — Partial non-2xx streaming responses now raise status-specific errors (`UnauthorizedError`, `ForbiddenError`, `RateLimitError`, `ServiceUnavailableError`, etc.) instead of always raising `ServerError`. This preserves auth failures for downstream escalation and circuit handling.
+
 ## 0.5.2 - 2026-06-15
 
 ### Added
