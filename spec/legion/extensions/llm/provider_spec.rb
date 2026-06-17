@@ -610,4 +610,35 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       end
     end
   end
+
+  describe '#model_detail_cache_key' do
+    let(:provider_class) do
+      Class.new(described_class) do
+        def api_base = 'https://test.invalid'
+
+        def self.slug = 'testprov'
+      end
+    end
+
+    let(:provider) do
+      provider_class.new({ request_timeout: 30, max_retries: 0, retry_interval: 0,
+                           retry_backoff_factor: 0, retry_interval_randomness: 0 })
+    end
+
+    it 'includes the model-detail cache schema version in the key' do
+      key = provider.send(:model_detail_cache_key, 'test-model')
+      expect(key).to include("schema#{described_class::MODEL_DETAIL_CACHE_SCHEMA_VERSION}")
+      expect(key).to include('schema2')
+    end
+
+    it 'changes the key when the schema version constant changes' do
+      key_v2 = provider.send(:model_detail_cache_key, 'test-model')
+
+      stub_const("#{described_class}::MODEL_DETAIL_CACHE_SCHEMA_VERSION", 3)
+
+      key_v3 = provider.send(:model_detail_cache_key, 'test-model')
+      expect(key_v3).not_to eq(key_v2)
+      expect(key_v3).to include('schema3')
+    end
+  end
 end

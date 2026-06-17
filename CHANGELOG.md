@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.3 - 2026-06-16
+
+### Fixed
+- **Streaming error classification** — Partial non-2xx streaming responses now raise status-specific errors (`UnauthorizedError`, `ForbiddenError`, `RateLimitError`, `ServiceUnavailableError`, etc.) instead of always raising `ServerError`. This preserves auth failures for downstream escalation and circuit handling.
+
+## 0.5.2 - 2026-06-15
+
+### Added
+- **CapabilityPolicy module** — Shared capability resolution with 7-layer precedence chain (model_override > instance_override > provider_override > model_metadata > provider_catalog > probe > provider_envelope > default_false). All optional capabilities default false.
+- **Boolean aliases** — `enable_thinking`, `tools_flag`, `embedding_flag`, etc. map to canonical capability keys at any settings level.
+- **ModelOffering#capability_sources** — Per-capability source metadata preserved through offering serialization.
+- **Provider#offering_from_model** — Base class now generates `:model_metadata` source tags for capabilities from provider API responses.
+
 ## 0.5.1 - 2026-06-12
 
 ### Fixed

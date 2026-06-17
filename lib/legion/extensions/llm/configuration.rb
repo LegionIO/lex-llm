@@ -22,6 +22,10 @@ module Legion
             option_keys.dup
           end
 
+          def register_provider_options(keys)
+            Array(keys).each { |key| option(key.to_sym) }
+          end
+
           private
 
           def option_keys = @option_keys ||= []

@@ -30,6 +30,8 @@ module Legion
         include Legion::Logging::Helper
         include Legion::Cache::Helper
 
+        MODEL_DETAIL_CACHE_SCHEMA_VERSION = 2
+
         attr_reader :config, :connection
 
         def initialize(config)
@@ -549,7 +551,11 @@ module Legion
           tier = offering_tier
           instance_key = cache_instance_key
           cred_fp = credential_cache_fragment
-          key_parts = ['model_info', tier, slug, instance_key, cred_fp, model_name].compact
+          key_parts = [
+            'model_info',
+            "schema#{MODEL_DETAIL_CACHE_SCHEMA_VERSION}",
+            tier, slug, instance_key, cred_fp, model_name
+          ].compact
           key_parts.join('.')
         end
 
@@ -572,6 +578,10 @@ module Legion
         end
 
         def offering_from_model(model, health: {})
+          capability_sources = Array(model.capabilities).to_h do |cap|
+            [cap.to_sym, { value: true, source: :model_metadata }]
+          end
+
           Routing::ModelOffering.new(
             provider_family: slug.to_sym,
             provider_instance: model.instance || provider_instance_id,
@@ -582,6 +592,7 @@ module Legion
             model_family: model.family,
             usage_type: offering_usage_type(model),
             capabilities: model.capabilities,
+            capability_sources: capability_sources,
             limits: offering_limits(model),
             health:,
             metadata: offering_metadata(model)

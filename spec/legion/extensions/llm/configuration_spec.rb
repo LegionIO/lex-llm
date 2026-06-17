@@ -35,4 +35,44 @@ RSpec.describe Legion::Extensions::Llm::Configuration do
       expect(config.cache_control_prefix_tokens).to eq(4)
     end
   end
+
+  describe '.register_provider_options' do
+    after do
+      # Clean up test options to avoid polluting other specs
+      %i[test_api_key test_api_base].each do |key|
+        described_class.send(:option_keys).delete(key)
+        described_class.send(:defaults).delete(key)
+        described_class.send(:remove_method, key) if described_class.method_defined?(key)
+        described_class.send(:remove_method, :"#{key}=") if described_class.method_defined?(:"#{key}=")
+      end
+    end
+
+    it 'registers new options that become accessible on instances' do
+      described_class.register_provider_options(%i[test_api_key test_api_base])
+
+      config = described_class.new
+      expect(config).to respond_to(:test_api_key)
+      expect(config).to respond_to(:test_api_base)
+    end
+
+    it 'adds registered options to the options list' do
+      described_class.register_provider_options(%i[test_api_key test_api_base])
+
+      expect(described_class.options).to include(:test_api_key, :test_api_base)
+    end
+
+    it 'is idempotent — duplicate registrations do not add duplicates' do
+      described_class.register_provider_options(%i[test_api_key])
+      described_class.register_provider_options(%i[test_api_key])
+
+      count = described_class.options.count(:test_api_key)
+      expect(count).to eq(1)
+    end
+
+    it 'accepts string keys and normalizes them to symbols' do
+      described_class.register_provider_options(%w[test_api_key])
+
+      expect(described_class.options).to include(:test_api_key)
+    end
+  end
 end

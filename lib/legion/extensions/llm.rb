@@ -36,6 +36,9 @@ module Legion
       #  unqualified constant lookups resolve via Ruby scope.               #
       # ------------------------------------------------------------------ #
 
+      # --- Capability resolution policy (no internal deps) ---
+      require_relative 'llm/capability_policy'
+
       # --- Base value objects (no internal deps) ---
       require_relative 'llm/mime_type'
       require_relative 'llm/model/info'
