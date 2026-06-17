@@ -357,6 +357,62 @@ RSpec.describe Legion::Extensions::Llm::Provider do
     end
   end
 
+  describe '#enforce_model_allowed! (dispatch compliance guard)' do
+    let(:provider_class) do
+      Class.new(described_class) do
+        attr_writer :settings
+
+        def api_base = 'https://test.invalid'
+        def settings = @settings || {}
+        def slug = :test
+        def provider_instance_id = :default
+      end
+    end
+
+    let(:provider) { provider_class.new(Legion::Extensions::Llm.config) }
+
+    context 'when a model is excluded by the whitelist' do
+      before { provider.settings = { model_whitelist: %w[haiku] } }
+
+      it 'raises ModelNotAllowedError carrying the model and provider' do
+        expect { provider.send(:enforce_model_allowed!, 'gpt-5') }
+          .to raise_error(Legion::Extensions::Llm::ModelNotAllowedError) do |error|
+            expect(error.model).to eq('gpt-5')
+            expect(error.provider).to eq(:test)
+          end
+      end
+
+      it 'permits a whitelisted model' do
+        expect { provider.send(:enforce_model_allowed!, 'claude-haiku-4-5-20251001') }.not_to raise_error
+      end
+
+      it 'fails closed in #complete before any provider call' do
+        expect { provider.complete([], tools: [], temperature: nil, model: 'gpt-5') }
+          .to raise_error(Legion::Extensions::Llm::ModelNotAllowedError)
+      end
+
+      it 'fails closed in #embed before any provider call' do
+        expect { provider.embed(text: 'hello', model: 'text-embedding-3-large') }
+          .to raise_error(Legion::Extensions::Llm::ModelNotAllowedError)
+      end
+    end
+
+    context 'when a model is excluded by the blacklist' do
+      before { provider.settings = { model_blacklist: %w[sonnet] } }
+
+      it 'fails closed in #complete for a blacklisted model' do
+        expect { provider.complete([], tools: [], temperature: nil, model: 'claude-sonnet-4-6') }
+          .to raise_error(Legion::Extensions::Llm::ModelNotAllowedError)
+      end
+    end
+
+    context 'with no policy configured' do
+      it 'does not raise for any model' do
+        expect { provider.send(:enforce_model_allowed!, 'anything-goes') }.not_to raise_error
+      end
+    end
+  end
+
   describe 'multi-host URL resolution' do
     let(:provider_class) do
       Class.new(described_class) do

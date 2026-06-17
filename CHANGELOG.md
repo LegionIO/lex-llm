@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.4 - 2026-06-17
+
+### Fixed
+- **Model policy enforced at dispatch (compliance)** — `model_whitelist` / `model_blacklist` were only applied when *listing* models (`discover_offerings`); inference dispatch never checked them, so a denied model could still be invoked directly. Added `enforce_model_allowed!`, called at every dispatch entry point (`complete` — which backs `chat`/`stream_chat` — plus `embed`, `moderate`, `paint`), raising the new `ModelNotAllowedError` *before* any provider API call. Fail-closed, no exceptions. `ModelNotAllowedError` is a distinct, non-HTTP error so callers can treat it as a terminal policy outcome (non-retryable, non-escalatable) rather than a provider failure.
+
 ## 0.5.3 - 2026-06-16
 
 ### Fixed
