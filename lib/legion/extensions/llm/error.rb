@@ -27,6 +27,21 @@ module Legion
       class ModelNotFoundError < StandardError; end
       class UnsupportedAttachmentError < StandardError; end
 
+      # Raised when a request targets a model excluded by the configured
+      # model_whitelist / model_blacklist. This is a compliance guard enforced at
+      # the provider dispatch boundary (the last line before the model API call),
+      # so a denied model can never be reached regardless of caller. Non-retryable:
+      # retrying the same denied model must never succeed.
+      class ModelNotAllowedError < StandardError
+        attr_reader :model, :provider
+
+        def initialize(message = nil, model: nil, provider: nil)
+          @model = model
+          @provider = provider
+          super(message || "model #{model.inspect} is not permitted by the configured model policy for provider #{provider.inspect}")
+        end
+      end
+
       # Backward-compatible unsupported-capability error alias.
       class UnsupportedCapabilityError < Errors::UnsupportedCapability
         def initialize(message = nil, provider: nil, capability: nil, model: nil)

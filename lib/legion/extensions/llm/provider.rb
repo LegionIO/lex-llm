@@ -96,6 +96,7 @@ module Legion
 
         def complete(messages, tools:, temperature:, model:, params: {}, headers: {}, schema: nil, thinking: nil,
                      tool_prefs: nil, &)
+          enforce_model_allowed!(model)
           normalized_temperature = maybe_normalize_temperature(temperature, model)
           log_provider_request(
             messages: messages,
@@ -184,6 +185,7 @@ module Legion
         end
 
         def embed(text:, model:, dimensions: nil, params: {}, headers: {})
+          enforce_model_allowed!(model)
           payload = Utils.deep_merge(render_embedding_payload(text, model:, dimensions:), params)
           response = @connection.post(embedding_url(model:), payload) do |req|
             req.headers = headers.merge(req.headers) unless headers.empty?
@@ -192,12 +194,14 @@ module Legion
         end
 
         def moderate(input, model:)
+          enforce_model_allowed!(model)
           payload = render_moderation_payload(input, model:)
           response = @connection.post moderation_url, payload
           parse_moderation_response(response, model:)
         end
 
         def paint(prompt, model:, size:, with: nil, mask: nil, params: {}) # rubocop:disable Metrics/ParameterLists
+          enforce_model_allowed!(model)
           validate_paint_inputs!(with:, mask:)
           payload = render_image_payload(prompt, model:, size:, with:, mask:, params:)
           response = @connection.post images_url(with:, mask:), payload
@@ -364,14 +368,64 @@ module Legion
         end
 
         def model_allowed?(model_name)
+          self.class.policy_allows?(model_name, whitelist: model_whitelist, blacklist: model_blacklist)
+        end
+
+        # Single source of truth for model-policy matching, usable both at runtime
+        # (instance #model_allowed?) and at instance-config build time (provider
+        # extensions choosing a default_model that does not violate the policy).
+        # Substring, case-insensitive: a whitelist permits models containing any
+        # pattern; a blacklist denies models containing any pattern; whitelist is
+        # applied before blacklist. Empty list = no restriction from that side.
+        def self.policy_allows?(model_name, whitelist: [], blacklist: [])
           name = model_name.to_s.downcase
-          wl = model_whitelist
-          bl = model_blacklist
+          wl = Array(whitelist).map { |p| p.to_s.downcase }
+          bl = Array(blacklist).map { |p| p.to_s.downcase }
 
           return false if wl.any? && wl.none? { |p| name.include?(p) }
           return false if bl.any? && bl.any? { |p| name.include?(p) }
 
           true
+        end
+
+        # Effective whitelist/blacklist for an instance config: per-instance config
+        # first, then the provider-level setting (mirrors instance #model_whitelist
+        # resolution order). Used by provider extensions when picking a default_model.
+        def self.model_policy(config, provider_family)
+          cfg = config.is_a?(Hash) ? config : {}
+          provider_conf = CredentialSources.setting(:extensions, :llm, provider_family)
+          provider_conf = {} unless provider_conf.is_a?(Hash)
+          {
+            whitelist: cfg[:model_whitelist] || provider_conf[:model_whitelist] || provider_conf['model_whitelist'],
+            blacklist: cfg[:model_blacklist] || provider_conf[:model_blacklist] || provider_conf['model_blacklist']
+          }
+        end
+
+        # Choose a default_model that never violates the model policy: prefer an
+        # explicitly-configured default when permitted; else a provider fallback when
+        # permitted; else nil, so routing resolves an allowed discovered model rather
+        # than forcing a policy-forbidden default. Keeps a whitelist/blacklist
+        # authoritative over any hardcoded provider default.
+        def self.policy_safe_default_model(configured:, fallback:, whitelist: [], blacklist: [])
+          return configured if configured && !configured.to_s.empty? &&
+                               policy_allows?(configured, whitelist:, blacklist:)
+          return fallback if fallback && !fallback.to_s.empty? &&
+                             policy_allows?(fallback, whitelist:, blacklist:)
+
+          nil
+        end
+
+        # Compliance guard: refuse to dispatch any request for a model excluded by
+        # the configured model_whitelist / model_blacklist. Invoked at every
+        # dispatch entry point (the last line before the model API call) so a
+        # denied model can never reach a provider API, regardless of caller. Fail
+        # closed — raises rather than silently routing elsewhere.
+        def enforce_model_allowed!(model_name)
+          return if model_allowed?(model_name)
+
+          log.warn("[#{slug}] action=model_denied model=#{model_name} instance=#{provider_instance_id} " \
+                   'reason=model_whitelist_or_blacklist')
+          raise ModelNotAllowedError.new(model: model_name, provider: slug)
         end
 
         # ── Offering defaults ─────────────────────────────────────────────
