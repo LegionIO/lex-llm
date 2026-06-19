@@ -36,6 +36,11 @@ module Legion
       #  unqualified constant lookups resolve via Ruby scope.               #
       # ------------------------------------------------------------------ #
 
+      # --- P1 SSOT: taxonomy enums, capability normalization, inventory writer mixin ---
+      require_relative 'llm/taxonomies'
+      require_relative 'llm/capabilities'
+      require_relative 'llm/inventory/scoped_refresher'
+
       # --- Capability resolution policy (no internal deps) ---
       require_relative 'llm/capability_policy'
 
