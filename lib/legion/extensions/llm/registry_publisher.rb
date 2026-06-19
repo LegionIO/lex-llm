@@ -43,11 +43,11 @@ module Legion
             Thread.current.abort_on_exception = false
             yield
           rescue StandardError => e
-            handle_exception(e, level: :debug, handled: true,
+            handle_exception(e, level: :warn, handled: true,
                                 operation: "#{provider_family}.registry.schedule_thread")
           end
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true,
+          handle_exception(e, level: :warn, handled: true,
                               operation: "#{provider_family}.registry.schedule")
           false
         end
@@ -70,7 +70,7 @@ module Legion
 
           ::Legion::Transport::Connection.session_open?
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true,
+          handle_exception(e, level: :warn, handled: true,
                               operation: "#{provider_family}.registry.publishing_available?")
           false
         end
@@ -86,7 +86,7 @@ module Legion
           require 'legion/extensions/llm/transport/messages/registry_event'
           message_class_defined?
         rescue LoadError => e
-          handle_exception(e, level: :debug, handled: true,
+          handle_exception(e, level: :warn, handled: true,
                               operation: "#{provider_family}.registry.transport_load")
           false
         end

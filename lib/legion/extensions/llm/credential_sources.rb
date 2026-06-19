@@ -90,7 +90,7 @@ module Legion
 
           ::Legion::Settings.dig(*path)
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.setting',
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.credential_sources.setting',
                               path: path.map(&:to_s))
           nil
         end
@@ -117,7 +117,7 @@ module Legion
           end
           true
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.socket_open',
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.credential_sources.socket_open',
                               host:, port:)
           false
         ensure
@@ -135,7 +135,7 @@ module Legion
           response = conn.get(path)
           response.status >= 200 && response.status < 300
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.http_ok',
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.credential_sources.http_ok',
                               path:)
           false
         ensure
@@ -209,7 +209,7 @@ module Legion
           normalized = host.delete_prefix('[').delete_suffix(']')
           %w[localhost 127.0.0.1 ::1].include?(normalized)
         rescue URI::InvalidURIError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.localhost')
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.credential_sources.localhost')
           false
         end
 
@@ -244,7 +244,7 @@ module Legion
             ::JSON.parse(raw, symbolize_names: true)
           end
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.read_json',
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.credential_sources.read_json',
                               path:)
           {}
         end
@@ -267,7 +267,7 @@ module Legion
 
           exp.to_i > Time.now.to_i
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'llm.credential_sources.token_valid')
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.credential_sources.token_valid')
           true
         end
 

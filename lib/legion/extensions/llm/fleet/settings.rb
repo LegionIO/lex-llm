@@ -33,7 +33,7 @@ module Legion
             configured << llm if llm.respond_to?(:key?)
             configured
           rescue StandardError => e
-            handle_exception(e, level: :debug, handled: true, operation: 'llm.fleet.settings.configured')
+            handle_exception(e, level: :warn, handled: true, operation: 'llm.fleet.settings.configured')
             []
           end
 
@@ -54,7 +54,7 @@ module Legion
           def safe_fetch(source, key)
             source[key] || source[key.to_s]
           rescue StandardError => e
-            handle_exception(e, level: :debug, handled: true, operation: 'llm.fleet.settings.safe_fetch',
+            handle_exception(e, level: :warn, handled: true, operation: 'llm.fleet.settings.safe_fetch',
                                 key: key.to_s)
             nil
           end

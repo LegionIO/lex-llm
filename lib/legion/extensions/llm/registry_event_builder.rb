@@ -126,7 +126,7 @@ module Legion
           value = configured_node.to_s.strip
           value.empty? ? provider_family : value.to_sym
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true,
+          handle_exception(e, level: :warn, handled: true,
                               operation: "#{provider_family}.registry.provider_instance")
           provider_family
         end

@@ -478,7 +478,7 @@ module Legion
           Socket.tcp(uri.host, uri.port, connect_timeout: 1).close
           true
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'llm.provider.url_reachable', url:)
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.url_reachable', url:)
           false
         end
 
@@ -501,7 +501,7 @@ module Legion
 
           cache_local_instance? ? local_cache_get(key) : cache_get(key)
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true, operation: 'llm.provider.model_cache_get', key:)
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.model_cache_get', key:)
           nil
         end
 
