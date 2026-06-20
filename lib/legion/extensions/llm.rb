@@ -40,6 +40,7 @@ module Legion
       require_relative 'llm/taxonomies'
       require_relative 'llm/capabilities'
       require_relative 'llm/inventory/scoped_refresher'
+      require_relative 'llm/inventory/capabilities'
 
       # --- Capability resolution policy (no internal deps) ---
       require_relative 'llm/capability_policy'
