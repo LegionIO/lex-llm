@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0 - 2026-06-19
+
+### Added
+- **`Inventory::ScopedRefresher` mixin** — uniform `::Every` actor pattern for catalog writers.
+  Each `lex-llm-*` gem includes this and supplies `scope_key` + `compute_lanes_for_scope`. The mixin
+  handles write-then-delete-orphans, auth-failure cooldown circuit, and idempotent re-tick semantics.
+  Requires legion-llm `>= 0.14.0` (`Inventory.write_lane` / `.delete_lane`).
+- Standard `weight: 100` default in provider settings schema (feeds RANKING v2 `lane_weight`).
+- `ScopedRefresher.compose_id(tier:, provider:, instance:, type:, model:, **)` — canonical 5-part
+  lane id composer. All lane id composition must go through this method; never constructed inline.
+- `:fleet` first-class tier in `Taxonomies::TIERS` enum.
+- `Capabilities.normalize` normalization helper (PR #152 I1).
+
 ## 0.5.4 - 2026-06-17
 
 ### Fixed
