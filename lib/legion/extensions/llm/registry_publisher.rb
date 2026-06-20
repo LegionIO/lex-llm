@@ -25,12 +25,12 @@ module Legion
         end
 
         def publish_readiness_async(readiness)
-          log.info { "publishing readiness event to llm.registry for #{provider_family}" }
+          log.debug { "publishing readiness event to llm.registry for #{provider_family}" }
           schedule { publish_event(@builder.readiness(readiness)) }
         end
 
         def publish_models_async(models, readiness:)
-          log.info { "publishing #{Array(models).size} model event(s) to llm.registry for #{provider_family}" }
+          log.debug { "publishing #{Array(models).size} model event(s) to llm.registry for #{provider_family}" }
           schedule do
             Array(models).each do |model|
               publish_event(@builder.model_available(model, readiness:))
