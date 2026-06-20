@@ -14,7 +14,7 @@ RSpec.describe Legion::Extensions::Llm::CapabilityPolicy do
         policy = described_class.resolve(**empty_sources)
 
         expect(policy[:capabilities]).to eq([])
-        expect(policy[:sources][:embeddings]).to eq(value: false, source: :default_false)
+        expect(policy[:sources][:embedding]).to eq(value: false, source: :default_false)
         expect(policy[:sources][:thinking]).to eq(value: false, source: :default_false)
         expect(policy[:sources][:streaming]).to eq(value: false, source: :default_false)
         expect(policy[:sources][:tools]).to eq(value: false, source: :default_false)
@@ -42,7 +42,7 @@ RSpec.describe Legion::Extensions::Llm::CapabilityPolicy do
 
         expect(policy[:capabilities]).to contain_exactly(:streaming, :tools, :thinking)
         expect(policy[:sources][:thinking]).to eq(value: true, source: :instance_override)
-        expect(policy[:sources][:embeddings]).to eq(value: false, source: :provider_override)
+        expect(policy[:sources][:embedding]).to eq(value: false, source: :provider_override)
         expect(policy[:sources][:tools]).to eq(value: true, source: :instance_override)
       end
     end
@@ -65,7 +65,7 @@ RSpec.describe Legion::Extensions::Llm::CapabilityPolicy do
 
         expect(policy[:capabilities]).to contain_exactly(:streaming, :thinking)
         expect(policy[:sources][:streaming]).to eq(value: true, source: :provider_override)
-        expect(policy[:sources][:embeddings]).to eq(value: false, source: :provider_override)
+        expect(policy[:sources][:embedding]).to eq(value: false, source: :provider_override)
         expect(policy[:sources][:thinking]).to eq(value: true, source: :provider_override)
       end
     end
@@ -82,11 +82,11 @@ RSpec.describe Legion::Extensions::Llm::CapabilityPolicy do
           model_config: { capabilities: { tools: true } }
         )
 
-        expect(policy[:capabilities]).to include(:tools, :embeddings, :streaming, :structured_output)
+        expect(policy[:capabilities]).to include(:tools, :embedding, :streaming, :structured_output)
         expect(policy[:capabilities]).not_to include(:vision)
         expect(policy[:sources][:tools]).to eq(value: true, source: :model_override)
         expect(policy[:sources][:vision]).to eq(value: false, source: :provider_override)
-        expect(policy[:sources][:embeddings]).to eq(value: true, source: :probe)
+        expect(policy[:sources][:embedding]).to eq(value: true, source: :probe)
         expect(policy[:sources][:structured_output]).to eq(value: true, source: :provider_catalog)
         expect(policy[:sources][:streaming]).to eq(value: true, source: :provider_envelope)
       end
@@ -108,6 +108,29 @@ RSpec.describe Legion::Extensions::Llm::CapabilityPolicy do
         expect(policy[:sources][:thinking]).to eq(value: true, source: :instance_override)
         expect(policy[:sources][:streaming]).to eq(value: true, source: :instance_override)
         expect(policy[:sources][:tools]).to eq(value: false, source: :instance_override)
+      end
+
+      it 'canonicalizes reasoning, embedding, and image-generation aliases' do
+        policy = described_class.resolve(
+          real: {},
+          provider_catalog: {},
+          probe: {},
+          provider_envelope: {},
+          provider_config: {},
+          instance_config: {
+            enable_reasoning: true,
+            embeddings_flag: true,
+            image_generation_flag: true,
+            completion_flag: true
+          },
+          model_config: {}
+        )
+
+        expect(policy[:capabilities]).to include(:thinking, :embedding, :image, :completion)
+        expect(policy[:sources][:thinking]).to eq(value: true, source: :instance_override)
+        expect(policy[:sources][:embedding]).to eq(value: true, source: :instance_override)
+        expect(policy[:sources][:image]).to eq(value: true, source: :instance_override)
+        expect(policy[:sources][:completion]).to eq(value: true, source: :instance_override)
       end
     end
 

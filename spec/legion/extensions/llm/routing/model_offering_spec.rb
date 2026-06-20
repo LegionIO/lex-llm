@@ -96,7 +96,8 @@ RSpec.describe Legion::Extensions::Llm::Routing::ModelOffering do
       capabilities: %i[chat function_calling]
     )
 
-    expect(legacy_tools.capabilities).to include(:function_calling, :tools)
+    expect(legacy_tools.capabilities).to include(:tools)
+    expect(legacy_tools.capabilities).not_to include(:function_calling)
     expect(legacy_tools.eligible_for?(required_capabilities: [:tools])).to be true
   end
 
@@ -236,7 +237,7 @@ RSpec.describe Legion::Extensions::Llm::Routing::ModelOffering do
 
       expect(sourced.capabilities).to include(:streaming, :tools)
       expect(sourced.capability_sources[:tools]).to eq(value: true, source: :instance_override)
-      expect(sourced.capability_sources[:embeddings]).to eq(value: false, source: :default_false)
+      expect(sourced.capability_sources[:embedding]).to eq(value: false, source: :default_false)
     end
 
     it 'includes capability_sources in to_h' do

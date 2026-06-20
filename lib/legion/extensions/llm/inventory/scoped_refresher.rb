@@ -33,14 +33,17 @@ module Legion
           # G7 write-then-delete-orphans: write new lanes FIRST (eliminates zero-results
           # race window), then delete orphans from the previous scope snapshot.
           def tick(**)
+            return if auth_cooldown_active?
+
             new_lanes = safe_compute
-            return if new_lanes.nil?
+            log.info("[llm][scoped_refresher] action=tick provider=#{scope_key[:provider]} lanes_computed=#{new_lanes ? new_lanes.size : 0}")
+            return unless new_lanes&.any?
 
-            ttl = self.class.every_seconds * 3
-
+            written = 0
             new_lanes.each do |lane_fact|
-              Legion::LLM::Inventory.write_lane(lane: lane_fact, ttl: ttl)
+              written += 1 if Legion::LLM::Inventory.write_lane(lane: lane_fact)
             end
+            log.info("[llm][scoped_refresher] action=tick_complete provider=#{scope_key[:provider]} lanes_computed=#{new_lanes.size} lanes_written=#{written}")
 
             orphans = (@prev_scope_keys || []) - new_lanes.map { it[:id] }
             orphans.each { |id| Legion::LLM::Inventory.delete_lane(id: id) }
@@ -78,6 +81,8 @@ module Legion
 
           def auth_cooldown_active?
             !Legion::Cache::Local.get(auth_cooldown_key).nil?
+          rescue StandardError
+            false
           end
 
           def auth_cooldown_key

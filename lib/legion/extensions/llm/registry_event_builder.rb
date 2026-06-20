@@ -63,12 +63,13 @@ module Legion
         end
 
         def readiness_health(readiness)
+          source = readiness[:health]
           health = {
             ready: readiness[:ready] == true,
             status: readiness[:ready] ? :available : :unavailable,
-            checked: readiness.dig(:health, :checked) != false
+            checked: !source.is_a?(Hash) || source[:checked] != false
           }
-          add_readiness_error(health, readiness[:health])
+          add_readiness_error(health, source)
         end
 
         def add_readiness_error(health, source)

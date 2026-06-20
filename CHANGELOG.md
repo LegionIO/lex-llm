@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 - 2026-06-20
+
+### Fixed
+- Canonicalize routing capabilities in `lex-llm` itself: `embedding` is now the standard singular capability, `reasoning` aliases to `thinking`, and image/audio generation aliases collapse to the router vocabulary used by `Model::Info`, `ModelOffering`, and `CapabilityPolicy`.
+- Standardize `enable_*` / `*_flag` capability overrides in the base provider contract, including provider-level, instance-level, and model-level extraction from shared settings handling.
+
 ## 0.6.0 - 2026-06-19
 
 ### Added

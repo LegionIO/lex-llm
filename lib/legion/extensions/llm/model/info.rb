@@ -35,7 +35,7 @@ module Legion
               provider: provider.to_s.downcase.to_sym,
               instance: (instance || :default).to_s.downcase.to_sym,
               family: normalized_family,
-              capabilities: normalize_symbols(capabilities),
+              capabilities: normalize_capabilities(capabilities),
               context_length: to_int(context_length),
               parameter_count: to_int(parameter_count),
               parameter_size: parameter_size&.to_s&.strip,
@@ -184,6 +184,17 @@ module Legion
           end
 
           private
+
+          def normalize_capabilities(value)
+            raw = Array(value).compact.filter_map do |cap|
+              next unless cap.respond_to?(:to_s)
+
+              sym = cap.to_s.downcase.strip.tr('-', '_').to_sym
+              sym unless sym.to_s.empty?
+            end
+
+            (raw + Legion::Extensions::Llm::Capabilities.normalize(raw)).uniq.freeze
+          end
 
           def normalize_symbols(value)
             Array(value).compact.each_with_object([]) do |item, normalized|

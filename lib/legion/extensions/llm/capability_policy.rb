@@ -7,26 +7,30 @@ module Legion
       # Returns both a flat capability list and per-capability source metadata.
       module CapabilityPolicy
         OPTIONAL_CAPABILITIES = %i[
-          streaming tools vision embeddings thinking structured_output image audio_transcription audio_speech
+          completion embedding streaming tools vision thinking structured_output
+          moderation image audio_transcription audio_speech
         ].freeze
 
-        BOOLEAN_ALIASES = {
-          enable_streaming: :streaming,
-          enable_tools: :tools,
-          enable_thinking: :thinking,
-          enable_vision: :vision,
-          enable_embeddings: :embeddings,
-          enable_images: :image,
-          streaming_flag: :streaming,
+        BOOLEAN_ALIASES = OPTIONAL_CAPABILITIES.each_with_object({}) do |capability, result|
+          result[:"enable_#{capability}"] = capability
+          result[:"#{capability}_flag"] = capability
+        end.merge(
+          enable_embeddings: :embedding,
+          embeddings_flag: :embedding,
+          enable_functions: :tools,
+          functions_flag: :tools,
           tool_flag: :tools,
-          tools_flag: :tools,
-          thinking_flag: :thinking,
-          vision_flag: :vision,
-          embedding_flag: :embeddings,
-          embeddings_flag: :embeddings,
-          image_flag: :image,
-          images_flag: :image
-        }.freeze
+          enable_function_calling: :tools,
+          function_calling_flag: :tools,
+          enable_reasoning: :thinking,
+          reasoning_flag: :thinking,
+          enable_images: :image,
+          images_flag: :image,
+          enable_image_generation: :image,
+          image_generation_flag: :image,
+          enable_audio_generation: :audio_speech,
+          audio_generation_flag: :audio_speech
+        ).freeze
 
         module_function
 
@@ -88,12 +92,17 @@ module Legion
 
         def normalized_booleans(value)
           normalize_hash(value).each_with_object({}) do |(key, raw), result|
-            capability = key.to_s.downcase.tr('-', '_').to_sym
+            capability = canonical_capability(key)
+            next if capability.nil?
             next unless OPTIONAL_CAPABILITIES.include?(capability)
             next unless [true, false].include?(raw)
 
             result[capability] = raw
           end
+        end
+
+        def canonical_capability(key)
+          Legion::Extensions::Llm::Capabilities.normalize([key]).first
         end
 
         def normalize_hash(value)

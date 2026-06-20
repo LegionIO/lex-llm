@@ -10,6 +10,10 @@ module Legion
           @data = hash.transform_keys(&:to_sym)
         end
 
+        def to_h
+          @data.dup
+        end
+
         def respond_to_missing?(name, include_private = false)
           @data.key?(name.to_sym) || super
         end
@@ -31,6 +35,46 @@ module Legion
         include Legion::Cache::Helper
 
         MODEL_DETAIL_CACHE_SCHEMA_VERSION = 2
+        CAPABILITY_CONFIG_KEYS = %i[
+          capabilities
+          enable_completion
+          enable_embedding
+          enable_embeddings
+          enable_streaming
+          enable_tools
+          enable_functions
+          enable_function_calling
+          enable_thinking
+          enable_reasoning
+          enable_vision
+          enable_structured_output
+          enable_moderation
+          enable_image
+          enable_images
+          enable_image_generation
+          enable_audio_transcription
+          enable_audio_speech
+          enable_audio_generation
+          completion_flag
+          embedding_flag
+          embeddings_flag
+          streaming_flag
+          tool_flag
+          tools_flag
+          functions_flag
+          function_calling_flag
+          thinking_flag
+          reasoning_flag
+          vision_flag
+          structured_output_flag
+          moderation_flag
+          image_flag
+          images_flag
+          image_generation_flag
+          audio_transcription_flag
+          audio_speech_flag
+          audio_generation_flag
+        ].freeze
 
         attr_reader :config, :connection
 
@@ -148,8 +192,10 @@ module Legion
             next unless model_matches_filters?(model, filters)
             next unless model_allowed?(model.id)
 
+            log.unknown("[#{slug}] instance=#{provider_instance_id} action=model_discovered model=#{model.id} family=#{model.family}")
             offering_from_model(model, health: provider_health)
           end
+          log.info("[#{slug}] instance=#{provider_instance_id} action=discover_complete model_count=#{Array(@cached_offerings).size}")
           @cached_offerings
         rescue Faraday::ConnectionFailed, Faraday::TimeoutError => e
           log.warn("[#{slug}] instance=#{provider_instance_id} unreachable: #{e.message}")
@@ -162,13 +208,14 @@ module Legion
           readiness_data = readiness(live:)
           raw_health = readiness_data[:health] || readiness_data['health'] || {}
           status = health_status(readiness_data, raw_health)
+          latency_ms = (raw_health[:latency_ms] || raw_health['latency_ms'] if raw_health.is_a?(Hash))
           {
             provider: slug.to_sym,
             instance_id: provider_instance_id,
             status:,
             ready: readiness_data[:ready] == true || readiness_data['ready'] == true,
             circuit_state: status == 'healthy' ? 'closed' : 'open',
-            latency_ms: raw_health[:latency_ms] || raw_health['latency_ms'],
+            latency_ms: latency_ms,
             raw: raw_health
           }.compact
         rescue StandardError => e
@@ -338,20 +385,44 @@ module Legion
 
         # ── Model allow-list / deny-list filtering ────────────────────────
 
+        # Resolve model_whitelist with specificity cascade:
+        # 1. Instance-level  (config.model_whitelist — extensions.llm.<provider>.instances.<id>.model_whitelist)
+        # 2. Provider-level  (extensions.llm.<provider>.model_whitelist)
+        # 3. Global          (extensions.llm.model_whitelist)
+        # Returns the first non-nil, non-empty value found.
         def model_whitelist
           wl = config.model_whitelist if config.respond_to?(:model_whitelist)
-          wl ||= settings[:model_whitelist] if respond_to?(:settings) && settings.is_a?(Hash)
+          wl ||= instance_setting(:model_whitelist)
           wl ||= runtime_provider_setting(:model_whitelist)
+          wl ||= global_llm_setting(:model_whitelist)
           Array(wl).map { |p| p.to_s.downcase }
         end
 
+        # Resolve model_blacklist with the same specificity cascade as model_whitelist.
         def model_blacklist
           bl = config.model_blacklist if config.respond_to?(:model_blacklist)
-          bl ||= settings[:model_blacklist] if respond_to?(:settings) && settings.is_a?(Hash)
+          bl ||= instance_setting(:model_blacklist)
           bl ||= runtime_provider_setting(:model_blacklist)
+          bl ||= global_llm_setting(:model_blacklist)
           Array(bl).map { |p| p.to_s.downcase }
         end
 
+        # Pull a setting from the instance-level settings hash (if available),
+        # distinct from the config object which is a HashConfig wrapper.
+        def instance_setting(key)
+          config_hash =
+            if instance_variable_defined?(:@settings)
+              @settings
+            elsif respond_to?(:settings)
+              settings
+            else
+              config
+            end
+          config_hash = config_hash.to_h if config_hash.respond_to?(:to_h)
+          config_hash.is_a?(Hash) ? (config_hash[key] || config_hash[key.to_s]) : nil
+        end
+
+        # Provider-level setting: extensions.llm.<provider>.<key>
         def runtime_provider_setting(key)
           return nil unless defined?(Legion::Settings)
 
@@ -367,8 +438,35 @@ module Legion
           nil
         end
 
+        # Global LLM setting: extensions.llm.<key> (lowest specificity)
+        def global_llm_setting(key)
+          return nil unless defined?(Legion::Settings)
+
+          llm_conf = Legion::Settings.dig(:extensions, :llm)
+          llm_conf.is_a?(Hash) ? llm_conf[key] : nil
+        rescue StandardError
+          nil
+        end
+
         def model_allowed?(model_name)
-          self.class.policy_allows?(model_name, whitelist: model_whitelist, blacklist: model_blacklist)
+          wl = model_whitelist
+          bl = model_blacklist
+          allowed = self.class.policy_allows?(model_name, whitelist: wl, blacklist: bl)
+
+          unless allowed
+            reason_parts = []
+            reason_parts << 'whitelist' if wl.any?
+            reason_parts << 'blacklist' if bl.any?
+            reason_str = reason_parts.empty? ? 'policy' : reason_parts.join(',')
+            policy_src = if wl.any?
+                           "wl=[#{wl.first(5).join(',')}#{',...' if wl.size > 5}]"
+                         else
+                           'no-whitelist'
+                         end
+            log.unknown("[#{self.class.slug}] action=model_rejected name=#{model_name} reason=#{reason_str} #{policy_src}")
+          end
+
+          allowed
         end
 
         # Single source of truth for model-policy matching, usable both at runtime
@@ -388,17 +486,36 @@ module Legion
           true
         end
 
-        # Effective whitelist/blacklist for an instance config: per-instance config
-        # first, then the provider-level setting (mirrors instance #model_whitelist
-        # resolution order). Used by provider extensions when picking a default_model.
+        # Effective whitelist/blacklist for an instance config at build time
+        # (before provider instance exists). Same specificity cascade:
+        # 1. Per-instance  (config hash — extensions.llm.<provider>.instances.<id>.model_whitelist)
+        # 2. Provider-level (extensions.llm.<provider>.model_whitelist)
+        # 3. Global        (extensions.llm.model_whitelist)
         def self.model_policy(config, provider_family)
           cfg = config.is_a?(Hash) ? config : {}
           provider_conf = CredentialSources.setting(:extensions, :llm, provider_family)
           provider_conf = {} unless provider_conf.is_a?(Hash)
+          global_conf = (::Legion::Settings.dig(:extensions, :llm) if defined?(::Legion::Settings))
+          global_conf = {} unless global_conf.is_a?(Hash)
+
           {
-            whitelist: cfg[:model_whitelist] || provider_conf[:model_whitelist] || provider_conf['model_whitelist'],
-            blacklist: cfg[:model_blacklist] || provider_conf[:model_blacklist] || provider_conf['model_blacklist']
+            whitelist: resolve_policy_value(cfg, provider_conf, global_conf, :model_whitelist),
+            blacklist: resolve_policy_value(cfg, provider_conf, global_conf, :model_blacklist)
           }
+        end
+
+        # Resolve a single policy value with instance > provider > global precedence.
+        def self.resolve_policy_value(cfg, provider_conf, global_conf, key)
+          # Instance-level
+          val = cfg[key] || cfg[key.to_s]
+          return val if val && !val.to_s.empty? && (val.is_a?(Array) ? val.any? : true)
+
+          # Provider-level
+          val = provider_conf[key] || provider_conf[key.to_s]
+          return val if val && !val.to_s.empty? && (val.is_a?(Array) ? val.any? : true)
+
+          # Global
+          global_conf[key] || global_conf[key.to_s]
         end
 
         # Choose a default_model that never violates the model policy: prefer an
@@ -593,6 +710,33 @@ module Legion
 
         private
 
+        def provider_capability_config
+          return {} unless defined?(Legion::Extensions::Llm::CredentialSources)
+
+          raw = Legion::Extensions::Llm::CredentialSources.setting(:extensions, :llm, slug.to_sym)
+          return {} unless raw.respond_to?(:to_h)
+
+          raw.to_h.except(:instances, 'instances')
+        rescue StandardError => e
+          handle_exception(e, level: :warn, handled: true, operation: "#{slug}.provider_capability_config")
+          {}
+        end
+
+        def instance_capability_config
+          extract_capability_config(config)
+        end
+
+        def model_capability_config(model_id)
+          provider_models = provider_capability_models
+          instance_models = extract_models_config(config)
+          provider_override = provider_models[model_id.to_s] || provider_models[model_id.to_sym] || {}
+          instance_override = instance_models[model_id.to_s] || instance_models[model_id.to_sym] || {}
+          provider_override.to_h.merge(instance_override.to_h)
+        rescue StandardError => e
+          handle_exception(e, level: :warn, handled: true, operation: "#{slug}.model_capability_config")
+          {}
+        end
+
         def global_prompt_caching_enabled?
           return false unless defined?(Legion::Settings)
 
@@ -629,6 +773,34 @@ module Legion
           return if with.nil? && mask.nil?
 
           raise UnsupportedAttachmentError, "#{name} does not support image references in paint"
+        end
+
+        def extract_capability_config(source)
+          return {} unless source
+
+          CAPABILITY_CONFIG_KEYS.each_with_object({}) do |key, result|
+            next unless source.respond_to?(key)
+
+            value = source.public_send(key)
+            result[key] = value unless value.nil?
+          rescue StandardError
+            next
+          end
+        end
+
+        def extract_models_config(source)
+          return {} unless source.respond_to?(:models)
+
+          models = source.models
+          models.respond_to?(:to_h) ? models.to_h : {}
+        rescue StandardError
+          {}
+        end
+
+        def provider_capability_models
+          config = provider_capability_config
+          models = config[:models] || config['models']
+          models.respond_to?(:to_h) ? models.to_h : {}
         end
 
         def offering_from_model(model, health: {})
@@ -733,7 +905,11 @@ module Legion
         def health_status(readiness_data, raw_health)
           return 'healthy' if readiness_data[:ready] == true || readiness_data['ready'] == true
 
-          status = raw_health[:status] || raw_health['status'] || raw_health[:state] || raw_health['state']
+          status = if raw_health.is_a?(Hash)
+                     raw_health[:status] || raw_health['status'] || raw_health[:state] || raw_health['state']
+                   else
+                     raw_health
+                   end
           return 'healthy' if %w[ok ready healthy running].include?(status.to_s.downcase)
 
           'unhealthy'

@@ -9,6 +9,11 @@ module Legion
       # filtering (lane declaration and router request payload) — without this, vocabulary
       # differences silently mismatch and the router returns no lane.
       module Capabilities
+        CANONICAL = %i[
+          completion embedding streaming tools vision thinking structured_output
+          moderation image audio_transcription audio_speech responses
+        ].freeze
+
         ALIASES = {
           function_calling: :tools,
           tool_use: :tools,
@@ -17,7 +22,15 @@ module Legion
           functions: :tools,
           stream: :streaming,
           stream_chat: :streaming,
-          responses_api: :responses
+          responses_api: :responses,
+          embeddings: :embedding,
+          embed: :embedding,
+          reasoning: :thinking,
+          image_generation: :image,
+          images: :image,
+          audio_generation: :audio_speech,
+          speech_generation: :audio_speech,
+          transcription: :audio_transcription
         }.freeze
 
         module_function
@@ -30,8 +43,7 @@ module Legion
             sym = cap.to_s.downcase.strip.tr('-', '_').to_sym
             next if sym.to_s.empty?
 
-            normalized << sym
-            normalized << ALIASES[sym] if ALIASES[sym]
+            normalized << canonical(sym)
           end.uniq.freeze
         end
 
@@ -45,6 +57,11 @@ module Legion
 
           normalized = normalize(available)
           required.all? { |cap| normalized.include?(cap) }
+        end
+
+        def canonical(capability)
+          sym = capability.to_s.downcase.strip.tr('-', '_').to_sym
+          ALIASES.fetch(sym, sym)
         end
       end
     end
