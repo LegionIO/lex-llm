@@ -175,6 +175,26 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       expect(offering.context_window).to eq(8192)
     end
 
+    it 'publishes every discovered model before policy filtering removes blocked models' do
+      blocked_model = Legion::Extensions::Llm::Model::Info.new(
+        id: 'blocked-model',
+        provider: :contract,
+        instance: :primary,
+        capabilities: %i[completion],
+        context_length: 4096
+      )
+      registry_publisher = instance_double(Legion::Extensions::Llm::RegistryPublisher)
+      allow(registry_publisher).to receive(:publish_models_async)
+      allow(provider_class).to receive(:registry_publisher).and_return(registry_publisher)
+      allow(provider).to receive_messages(list_models: [model, blocked_model], settings: { model_blacklist: ['blocked'] })
+
+      offerings = provider.discover_offerings(live: true)
+
+      expect(offerings.map(&:model)).to eq(['test-model'])
+      expect(registry_publisher).to have_received(:publish_models_async).with([model], anything)
+      expect(registry_publisher).to have_received(:publish_models_async).with([blocked_model], anything)
+    end
+
     it 'passes live discovery filters through to list_models' do
       provider.discover_offerings(live: true, capability: :tools, instance: :primary)
 

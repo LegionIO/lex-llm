@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2 - 2026-06-20
+
+### Fixed
+- Publish one `llm.registry` model-availability event per discovered model from the shared discovery/filter loop before whitelist/blacklist removes blocked models from routable offerings, preserving shadow-model visibility without polluting inventory.
+
 ## 0.6.1 - 2026-06-20
 
 ### Fixed

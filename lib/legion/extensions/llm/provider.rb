@@ -189,6 +189,7 @@ module Legion
 
           provider_health = health(live:)
           @cached_offerings = Array(list_models(live:, **filters)).filter_map do |model|
+            publish_discovered_model_to_registry(model, provider_health:, live:)
             next unless model_matches_filters?(model, filters)
             next unless model_allowed?(model.id)
 
@@ -202,6 +203,33 @@ module Legion
           raise if raise_on_unreachable
 
           []
+        end
+
+        def publish_discovered_model_to_registry(model, provider_health:, live:)
+          publisher = discovery_registry_publisher
+          return unless publisher.respond_to?(:publish_models_async)
+
+          publisher.publish_models_async([model], readiness: discovery_registry_readiness(provider_health, live:))
+        rescue StandardError => e
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.publish_discovered_model')
+        end
+
+        def discovery_registry_publisher
+          return unless self.class.respond_to?(:registry_publisher)
+
+          self.class.registry_publisher
+        rescue StandardError
+          nil
+        end
+
+        def discovery_registry_readiness(provider_health, live:)
+          {
+            provider: slug.to_sym,
+            configured: configured?,
+            ready: provider_health[:ready] == true,
+            live: live,
+            health: provider_health
+          }
         end
 
         def health(live: false)
@@ -463,7 +491,7 @@ module Legion
                          else
                            'no-whitelist'
                          end
-            log.unknown("[#{self.class.slug}] action=model_rejected name=#{model_name} reason=#{reason_str} #{policy_src}")
+            log.debug("[#{self.class.slug}] action=model_rejected name=#{model_name} reason=#{reason_str} #{policy_src}")
           end
 
           allowed
