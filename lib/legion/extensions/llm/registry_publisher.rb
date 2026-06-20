@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'concurrent'
+
 module Legion
   module Extensions
     module Llm
@@ -8,6 +10,8 @@ module Legion
       # class without defining its own copy.
       class RegistryPublisher
         include Legion::Logging::Helper
+
+        ASYNC_THREAD_POOL = Concurrent::FixedThreadPool.new(1, fallback_policy: :caller_runs)
 
         attr_reader :provider_family
 
@@ -39,8 +43,7 @@ module Legion
         def schedule(&)
           return false unless publishing_available?
 
-          Thread.new do
-            Thread.current.abort_on_exception = false
+          ASYNC_THREAD_POOL.post do
             yield
           rescue StandardError => e
             handle_exception(e, level: :warn, handled: true,
