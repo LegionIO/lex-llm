@@ -169,7 +169,7 @@ module Legion
           def safe_publish_error(envelope, error)
             publish_error(envelope, error)
           rescue StandardError => e
-            handle_exception(e, level: :debug, handled: true,
+            handle_exception(e, level: :warn, handled: true,
                                 operation: 'llm.fleet.provider_responder.safe_publish_error',
                                 error_class: error.class.name)
             nil

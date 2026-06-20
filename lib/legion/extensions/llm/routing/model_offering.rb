@@ -159,21 +159,14 @@ module Legion
           end
 
           def normalize_capabilities(value)
-            Array(value).compact.each_with_object([]) do |item, normalized|
-              symbol = item.to_s.downcase.strip.to_sym
-              next if symbol.to_s.empty?
-
-              normalized << symbol
-              alias_symbol = CAPABILITY_ALIASES[symbol]
-              normalized << alias_symbol if alias_symbol
-            end.uniq
+            Legion::Extensions::Llm::Capabilities.normalize(value)
           end
 
           def normalize_capability_sources(value)
             normalize_hash(value).to_h do |capability, source_data|
               normalized_source = normalize_hash(source_data)
               [
-                capability.to_s.downcase.tr('-', '_').to_sym,
+                Legion::Extensions::Llm::Capabilities.canonical(capability),
                 { value: normalized_source[:value], source: normalized_source[:source]&.to_sym }.compact
               ]
             end

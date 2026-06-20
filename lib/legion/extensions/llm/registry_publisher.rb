@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'concurrent'
+
 module Legion
   module Extensions
     module Llm
@@ -8,6 +10,8 @@ module Legion
       # class without defining its own copy.
       class RegistryPublisher
         include Legion::Logging::Helper
+
+        ASYNC_THREAD_POOL = Concurrent::FixedThreadPool.new(1, fallback_policy: :caller_runs)
 
         attr_reader :provider_family
 
@@ -21,12 +25,12 @@ module Legion
         end
 
         def publish_readiness_async(readiness)
-          log.info { "publishing readiness event to llm.registry for #{provider_family}" }
+          log.debug { "publishing readiness event to llm.registry for #{provider_family}" }
           schedule { publish_event(@builder.readiness(readiness)) }
         end
 
         def publish_models_async(models, readiness:)
-          log.info { "publishing #{Array(models).size} model event(s) to llm.registry for #{provider_family}" }
+          log.debug { "publishing #{Array(models).size} model event(s) to llm.registry for #{provider_family}" }
           schedule do
             Array(models).each do |model|
               publish_event(@builder.model_available(model, readiness:))
@@ -39,15 +43,14 @@ module Legion
         def schedule(&)
           return false unless publishing_available?
 
-          Thread.new do
-            Thread.current.abort_on_exception = false
+          ASYNC_THREAD_POOL.post do
             yield
           rescue StandardError => e
-            handle_exception(e, level: :debug, handled: true,
+            handle_exception(e, level: :warn, handled: true,
                                 operation: "#{provider_family}.registry.schedule_thread")
           end
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true,
+          handle_exception(e, level: :warn, handled: true,
                               operation: "#{provider_family}.registry.schedule")
           false
         end
@@ -70,7 +73,7 @@ module Legion
 
           ::Legion::Transport::Connection.session_open?
         rescue StandardError => e
-          handle_exception(e, level: :debug, handled: true,
+          handle_exception(e, level: :warn, handled: true,
                               operation: "#{provider_family}.registry.publishing_available?")
           false
         end
@@ -86,7 +89,7 @@ module Legion
           require 'legion/extensions/llm/transport/messages/registry_event'
           message_class_defined?
         rescue LoadError => e
-          handle_exception(e, level: :debug, handled: true,
+          handle_exception(e, level: :warn, handled: true,
                               operation: "#{provider_family}.registry.transport_load")
           false
         end
