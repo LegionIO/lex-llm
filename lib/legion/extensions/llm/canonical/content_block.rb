@@ -6,6 +6,7 @@ module Legion
       module Canonical
         # Typed content block with media_type support per G20a.
         # Ports field vocabulary from Legion::LLM::Types::ContentBlock.
+        # rubocop:disable Lint/ConstantDefinitionInBlock -- required for Data.define block scope
         ContentBlock = ::Data.define(
           :type, :text, :data, :source_type, :media_type,
           :detail, :name, :file_id,
@@ -13,6 +14,8 @@ module Legion
           :source, :start_index, :end_index,
           :code, :message, :cache_control
         ) do
+          TEXT_TYPE_ALIASES = %i[text output_text input_text].freeze
+
           # Build a text content block.
           def self.text(content, cache_control: nil)
             new(
@@ -64,12 +67,17 @@ module Legion
           end
 
           # Build from a Hash (raw provider response or deserialized wire payload).
+          # Rescues NoMethodError from corrupted inputs (e.g. String elements from
+          # prior serialization bugs where ContentBlock#inspect leaked into storage).
           def self.from_hash(source)
             return nil if source.nil?
 
             h = source.transform_keys(&:to_sym)
             type_raw = h.delete(:type)
-            h[:type] = type_raw&.to_sym if type_raw
+            if type_raw
+              type_sym = type_raw.to_sym
+              h[:type] = TEXT_TYPE_ALIASES.include?(type_sym) ? :text : type_sym
+            end
 
             new(
               type: h[:type],
@@ -91,6 +99,10 @@ module Legion
               message: h[:message],
               cache_control: h[:cache_control]
             )
+          rescue NoMethodError => e
+            Legion::Logging.log.warn('[canonical][content_block] from_hash received non-Hash input ' \
+                                     "(#{source.class}): #{e.message}")
+            text(source.to_s)
           end
 
           # Serialize to a Hash for AMQP/fleet/wire transport.
@@ -98,9 +110,22 @@ module Legion
             super.compact
           end
 
+          # Human-readable string — prevents #inspect leaking into user-facing output.
+          def to_s
+            return "[tool_use:#{name}]" if type == :tool_use
+            return '[image]' if type == :image
+
+            text.to_s
+          end
+
+          # Concise inspect — prevents raw Data.define dump in Array#inspect output.
+          def inspect
+            "#<ContentBlock:#{type} #{to_s.slice(0, 80).inspect}>"
+          end
+
           # Whether this block carries textual content.
           def text?
-            type == :text
+            TEXT_TYPE_ALIASES.include?(type)
           end
 
           # Whether this block carries thinking/reasoning content.
@@ -120,6 +145,7 @@ module Legion
         end
 
         ContentBlock::CONTENT_BLOCK_TYPES = %i[text thinking tool_use tool_result image audio video].freeze
+        # rubocop:enable Lint/ConstantDefinitionInBlock
       end
     end
   end

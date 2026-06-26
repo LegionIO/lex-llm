@@ -163,6 +163,29 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Message do
 
       expect(msg.text).to eq('')
     end
+
+    it 'extracts text from output_text ContentBlock array (Responses API / Codex)' do
+      msg = described_class.from_hash(
+        role: :assistant,
+        content: [{ type: 'output_text', text: "The seat templates don't" }]
+      )
+
+      expect(msg.text).to eq("The seat templates don't")
+      expect(msg.text).not_to include('#<data')
+      expect(msg.text).not_to include('ContentBlock')
+    end
+
+    it 'extracts text from mixed output_text and text blocks' do
+      msg = described_class.from_hash(
+        role: :assistant,
+        content: [
+          { type: 'output_text', text: 'first ' },
+          { type: 'text', text: 'second' }
+        ]
+      )
+
+      expect(msg.text).to eq('first second')
+    end
   end
 
   describe '#to_h' do

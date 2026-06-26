@@ -123,6 +123,11 @@ module Legion
             super.compact
           end
 
+          # Human-readable string — prevents #inspect leaking into user-facing output.
+          def to_s
+            text
+          end
+
           # Minimal provider-facing hash (role + text content).
           def to_provider_hash
             { role: role.to_s, content: text }.compact

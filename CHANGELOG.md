@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.3 - 2026-06-25
+
+### Fixed
+- `ContentBlock.from_hash` rescues `NoMethodError` when content arrays contain corrupted String elements (serialized `#inspect` output from prior storage bugs) — returns a text block instead of crashing with `undefined method 'transform_keys' for an instance of String`.
+- `ContentBlock.from_hash` normalizes `output_text`/`input_text` types to `:text` via `TEXT_TYPE_ALIASES` so Responses API content blocks are recognized by `text?` and extracted by `Message#text`.
+- `ContentBlock#to_s` returns clean text for all text-type blocks; `#inspect` returns a concise debug representation instead of the full 18-field Data.define dump.
+- `Canonical::Message#to_s` delegates to `#text` to prevent Array#inspect leaking struct internals into string contexts.
+
 ## 0.6.2 - 2026-06-20
 
 ### Fixed

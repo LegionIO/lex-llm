@@ -166,6 +166,52 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ContentBlock do
     end
   end
 
+  describe 'Responses API type normalization (output_text/input_text)' do
+    it 'normalizes output_text to :text via from_hash' do
+      block = described_class.from_hash(type: 'output_text', text: 'The seat templates')
+
+      expect(block.type).to eq(:text)
+      expect(block.text).to eq('The seat templates')
+      expect(block.text?).to be true
+    end
+
+    it 'normalizes input_text to :text via from_hash' do
+      block = described_class.from_hash(type: 'input_text', text: 'user message')
+
+      expect(block.type).to eq(:text)
+      expect(block.text?).to be true
+    end
+
+    it 'returns text content from to_s for output_text blocks' do
+      block = described_class.from_hash(type: 'output_text', text: "The seat templates don't")
+
+      expect(block.to_s).to eq("The seat templates don't")
+    end
+
+    it 'does not leak #inspect struct into Array#to_s' do
+      blocks = [described_class.from_hash(type: 'output_text', text: 'hello')]
+
+      expect(blocks.inspect).not_to include('data Legion::Extensions')
+      expect(blocks.inspect).not_to include('source_type=nil')
+    end
+  end
+
+  describe '#to_s' do
+    it 'returns text for text blocks' do
+      expect(described_class.text('hello').to_s).to eq('hello')
+    end
+
+    it 'returns placeholder for tool_use blocks' do
+      block = described_class.tool_use(id: '1', name: 'bash', input: {})
+      expect(block.to_s).to eq('[tool_use:bash]')
+    end
+
+    it 'returns placeholder for image blocks' do
+      block = described_class.image(data: 'x', media_type: 'image/png')
+      expect(block.to_s).to eq('[image]')
+    end
+  end
+
   describe 'round-trip' do
     it 'preserves text block through from_hash/to_h' do
       original = { type: 'text', text: 'hello world' }
