@@ -106,6 +106,16 @@ module Legion
             super.compact
           end
 
+          # MultiJson/Oj/::JSON callback for unknown types — without this, fallback is
+          # obj.to_s which for Data.define returns the #inspect dump and leaks into JSON.
+          def as_json(*)
+            to_h
+          end
+
+          def to_json(*)
+            to_h.to_json(*)
+          end
+
           # Subset for audit/ledger emission.
           def to_audit_hash
             {

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.4 - 2026-06-30
+
+### Fixed
+- **Canonical Data structs now serialize correctly via MultiJson/Oj/::JSON** — all 10 `Data.define` canonical structs (`ToolCall`, `Message`, `ContentBlock`, `Chunk`, `Params`, `Request`, `Response`, `Thinking`, `ToolDefinition`, `Usage`) now implement `as_json` and `to_json`, delegating to their existing `#to_h` method. Without these callbacks, `MultiJson.dump` (and any JSON encoder) fell back to `obj.to_s` on canonical structs, producing the Ruby `#inspect` dump (e.g. `#<data Legion::Extensions::Llm::Canonical::ToolCall id="toolu_bdrk_...", ...>`) wherever a struct appeared inside a Hash/Array being serialized. This leaked into:
+  - Client responses (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`) — `tool_calls` in assistant message history appeared as inspect strings instead of structured JSON objects, breaking LangGraph/Freelens supervisors that expect structured routing decisions.
+  - Ledger persistence (`llm_message_inference_requests.request_json`) — tool_calls stored as unparseable Ruby inspect strings, breaking history reconstruction on subsequent turns.
+  - AMQP wire payloads — any consumer receiving a message containing canonical structs saw inspect strings instead of structured data.
+  - Debug echo-request (`X-Legion-Debug: echo-request`) — canonical request snapshot contained inspect strings for any `tool_calls` in message history.
+
+  The fix is structural: canonical structs now self-enforce correct JSON serialization at the architectural boundary (per Amendment A of the N×N routing design), so every downstream consumer — ledger, AMQP publisher, client translator, debug formatter — serializes correctly without needing to call `.to_h` explicitly.
+
 ## 0.6.3 - 2026-06-25
 
 ### Fixed

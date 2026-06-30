@@ -91,6 +91,15 @@ module Legion
               parameters: parameters
             }.compact.reject { |k, v| k == :description && v == '' }
           end
+
+          # MultiJson/Oj/::JSON callback — prevents Data.define #inspect leak into JSON.
+          def as_json(*)
+            to_h
+          end
+
+          def to_json(*)
+            to_h.to_json(*)
+          end
         end
       end
     end

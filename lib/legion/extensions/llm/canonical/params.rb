@@ -53,6 +53,15 @@ module Legion
           def to_h
             super.compact
           end
+
+          # MultiJson/Oj/::JSON callback — prevents Data.define #inspect leak into JSON.
+          def as_json(*)
+            to_h
+          end
+
+          def to_json(*)
+            to_h.to_json(*)
+          end
         end
         # rubocop:enable Lint/ConstantDefinitionInBlock
       end

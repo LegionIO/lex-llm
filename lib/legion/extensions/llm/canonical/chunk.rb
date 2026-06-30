@@ -162,6 +162,15 @@ module Legion
             }.compact
           end
 
+          # MultiJson/Oj/::JSON callback — prevents Data.define #inspect leak into JSON.
+          def as_json(*)
+            to_h
+          end
+
+          def to_json(*)
+            to_h.to_json(*)
+          end
+
           # Type predicate helpers.
           def text_delta? = type == :text_delta
           def thinking_delta? = type == :thinking_delta
