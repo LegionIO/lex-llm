@@ -92,6 +92,15 @@ module Legion
             }.compact
           end
 
+          # MultiJson/Oj/::JSON callback — prevents Data.define #inspect leak into JSON.
+          def as_json(*)
+            to_h
+          end
+
+          def to_json(*)
+            to_h.to_json(*)
+          end
+
           def self.normalize_tools(tools)
             return {} if tools.nil? || tools.empty?
 

@@ -31,6 +31,15 @@ module Legion
             super.compact
           end
 
+          # MultiJson/Oj/::JSON callback — prevents Data.define #inspect leak into JSON.
+          def as_json(*)
+            to_h
+          end
+
+          def to_json(*)
+            to_h.to_json(*)
+          end
+
           # Whether this thinking block has any content.
           def empty?
             content.nil? && signature.nil?

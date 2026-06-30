@@ -110,6 +110,15 @@ module Legion
             super.compact
           end
 
+          # MultiJson/Oj/::JSON callback — prevents Data.define #inspect leak into JSON.
+          def as_json(*)
+            to_h
+          end
+
+          def to_json(*)
+            to_h.to_json(*)
+          end
+
           # Human-readable string — prevents #inspect leaking into user-facing output.
           def to_s
             return "[tool_use:#{name}]" if type == :tool_use

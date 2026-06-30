@@ -104,6 +104,15 @@ module Legion
             end
           end
 
+          # MultiJson/Oj/::JSON callback — prevents Data.define #inspect leak into JSON.
+          def as_json(*)
+            to_h
+          end
+
+          def to_json(*)
+            to_h.to_json(*)
+          end
+
           # Whether the response includes tool calls.
           def tool_call?
             !tool_calls.nil? && !tool_calls.empty?
