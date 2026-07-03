@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.5 - 2026-07-03
+
+### Added
+- **`MeteringFlush` actor drains the LLM metering spool back into RabbitMQ.** legion-llm's `Legion::LLM::Metering` spools metering events to `~/.legionio/data/spool/metering/events.jsonl` whenever transport is down at emit time. Nothing had been draining that spool since `lex-llm-gateway` was retired, so events (chat, embeddings, skills — all funnel through `Legion::LLM::Metering.emit`) accumulated indefinitely. This `Legion::Extensions::Actors::Every` actor ticks every 60s and calls `Legion::LLM::Metering.flush_spool`, which republishes each spooled event to the `llm.metering` exchange and truncates the file. It is a no-op while transport is unavailable, so it is safe to tick continuously. Runs on every node (not a singleton) because each node owns its own spool file and must drain it locally. References legion-llm by string (`'Legion::LLM::Metering'`) so lex-llm — the lower gem — avoids a circular dependency; the constant is resolved at tick time.
+
 ## 0.6.4 - 2026-06-30
 
 ### Fixed
