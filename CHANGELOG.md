@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.6 - 2026-07-03
+
+### Changed
+- Version bump to re-trigger the release pipeline after a transient CI failure on 0.6.5. No functional changes.
+
 ## 0.6.5 - 2026-07-03
 
 ### Added
