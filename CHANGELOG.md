@@ -1,9 +1,14 @@
 # Changelog
 
+## 0.6.8 - 2026-07-03
+
+### Changed
+- Version bump to publish the `MeteringFlush` actor (0.6.5). Versions 0.6.5–0.6.7 tagged and created GitHub releases but never reached RubyGems: 0.6.5/0.6.6 failed `gem push` on a revoked API key, and 0.6.7 failed because the replacement API key was created with per-key MFA enabled (`gem push` prompted for an OTP a CI runner can't provide). The API key has been recreated without per-key MFA. Because the release workflow skips publishing when a version's tag/release already exists, each failed version must be superseded by a fresh one. No functional changes since 0.6.5.
+
 ## 0.6.7 - 2026-07-03
 
 ### Changed
-- Version bump to publish the `MeteringFlush` actor (0.6.5). The 0.6.5 and 0.6.6 release runs tagged and created GitHub releases but failed at `gem push` on a revoked RubyGems API key, so neither reached RubyGems (0.6.4 remained latest). Because the release workflow skips publishing when a tag/release for the version already exists, re-running those versions could never push — a fresh version is required. RubyGems credentials have been rotated. No functional changes since 0.6.5.
+- Version bump attempting to publish the `MeteringFlush` actor. Did not reach RubyGems — the replacement API key carried a per-key MFA requirement, so `gem push` demanded an OTP (superseded by 0.6.8). No functional changes.
 
 ## 0.6.6 - 2026-07-03
 
