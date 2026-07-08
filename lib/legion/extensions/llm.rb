@@ -82,6 +82,7 @@ module Legion
 
       # --- Provider base & allied modules ---
       require_relative 'llm/provider_contract'
+      require_relative 'llm/stop_reason_mapping'
       require_relative 'llm/provider_settings'
       require_relative 'llm/provider'
 

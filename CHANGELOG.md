@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.9 - 2026-07-05
+
+### Added
+- `StopReasonMapping` mixin (`legion/extensions/llm/stop_reason_mapping`) — a shared stop_reason vocabulary included by provider translators (and available to legion-llm, which depends on lex-llm). Keys are incoming provider wire strings, values are the canonical `stop_reason` symbol. Provider wire formats spell the same six canonical end-states differently (OpenAI/vLLM emit `tool_calls`, Anthropic `tool_use`; `stop`/`end_turn`/`eos` all mean the same thing), so the common vocabulary now lives in one place instead of being copy-pasted (and drifting) across provider gems.
+  - `#stop_reason_map` — the common vocabulary, inherited by all.
+  - `#stop_reason_map_additions` — returns `{}` in the base; a provider overrides it to ADD provider-specific strings (merged on top, additions win on collision). No guards needed.
+  - `#stop_reason_lookup(key)` — merges additions over the map, coerces the key via `to_s`, returns the canonical symbol or `nil` (caller decides the default). To REPLACE the whole vocabulary, a provider overrides `#stop_reason_map`.
+
 ## 0.6.8 - 2026-07-03
 
 ### Changed
