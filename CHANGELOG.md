@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.10 - 2026-07-09
+
+### Added
+- `ThinkingConfig#resolved_budget` and `#resolved_effort` — cross-axis derivation so provider translators get whichever thinking axis they need (Anthropic `budget_tokens` vs OpenAI `effort`) even when the client supplied only the other. A client dialect supplies only one axis (Anthropic = budget only; OpenAI = effort only), so a single `EFFORT_BUDGET` map (SSOT) drives the conversion in both directions: effort -> budget is exact (`low` = 1024, `medium` = 8192, `high` = 16384), budget -> effort maps by band boundary. Explicitly-set values always win over derivation, and both accessors return `nil` when neither axis is configured. `to_h` stays faithful to what was actually set (no fabrication). This is the foundation for fixing thinking being silently dropped on cross-provider routes (e.g. a Claude budget request routed to OpenAI effort).
+
 ## 0.6.9 - 2026-07-05
 
 ### Added
