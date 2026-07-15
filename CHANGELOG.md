@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.12 - 2026-07-15
+
+### Fixed
+- **Strip leaked Gemma4 special tokens from response content.** Gemma4 models emit `<turn|>`, `<|turn>`, `<channel|>` as literal text when the serving engine fails to intercept them. `<turn|>` is an end-of-turn signal — content is now truncated at the first occurrence (everything after it is garbage). Other leaked tokens (`<|channel>`, `<|turn|>`) are stripped entirely. Prevents users seeing raw control tokens in responses and fixes cases where the leaked token caused downstream "no response returned" errors.
+
 ## 0.6.11 - 2026-07-15
 
 ### Added

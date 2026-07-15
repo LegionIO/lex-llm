@@ -13,6 +13,12 @@ module Legion
             ['<think>',    '</think>'],
             ['<|channel>', '<channel|>']
           ].freeze
+          # Gemma4 special tokens that leak into content text when the serving
+          # engine fails to intercept them. <turn|> and <channel|> are stop
+          # signals — content is truncated at the first occurrence.
+          # Others are stripped entirely.
+          LEAKED_STOP_TOKENS = ['<turn|>', '<|turn>', '<channel|>'].freeze
+          LEAKED_STRIP_TOKENS = ['<|channel>', '<|turn|>'].freeze
           UNTAGGED_PREAMBLE_MAX_LENGTH = 4_000
           UNTAGGED_PREAMBLE_STARTS = [
             'the user',
@@ -76,9 +82,27 @@ module Legion
             clean, untagged_thinking = extract_untagged_preamble(clean.strip)
             thinking_parts << untagged_thinking
 
+            clean = truncate_at_leaked_stop_token(clean)
+            clean = strip_leaked_tokens(clean)
+
             [clean, compact_thinking(thinking_parts)]
           end
           private_class_method :extract_from_content
+
+          def truncate_at_leaked_stop_token(text)
+            earliest = nil
+            LEAKED_STOP_TOKENS.each do |token|
+              idx = text.index(token)
+              earliest = idx if idx && (earliest.nil? || idx < earliest)
+            end
+            earliest ? text[0, earliest].rstrip : text
+          end
+          private_class_method :truncate_at_leaked_stop_token
+
+          def strip_leaked_tokens(text)
+            LEAKED_STRIP_TOKENS.reduce(text) { |t, token| t.gsub(token, '') }
+          end
+          private_class_method :strip_leaked_tokens
 
           def extract_untagged_preamble(content)
             return [content, nil] unless content.is_a?(String)
