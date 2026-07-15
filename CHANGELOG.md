@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.11 - 2026-07-15
+
+### Added
+- **Gemma4 channel-based thinking tags** added to `ThinkingExtractor::THINK_TAG_PAIRS`. Gemma4 models use `<|channel>` / `<channel|>` as their reasoning block delimiters (equivalent to Qwen's `<think>`/`</think>`). If any serving engine (vLLM, SGLang, etc.) passes these tags through raw in the content field instead of pre-parsing them into `reasoning_content`, the extractor now strips them correctly.
+
 ## 0.6.10 - 2026-07-09
 
 ### Added
