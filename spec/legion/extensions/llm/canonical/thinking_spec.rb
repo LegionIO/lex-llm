@@ -147,5 +147,43 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Thinking do
         expect(config.to_h).to eq(effort: 'low')
       end
     end
+
+    # SSOT / one-oracle for cross-provider thinking (NxN best-effort): a client
+    # dialect supplies only ONE axis (Anthropic = budget_tokens only, OpenAI =
+    # effort only). Every provider translator must still get a usable value for
+    # whichever axis IT needs, so thinking survives ANY client×provider pair
+    # instead of being silently dropped. The conversion lives HERE (the canonical
+    # config), not scattered/one-directional in each translator. Derived accessors
+    # do NOT mutate stored state or #to_h — they only fill the gap on read.
+    describe 'derived cross-axis accessors' do
+      it 'derives budget from effort when only effort was set' do
+        expect(config_class.build(effort: 'low').resolved_budget).to eq(1024)
+        expect(config_class.build(effort: 'medium').resolved_budget).to eq(8192)
+        expect(config_class.build(effort: 'high').resolved_budget).to eq(16_384)
+      end
+
+      it 'derives effort from budget by band (< medium=low, < high=medium, else high)' do
+        expect(config_class.build(budget: 500).resolved_effort).to eq('low') # < 8192
+        expect(config_class.build(budget: 10_000).resolved_effort).to eq('medium') # 8192..16383
+        expect(config_class.build(budget: 20_000).resolved_effort).to eq('high') # >= 16384
+      end
+
+      it 'prefers the explicitly-set value over derivation' do
+        c = config_class.build(effort: 'high', budget: 2048)
+        expect(c.resolved_budget).to eq(2048)
+        expect(c.resolved_effort).to eq('high')
+      end
+
+      it 'returns nil derivations when neither axis is set' do
+        c = config_class.build
+        expect(c.resolved_budget).to be_nil
+        expect(c.resolved_effort).to be_nil
+      end
+
+      it 'does not fabricate the missing axis in to_h (stored state stays faithful)' do
+        expect(config_class.build(effort: 'high').to_h).to eq(effort: 'high')
+        expect(config_class.build(budget: 2048).to_h).to eq(budget: 2048)
+      end
+    end
   end
 end

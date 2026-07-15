@@ -51,3 +51,6 @@ RSpec/LeakyLocalVariable:
 RSpec/SpecFilePathFormat:
   Exclude:
     - 'spec/legion/extensions/llm/conformance/**/*'
+
+Style/ArrayIntersect:
+  Enabled: false
