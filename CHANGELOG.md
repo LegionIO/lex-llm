@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.12 - 2026-07-15
+
+### Fixed
+- **Strip leaked Gemma4 special tokens from response content.** Gemma4 models emit `<turn|>`, `<|turn>`, `<channel|>` as literal text when the serving engine fails to intercept them. `<turn|>` and `<channel|>` are end-of-turn signals — content is truncated at the first occurrence (everything after it is garbage). Other leaked tokens (`<|channel>`, `<|turn|>`) are stripped entirely. Prevents users seeing raw control tokens in responses and fixes cases where the leaked token caused downstream "no response returned" errors.
+- **Remove `<|channel>` / `<channel|>` from `THINK_TAG_PAIRS`.** The channel delimiter is NOT always a thinking block — `<|channel>` is a generic channel marker and only becomes thinking when followed by `thought\n`. Having `<channel|>` as a close tag in `THINK_TAG_PAIRS` caused the extractor to consume ALL content before an orphaned `<channel|>` stop token as thinking, producing empty content (dead stop). Now handled only as a leaked stop token to truncate at.
+
 ## 0.6.11 - 2026-07-15
 
 ### Added
