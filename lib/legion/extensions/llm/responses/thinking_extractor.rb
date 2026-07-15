@@ -11,7 +11,7 @@ module Legion
           THINK_TAG_PAIRS = [
             ['<thinking>', '</thinking>'],
             ['<think>',    '</think>'],
-            ['<|channel>',  '<channel|>']
+            ['<|channel>', '<channel|>']
           ].freeze
           UNTAGGED_PREAMBLE_MAX_LENGTH = 4_000
           UNTAGGED_PREAMBLE_STARTS = [
