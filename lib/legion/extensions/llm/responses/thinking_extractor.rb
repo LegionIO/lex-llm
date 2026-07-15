@@ -10,8 +10,7 @@ module Legion
 
           THINK_TAG_PAIRS = [
             ['<thinking>', '</thinking>'],
-            ['<think>',    '</think>'],
-            ['<|channel>', '<channel|>']
+            ['<think>',    '</think>']
           ].freeze
           # Gemma4 special tokens that leak into content text when the serving
           # engine fails to intercept them. <turn|> and <channel|> are stop
