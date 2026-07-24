@@ -48,8 +48,14 @@ module Legion
           build_on_data_handler do |data|
             next unless data.is_a?(Hash)
 
-            chunk = build_chunk(data)
-            block.call(chunk) if chunk
+            result = build_chunk(data)
+            next unless result
+
+            if result.is_a?(Array)
+              result.each { |chunk| block.call(chunk) if chunk }
+            else
+              block.call(result)
+            end
           end
         end
 

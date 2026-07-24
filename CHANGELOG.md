@@ -5,6 +5,7 @@
 ### Fixed
 - **StreamAccumulator now captures `stop_reason` from provider done chunks.** Previously, the real `finish_reason` from the provider was silently discarded — the accumulator had no field for it, and the legacy `Message` class couldn't carry it. Downstream code always synthesized `:end_turn` regardless of what the provider actually said. Now `stop_reason` propagates through accumulator → Message → `normalize_response`.
 - **Canonical::Chunk factory methods accept `stop_reason:` and `usage:` kwargs.** `text_delta`, `thinking_delta`, and `tool_call_delta` factories now pass through stop_reason and usage when present on the SSE event, enabling translators to propagate finish_reason on non-empty chunks without buffering.
+- **Streaming handler iterates array results from `build_chunk`.** When a translator returns multiple chunks from a single SSE event (e.g. both thinking and content on the same delta), the handler now yields each one to the accumulator instead of expecting a single chunk. Prevents content loss at thinking/content boundaries.
 
 ## 0.6.12 - 2026-07-15
 
