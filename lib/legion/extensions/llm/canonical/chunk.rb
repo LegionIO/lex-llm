@@ -16,39 +16,42 @@ module Legion
         ) do
           # Build a text delta chunk.
           def self.text_delta(delta:, request_id:, conversation_id: nil, exchange_id: nil,
-                              index: 0, block_index: nil, item_id: nil)
+                              index: 0, block_index: nil, item_id: nil,
+                              stop_reason: nil, usage: nil)
             new(
               type: :text_delta, delta: delta, index: index,
               request_id: request_id, conversation_id: conversation_id,
               exchange_id: exchange_id, block_index: block_index,
               item_id: item_id, tool_call: nil, signature: nil,
-              usage: nil, stop_reason: nil, metadata: {},
+              usage: usage, stop_reason: stop_reason, metadata: {},
               timestamp: ::Time.now
             )
           end
 
           # Build a thinking delta chunk.
           def self.thinking_delta(delta:, request_id:, conversation_id: nil, exchange_id: nil,
-                                  index: 0, block_index: nil, item_id: nil, signature: nil)
+                                  index: 0, block_index: nil, item_id: nil, signature: nil,
+                                  stop_reason: nil, usage: nil)
             new(
               type: :thinking_delta, delta: delta, index: index,
               request_id: request_id, conversation_id: conversation_id,
               exchange_id: exchange_id, block_index: block_index,
               item_id: item_id, tool_call: nil, signature: signature,
-              usage: nil, stop_reason: nil, metadata: {},
+              usage: usage, stop_reason: stop_reason, metadata: {},
               timestamp: ::Time.now
             )
           end
 
           # Build a tool_call_delta chunk (supports multiple in-flight tool calls via tool_call.id).
           def self.tool_call_delta(tool_call:, request_id:, conversation_id: nil, exchange_id: nil,
-                                   index: 0, block_index: nil, item_id: nil)
+                                   index: 0, block_index: nil, item_id: nil,
+                                   stop_reason: nil, usage: nil)
             new(
               type: :tool_call_delta, index: index,
               request_id: request_id, conversation_id: conversation_id,
               exchange_id: exchange_id, block_index: block_index,
               item_id: item_id, delta: nil, tool_call: tool_call, signature: nil,
-              usage: nil, stop_reason: nil, metadata: {},
+              usage: usage, stop_reason: stop_reason, metadata: {},
               timestamp: ::Time.now
             )
           end

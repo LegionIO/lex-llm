@@ -7,7 +7,7 @@ module Legion
       class Message
         ROLES = %i[system user assistant tool].freeze
 
-        attr_reader :role, :model_id, :tool_calls, :tool_call_id, :raw, :thinking, :tokens
+        attr_reader :role, :model_id, :tool_calls, :tool_call_id, :raw, :thinking, :tokens, :stop_reason
         attr_writer :content
 
         def initialize(options = {})
@@ -26,6 +26,7 @@ module Legion
           )
           @raw = options[:raw]
           @thinking = options[:thinking]
+          @stop_reason = options[:stop_reason]
 
           ensure_valid_role
         end
