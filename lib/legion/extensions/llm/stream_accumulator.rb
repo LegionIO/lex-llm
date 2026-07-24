@@ -7,13 +7,14 @@ module Legion
       class StreamAccumulator
         include Legion::Logging::Helper
 
-        attr_reader :content, :model_id, :tool_calls
+        attr_reader :content, :model_id, :tool_calls, :stop_reason
 
         def initialize
           @content = +''
           @thinking_text = +''
           @thinking_signature = nil
           @tool_calls = {}
+          @stop_reason = nil
           @input_tokens = nil
           @output_tokens = nil
           @cached_tokens = nil
@@ -36,6 +37,7 @@ module Legion
           handle_chunk_content(chunk)
           append_thinking_from_chunk(chunk)
           count_tokens chunk
+          @stop_reason = chunk.stop_reason if chunk.respond_to?(:stop_reason) && chunk.stop_reason
           log.debug { inspect } if Legion::Extensions::Llm.config.log_stream_debug
         end
 
@@ -81,6 +83,16 @@ module Legion
         def to_message(response)
           flush_pending_untagged_preamble
 
+          if content.length < 50
+            log.unknown "[llm][stream_accumulator] action=short_content_debug " \
+                        "content=#{content.inspect} thinking_chars=#{@thinking_text.length} " \
+                        "tool_calls=#{tool_calls.size} " \
+                        "inside_think_tag=#{@inside_think_tag} " \
+                        "pending_think_tag=#{@pending_think_tag.inspect} " \
+                        "untagged_preamble_pending=#{@untagged_preamble_pending} " \
+                        "thinking_start=#{@thinking_text[0, 80].inspect}"
+          end
+
           Message.new(
             role: :assistant,
             content: content.empty? ? nil : content,
@@ -97,6 +109,7 @@ module Legion
             ),
             model_id: model_id,
             tool_calls: tool_calls_from_stream,
+            stop_reason: @stop_reason,
             raw: response
           )
         end
@@ -201,6 +214,10 @@ module Legion
           @content << content_chunk
           @last_content_delta << content_chunk
           if untagged_thinking
+            log.unknown "[llm][stream_accumulator] action=untagged_thinking_from_chunk " \
+                        "content_kept=#{content_chunk[0, 50].inspect} " \
+                        "untagged_thinking=#{untagged_thinking[0, 100].inspect} " \
+                        "inside_think_tag=#{@inside_think_tag}"
             @thinking_text << untagged_thinking
             @last_thinking_delta << untagged_thinking
           end
@@ -245,6 +262,9 @@ module Legion
 
           content, thinking = Responses::ThinkingExtractor.extract_untagged_preamble(@untagged_preamble_buffer)
           if thinking
+            log.unknown "[llm][stream_accumulator] action=untagged_preamble_classified_as_thinking " \
+                        "buffer=#{@untagged_preamble_buffer[0, 100].inspect} " \
+                        "content_kept=#{content[0, 50].inspect} thinking_extracted=#{thinking[0, 100].inspect}"
             @content << content
             @thinking_text << thinking
           else
@@ -309,6 +329,13 @@ module Legion
             @active_think_close_tag = nil
             remaining.slice((end_index + end_tag.length)..) || +''
           else
+            consumed = remaining.slice(0, remaining.length - longest_suffix_prefix(remaining, [end_tag]))
+            if @content.length.positive? && consumed.length > 20
+              log.unknown "[llm][stream_accumulator] action=think_consuming_without_close " \
+                          "end_tag=#{end_tag.inspect} consumed_chars=#{consumed.length} " \
+                          "consumed_start=#{consumed[0, 80].inspect} " \
+                          "total_thinking=#{thinking.length + consumed.length}"
+            end
             suffix_len = longest_suffix_prefix(remaining, [end_tag])
             thinking << remaining.slice(0, remaining.length - suffix_len)
             @pending_think_tag = remaining.slice(-suffix_len, suffix_len)
@@ -322,6 +349,12 @@ module Legion
           if unmatched_close && (start_match.nil? || unmatched_close[:index] < start_match[:index])
             consume_unmatched_think_close(remaining, unmatched_close)
           elsif start_match
+            if @content.length > 10 || output.length > 10
+              log.unknown "[llm][stream_accumulator] action=think_tag_opened_mid_content " \
+                          "tag=#{start_match[:tag].inspect} " \
+                          "content_before_tag=#{remaining.slice(0, start_match[:index])[0, 50].inspect} " \
+                          "content_accumulated=#{@content.length} output_accumulated=#{output.length}"
+            end
             output << remaining.slice(0, start_match[:index])
             @inside_think_tag = true
             @active_think_close_tag = start_match[:close_tag]
@@ -336,6 +369,14 @@ module Legion
 
         def consume_unmatched_think_close(remaining, close_match)
           thinking = remaining.slice(0, close_match[:index])
+          if thinking.length > 5
+            log.unknown "[llm][stream_accumulator] action=unmatched_close_eating_content " \
+                        "close_tag=#{close_match[:tag].inspect} " \
+                        "eaten_chars=#{thinking.length} " \
+                        "eaten_start=#{thinking[0, 80].inspect} " \
+                        "inside_think_tag=#{@inside_think_tag} " \
+                        "content_so_far=#{@content.length}"
+          end
           @thinking_text << thinking
           @last_thinking_delta << thinking
           remaining.slice((close_match[:index] + close_match[:tag].length)..).to_s.sub(/\A[[:space:]]+/, '')
