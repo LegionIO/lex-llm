@@ -84,13 +84,18 @@ module Legion
           flush_pending_untagged_preamble
 
           if content.length < 50
-            log.unknown '[llm][stream_accumulator] action=short_content_debug ' \
+            log.unknown "[llm][stream_accumulator] action=short_content_debug " \
                         "content=#{content.inspect} thinking_chars=#{@thinking_text.length} " \
                         "tool_calls=#{tool_calls.size} " \
                         "inside_think_tag=#{@inside_think_tag} " \
                         "pending_think_tag=#{@pending_think_tag.inspect} " \
                         "untagged_preamble_pending=#{@untagged_preamble_pending} " \
-                        "thinking_start=#{@thinking_text[0, 80].inspect}"
+                        "thinking_start=#{@thinking_text[0, 200].inspect} " \
+                        "thinking_end=#{@thinking_text[-200..].inspect}"
+            if content.length < 5 && @thinking_text.length > 100 && tool_calls.empty?
+              log.unknown "[llm][stream_accumulator] action=POSSIBLE_CONTENT_EATEN " \
+                          "full_thinking=#{@thinking_text.inspect}"
+            end
           end
 
           Message.new(
@@ -309,6 +314,13 @@ module Legion
 
           output = +''
           thinking = +''
+
+          if @inside_think_tag && text.length > 10
+            log.unknown "[llm][stream_accumulator] action=chunk_arrives_inside_think " \
+                        "text_length=#{text.length} text=#{text[0, 200].inspect} " \
+                        "active_close_tag=#{@active_think_close_tag.inspect} " \
+                        "content_so_far=#{@content.length} thinking_so_far=#{@thinking_text.length}"
+          end
 
           until remaining.empty?
             remaining = if @inside_think_tag
