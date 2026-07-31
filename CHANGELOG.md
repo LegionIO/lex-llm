@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.14 - 2026-07-31
+
+### Added
+- **Contract specs asserting streaming `stop_reason` propagates through the StreamAccumulator.** Three regression specs encoding the accumulator's stop_reason behavior: single stop_reason captured from a chunk and propagated to the assembled Message, last-wins semantics when multiple chunks carry non-nil stop_reason, and nil-when-absent (no chunks carry stop_reason). This is the lex-llm half of the cross-gem streaming finish_reason fix — paired with lex-llm-vllm v0.3.15 (#16) which wires `stop_reason: canonical.stop_reason` through `to_legacy_chunk`.
+
 ## 0.6.13 - 2026-07-24
 
 ### Fixed
