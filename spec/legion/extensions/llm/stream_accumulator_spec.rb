@@ -99,6 +99,62 @@ RSpec.describe Legion::Extensions::Llm::StreamAccumulator do
       expect(message.content).to eq(expected)
       expect(message.thinking).to be_nil
     end
+
+    it 'captures stop_reason from a chunk and propagates it to the assembled Message' do
+      accumulator = described_class.new
+      chunk = Legion::Extensions::Llm::Chunk.new(
+        role: :assistant, content: 'partial', model_id: 'm', stop_reason: :max_tokens
+      )
+
+      accumulator.add(chunk)
+      expect(accumulator.stop_reason).to eq(:max_tokens)
+
+      message = accumulator.to_message(nil)
+      expect(message.stop_reason).to eq(:max_tokens)
+    end
+
+    it 'uses the last non-nil stop_reason when multiple chunks carry one' do
+      accumulator = described_class.new
+      accumulator.add(Legion::Extensions::Llm::Chunk.new(
+                        role: :assistant, content: 'hello', model_id: 'm', stop_reason: :end_turn
+                      ))
+      accumulator.add(Legion::Extensions::Llm::Chunk.new(
+                        role: :assistant, content: nil, model_id: 'm', stop_reason: :max_tokens
+                      ))
+
+      expect(accumulator.stop_reason).to eq(:max_tokens)
+      expect(accumulator.to_message(nil).stop_reason).to eq(:max_tokens)
+    end
+
+    it 'leaves stop_reason nil when no chunk carries one' do
+      accumulator = described_class.new
+      accumulator.add(Legion::Extensions::Llm::Chunk.new(role: :assistant, content: 'hi', model_id: 'm'))
+
+      expect(accumulator.stop_reason).to be_nil
+      expect(accumulator.to_message(nil).stop_reason).to be_nil
+    end
+
+    it 'starts a tool call from an opening fragment with id nil but name present' do
+      accumulator = described_class.new
+      tool_call = Legion::Extensions::Llm::ToolCall.new(id: nil, name: 'weather', arguments: '')
+      chunk = Legion::Extensions::Llm::Chunk.new(
+        role: :assistant, content: nil, tool_calls: { weather: tool_call }
+      )
+
+      accumulator.add(chunk)
+
+      frag_call = Legion::Extensions::Llm::ToolCall.new(id: nil, name: nil, arguments: '{"city":"SF"}')
+      frag_chunk = Legion::Extensions::Llm::Chunk.new(
+        role: :assistant, content: nil, tool_calls: { fragment: frag_call }
+      )
+      accumulator.add(frag_chunk)
+
+      message = accumulator.to_message(nil)
+      expect(message.tool_calls.size).to eq(1)
+      tc = message.tool_calls.values.first
+      expect(tc.name).to eq('weather')
+      expect(tc.arguments).to eq({ 'city' => 'SF' })
+    end
   end
 
   describe '#filtered_chunk' do

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.15 - 2026-07-31
+
+### Fixed
+- **Remove dead `find_tool_call` method from StreamAccumulator.** Zero callers anywhere in lex-llm (confirmed via grep). The method referenced an undefined ivar `@latest_tool_call` (the actual ivar is `@latest_tool_call_id`) — it was broken dead code that could only ever return nil.
+- **StreamAccumulator no longer drops tool_call opening fragments that arrive with `id: nil`.** When a tool_call chunk has no `id` but carries a `name` (indicating it's an opening fragment, not a continuation), the accumulator now generates a UUID and starts the call instead of silently dropping it via `append_tool_call_fragment`. This is defensive hardening — normal OpenAI-compatible streaming always assigns an id to the opening fragment, but non-conforming backends or edge cases could produce id-less openers. Existing id-based correlation is unchanged.
+
+### Added
+- **Contract specs asserting streaming `stop_reason` propagates through the StreamAccumulator.** Three regression specs encoding the accumulator's stop_reason behavior: single stop_reason captured from a chunk and propagated to the assembled Message, last-wins semantics when multiple chunks carry non-nil stop_reason, and nil-when-absent (no chunks carry stop_reason). This is the lex-llm half of the cross-gem streaming finish_reason fix — paired with lex-llm-vllm v0.3.15 (#16) which wires `stop_reason: canonical.stop_reason` through `to_legacy_chunk`.
+
 ## 0.6.14 - 2026-07-31
 
 ### Added
