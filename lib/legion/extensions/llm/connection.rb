@@ -65,6 +65,13 @@ module Legion
           end
         end
 
+        def close
+          return unless @connection
+
+          @connection.close if @connection.respond_to?(:close)
+          @connection = nil
+        end
+
         def instance_variables
           super - %i[@config @connection]
         end

@@ -9,6 +9,12 @@
 ### Added
 - **Contract specs asserting streaming `stop_reason` propagates through the StreamAccumulator.** Three regression specs encoding the accumulator's stop_reason behavior: single stop_reason captured from a chunk and propagated to the assembled Message, last-wins semantics when multiple chunks carry non-nil stop_reason, and nil-when-absent (no chunks carry stop_reason). This is the lex-llm half of the cross-gem streaming finish_reason fix — paired with lex-llm-vllm v0.3.15 (#16) which wires `stop_reason: canonical.stop_reason` through `to_legacy_chunk`.
 
+## 0.6.14 - 2026-07-31
+
+### Added
+- **Connection#close tears down the underlying Faraday connection.** Previously `Connection` had no lifecycle method — persistent HTTP connections were never explicitly closed, causing CLOSE_WAIT socket accumulation when provider peers sent FIN (e.g. during daemon shutdown or provider restarts)
+- **Provider#disconnect closes the connection and clears the reference.** Callers (legion-llm registry shutdown) can now explicitly tear down provider connections during graceful shutdown
+
 ## 0.6.13 - 2026-07-24
 
 ### Fixed
