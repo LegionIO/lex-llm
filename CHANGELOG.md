@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.14 - 2026-07-31
+
+### Added
+- **Connection#close tears down the underlying Faraday connection.** Previously `Connection` had no lifecycle method — persistent HTTP connections were never explicitly closed, causing CLOSE_WAIT socket accumulation when provider peers sent FIN (e.g. during daemon shutdown or provider restarts)
+- **Provider#disconnect closes the connection and clears the reference.** Callers (legion-llm registry shutdown) can now explicitly tear down provider connections during graceful shutdown
+
 ## 0.6.13 - 2026-07-24
 
 ### Fixed

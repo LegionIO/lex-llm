@@ -84,6 +84,11 @@ module Legion
           @connection = Connection.new(self, @config)
         end
 
+        def disconnect
+          @connection&.close
+          @connection = nil
+        end
+
         def api_base
           raise NotImplementedError
         end

@@ -717,4 +717,29 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       expect(key_v3).to include('schema3')
     end
   end
+
+  describe '#disconnect' do
+    let(:provider_class) do
+      Class.new(described_class) do
+        def api_base = 'https://test.invalid'
+      end
+    end
+
+    let(:provider) do
+      provider_class.new({ request_timeout: 60, max_retries: 0,
+                           retry_interval: 0, retry_backoff_factor: 0,
+                           retry_interval_randomness: 0 })
+    end
+
+    it 'closes the connection and nils the reference' do
+      expect(provider.connection).not_to be_nil
+      provider.disconnect
+      expect(provider.connection).to be_nil
+    end
+
+    it 'is safe to call multiple times' do
+      provider.disconnect
+      expect { provider.disconnect }.not_to raise_error
+    end
+  end
 end
