@@ -133,6 +133,28 @@ RSpec.describe Legion::Extensions::Llm::StreamAccumulator do
       expect(accumulator.stop_reason).to be_nil
       expect(accumulator.to_message(nil).stop_reason).to be_nil
     end
+
+    it 'starts a tool call from an opening fragment with id nil but name present' do
+      accumulator = described_class.new
+      tool_call = Legion::Extensions::Llm::ToolCall.new(id: nil, name: 'weather', arguments: '')
+      chunk = Legion::Extensions::Llm::Chunk.new(
+        role: :assistant, content: nil, tool_calls: { weather: tool_call }
+      )
+
+      accumulator.add(chunk)
+
+      frag_call = Legion::Extensions::Llm::ToolCall.new(id: nil, name: nil, arguments: '{"city":"SF"}')
+      frag_chunk = Legion::Extensions::Llm::Chunk.new(
+        role: :assistant, content: nil, tool_calls: { fragment: frag_call }
+      )
+      accumulator.add(frag_chunk)
+
+      message = accumulator.to_message(nil)
+      expect(message.tool_calls.size).to eq(1)
+      tc = message.tool_calls.values.first
+      expect(tc.name).to eq('weather')
+      expect(tc.arguments).to eq({ 'city' => 'SF' })
+    end
   end
 
   describe '#filtered_chunk' do

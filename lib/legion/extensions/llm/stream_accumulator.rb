@@ -149,6 +149,8 @@ module Legion
           new_tool_calls.each_value do |tool_call|
             if tool_call.id
               start_tool_call(tool_call)
+            elsif tool_call.name && @latest_tool_call_id.nil?
+              start_tool_call_without_id(tool_call)
             else
               append_tool_call_fragment(tool_call)
             end
@@ -175,6 +177,17 @@ module Legion
           end
         end
 
+        def start_tool_call_without_id(tool_call)
+          generated_id = SecureRandom.uuid
+          @tool_calls[generated_id] = ToolCall.new(
+            id: generated_id,
+            name: tool_call.name,
+            arguments: mutable_tool_arguments(tool_call.arguments),
+            thought_signature: tool_call.thought_signature
+          )
+          @latest_tool_call_id = generated_id
+        end
+
         def append_tool_call_fragment(tool_call)
           existing = @tool_calls[@latest_tool_call_id]
           return unless existing
@@ -183,15 +196,6 @@ module Legion
           return unless tool_call.thought_signature && existing.thought_signature.nil?
 
           existing.thought_signature = tool_call.thought_signature
-        end
-
-        def find_tool_call(tool_call_id)
-          if tool_call_id.nil?
-            @tool_calls[@latest_tool_call]
-          else
-            @latest_tool_call_id = tool_call_id
-            @tool_calls[tool_call_id]
-          end
         end
 
         def count_tokens(chunk)
