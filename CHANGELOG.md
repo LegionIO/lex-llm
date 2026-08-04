@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.16 - 2026-08-04
+
+### Fixed
+- **Interleaved streaming tool-call fragments are correlated by provider index.** `ToolCall` now carries the provider wire index, and `StreamAccumulator` maps continuation fragments back to the call opened at that index. Parallel calls no longer send every id-less fragment to the most recently opened call, which previously lost one call's arguments and contaminated another's.
+
 ## 0.6.15 - 2026-07-31
 
 ### Fixed
