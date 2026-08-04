@@ -26,6 +26,7 @@ module Legion
           @untagged_preamble_pending = true
           @untagged_preamble_buffer = +''
           @latest_tool_call_id = nil
+          @index_to_id = {}
         end
 
         def add(chunk)
@@ -158,13 +159,15 @@ module Legion
         end
 
         def start_tool_call(tool_call)
-          @tool_calls[tool_call.id] = ToolCall.new(
-            id: tool_call.id.empty? ? SecureRandom.uuid : tool_call.id,
+          resolved_id = tool_call.id.empty? ? SecureRandom.uuid : tool_call.id
+          @tool_calls[resolved_id] = ToolCall.new(
+            id: resolved_id,
             name: tool_call.name,
             arguments: mutable_tool_arguments(tool_call.arguments),
             thought_signature: tool_call.thought_signature
           )
-          @latest_tool_call_id = tool_call.id
+          @latest_tool_call_id = resolved_id
+          @index_to_id[tool_call.index] = resolved_id unless tool_call.index.nil?
         end
 
         def mutable_tool_arguments(arguments)
@@ -186,10 +189,20 @@ module Legion
             thought_signature: tool_call.thought_signature
           )
           @latest_tool_call_id = generated_id
+          @index_to_id[tool_call.index] = generated_id unless tool_call.index.nil?
         end
 
+        # Correlate a continuation fragment (id=nil, name=nil) to its call by the
+        # provider's authoritative wire index. Interleaved parallel calls
+        # (opener0, opener1, frag0, frag1, ...) only reassemble correctly when
+        # each fragment lands on the call at ITS index; recency (@latest_tool_call_id)
+        # sends every fragment to the last-opened call, losing one call's arguments
+        # and contaminating the other. Recency is retained only as the fallback for
+        # providers that emit no index.
         def append_tool_call_fragment(tool_call)
-          existing = @tool_calls[@latest_tool_call_id]
+          target_id = @index_to_id[tool_call.index] if tool_call.index
+          target_id ||= @latest_tool_call_id
+          existing = @tool_calls[target_id]
           return unless existing
 
           existing.arguments << tool_call.arguments.to_s
