@@ -2,6 +2,8 @@
 
 require 'spec_helper'
 require 'legion/extensions/llm/inventory/scoped_refresher'
+require 'legion/extensions/llm/inventory/registry'
+require_relative '../../../../support/ssot_registry_helpers'
 
 RSpec.describe Legion::Extensions::Llm::Inventory::ScopedRefresher do
   describe '.compose_id' do
@@ -204,6 +206,132 @@ RSpec.describe Legion::Extensions::Llm::Inventory::ScopedRefresher do
       actor.tick
 
       expect(cache_store).not_to have_key(cooldown_key)
+    end
+  end
+
+  describe Legion::Extensions::Llm::Inventory::ScopedRefresher::LegacyCoordinatorAdapter do
+    include SsotRegistryHelpers
+
+    inventory = Legion::Extensions::Llm::Inventory
+    errors = inventory::Errors
+
+    let(:fake_inventory) do
+      Class.new do
+        attr_reader :lanes
+
+        def initialize
+          @lanes = {}
+        end
+
+        def write_lane(lane:, **)
+          @lanes[lane[:id]] = lane
+          lane
+        end
+
+        def delete_lane(id:, **)
+          @lanes.delete(id)
+          :deleted
+        end
+
+        def lanes_for(provider:, instance:, **)
+          @lanes.values.select { |l| l[:provider_family].to_s == provider.to_s && l[:instance_id].to_s == instance.to_s }
+        end
+      end.new
+    end
+
+    let(:key) { instance_key(family: 'vllm', instance: 'h200') }
+    let(:adapter) { described_class.new(provider_family: :vllm) }
+
+    before do
+      inventory::Registry.reset!
+      stub_const('Legion::LLM::Inventory', fake_inventory)
+    end
+
+    def activate_chat
+      claim_and_activate(key: key, callable: fake_callable, coordinator: probe_coordinator(key))
+      Legion::Extensions::Llm::Inventory::Registry.snapshot
+    end
+
+    it 'projects an available instance into an exact five-field legacy lane and round-trips' do
+      result = adapter.sync_snapshot(snapshot: activate_chat, instance_key: key, mutation_reason: :activated)
+      expect(result).to eq(:applied)
+
+      legacy_id = 'local:vllm:h200:inference:gemma4'
+      expect(fake_inventory.lanes).to have_key(legacy_id)
+      lane = fake_inventory.lanes[legacy_id]
+      expect(lane[:id]).to eq(legacy_id)
+      expect(lane[:provider_instance]).to eq('h200')
+      expect(lane[:enabled]).to be(true)
+      expect(lane[:capabilities]).to include(:completion)
+      expect(lane[:metadata]).to include(ssot_v3_compatibility_projection: true)
+      round_trip = fake_inventory.lanes_for(provider: :vllm, instance: 'h200', type: :inference, model: 'gemma4')
+      expect(round_trip.map { |l| l[:id] }).to eq([legacy_id])
+    end
+
+    it 'deletes the old projection when the instance is removed (desired set empty)' do
+      token = claim_and_activate(key: key, callable: fake_callable, coordinator: probe_coordinator(key))
+      adapter.sync_snapshot(snapshot: inventory::Registry.snapshot, instance_key: key, mutation_reason: :activated)
+      expect(fake_inventory.lanes).not_to be_empty
+
+      inventory::Registry.remove_instance(instance_key: key, publisher_token: token)
+      adapter.sync_snapshot(snapshot: inventory::Registry.snapshot, instance_key: key, mutation_reason: :removed)
+      expect(fake_inventory.lanes).to be_empty
+    end
+
+    it 'deletes the old projection when the instance becomes unavailable' do
+      token = claim_and_activate(key: key, callable: fake_callable, coordinator: probe_coordinator(key))
+      adapter.sync_snapshot(snapshot: inventory::Registry.snapshot, instance_key: key, mutation_reason: :activated)
+      inventory::Registry.dispatch_instance_unavailable(instance_key: key, publisher_token_id: token.publisher_token_id, reason: 'down')
+      adapter.sync_snapshot(snapshot: inventory::Registry.snapshot, instance_key: key, mutation_reason: :instance_unavailable)
+      expect(fake_inventory.lanes).to be_empty
+    end
+
+    it 'fails closed and omits an ambiguous group that collapses multiple offerings' do
+      token = inventory::Registry.claim_instance(instance_key: key, callable: fake_callable, probe_request_handle: probe_coordinator(key))
+      probe = inventory::Registry.readiness_probe_started(instance_key: key, publisher_token: token)
+      two = drafts(native: 'a', model: 'gemma4') + drafts(native: 'b', model: 'gemma4')
+      inventory::Registry.activate_instance_snapshot(publisher_token: token, instance_key: key, offerings: two, sequence: 0, probe_token: probe)
+      adapter.sync_snapshot(snapshot: inventory::Registry.snapshot, instance_key: key, mutation_reason: :activated)
+      expect(fake_inventory.lanes).to be_empty
+    end
+
+    it 'returns :not_loaded when Legion::LLM::Inventory is absent' do
+      hide_const('Legion::LLM::Inventory')
+      expect(adapter.sync_snapshot(snapshot: activate_chat, instance_key: key, mutation_reason: :activated)).to eq(:not_loaded)
+    end
+
+    it 'rejects a different provider family, an invalid snapshot, and an unknown reason' do
+      snapshot = activate_chat
+      other = instance_key(family: 'openai', instance: 'h200')
+      expect { adapter.sync_snapshot(snapshot: snapshot, instance_key: other, mutation_reason: :activated) }
+        .to raise_error(errors::ValidationError)
+      expect { adapter.sync_snapshot(snapshot: {}, instance_key: key, mutation_reason: :activated) }
+        .to raise_error(errors::ValidationError)
+      expect { adapter.sync_snapshot(snapshot: snapshot, instance_key: key, mutation_reason: :made_up) }
+        .to raise_error(errors::ValidationError)
+    end
+
+    it 'returns :failed and preserves the prior tracked set when a write raises' do
+      snapshot = activate_chat
+      allow(fake_inventory).to receive(:write_lane).and_raise(StandardError, 'coordinator down')
+      expect(adapter.sync_snapshot(snapshot: snapshot, instance_key: key, mutation_reason: :activated)).to eq(:failed)
+    end
+
+    it 'never lets an old five-part id be accepted as a canonical lane:v1: identity' do
+      offering_id = inventory::Identity.offering_id(instance_key: key, provider_native_key: 'gemma4')
+      expect do
+        inventory::Identity.validate_lane_id!(
+          value: 'local:vllm:h200:inference:gemma4', instance_key: key,
+          operation: :chat, model: 'gemma4', offering_id: offering_id
+        )
+      end.to raise_error(errors::ValidationError)
+    end
+
+    it 'leaves the new Registry unchanged when the legacy projection runs' do
+      snapshot = activate_chat
+      generation = inventory::Registry.snapshot.generation
+      adapter.sync_snapshot(snapshot: snapshot, instance_key: key, mutation_reason: :activated)
+      expect(inventory::Registry.snapshot.generation).to eq(generation)
     end
   end
 end

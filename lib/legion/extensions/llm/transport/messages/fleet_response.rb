@@ -53,7 +53,9 @@ module Legion
                 tool_calls: @options[:tool_calls],
                 usage: @options[:usage] || {},
                 finish_reason: @options[:finish_reason],
-                metadata: @options[:metadata] || {}
+                metadata: @options[:metadata] || {},
+                execution_contract: @options[:execution_contract],
+                offering_id: @options[:offering_id]
               ).compact
             end
           end

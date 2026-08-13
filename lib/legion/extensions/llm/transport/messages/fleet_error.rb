@@ -54,7 +54,9 @@ module Legion
                 message: @options[:message],
                 error_class: @options[:error_class],
                 retryable: @options[:retryable],
-                metadata: @options[:metadata] || {}
+                metadata: @options[:metadata] || {},
+                execution_contract: @options[:execution_contract],
+                offering_id: @options[:offering_id]
               ).compact
             end
           end

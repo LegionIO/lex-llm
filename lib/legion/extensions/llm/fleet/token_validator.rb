@@ -3,6 +3,7 @@
 require 'concurrent'
 require 'time'
 
+require_relative 'protocol'
 require_relative 'settings'
 require_relative 'token_error'
 
@@ -90,6 +91,20 @@ module Legion
               expected_hash = content_hash(envelope[key])
               actual_hash = claims[hash_key] || content_hash(claims[key])
               raise TokenError, "fleet token #{key} hash mismatch" unless actual_hash == expected_hash
+            end
+
+            validate_exact_execution_claims!(claims, envelope)
+          end
+
+          # When the exact-offering marker is present on the envelope, both exact
+          # scalar claims must be signed into the verified JWT and match the
+          # envelope. An unsigned exact marker is never authoritative.
+          def validate_exact_execution_claims!(claims, envelope)
+            return unless envelope[:execution_contract] == Protocol::EXACT_EXECUTION_CONTRACT
+
+            Protocol::EXACT_SIGNED_SCALAR_CLAIMS.each do |key|
+              raise TokenError, "fleet token missing signed #{key}" if claims[key].to_s.empty?
+              raise TokenError, "fleet token #{key} claim mismatch" unless canonical_value(claims[key]) == canonical_value(envelope[key])
             end
           end
 

@@ -307,6 +307,49 @@ module Legion
           parse_transcription_response(response, model:)
         end
 
+        # Fail-loud base audio operations. Unsupported providers inherit these and
+        # publish OperationEvidence(status: :unsupported) or :unknown; a provider
+        # may publish :supported only when its Phase 2 conformance spec exercises
+        # the actual callable path. Neither method reads configuration or infers a
+        # model. See phase-1-lex-llm-additive.md section 14.1.
+        def translate(audio_file, model:, language:, **provider_options)
+          _ = [audio_file, model, language, provider_options]
+          raise NotImplementedError, "#{self.class} does not implement translate"
+        end
+
+        def speak(text, model:, voice: nil, **provider_options)
+          _ = [text, model, voice, provider_options]
+          raise NotImplementedError, "#{self.class} does not implement speak"
+        end
+
+        # Runtime error-to-outcome normalization consumed by the common
+        # classifier. The inherited base is deliberately conservative: raw 503,
+        # Anthropic-style 529, ServiceUnavailableError, ServerError, and every
+        # unrecognized error return :provider_error, never :instance_unavailable.
+        # Provider PRs override only when their wire semantics supply stronger
+        # evidence. The fallback reason is the bounded exception class name — never
+        # a response body, credential, endpoint, or exception object. It is a base
+        # method, not a REQUIRED_SIGNATURES reflection entry. See Phase 2 §4.5.2.
+        def normalize_dispatch_error(error:)
+          kind = case error
+                 when OverloadedError then :overloaded
+                 when RateLimitError then :rate_limited
+                 when UnauthorizedError then :authentication
+                 when PaymentRequiredError then :billing
+                 when ForbiddenError then :authorization
+                 when ContextLengthExceededError then :context_rejected
+                 when BadRequestError then :invalid_request
+                 when ModelNotFoundError then :model_missing
+                 when ModelNotAllowedError then :policy
+                 when Faraday::TimeoutError, Timeout::Error then :timeout
+                 when Faraday::ConnectionFailed, Errno::ECONNREFUSED, Errno::ECONNRESET, SocketError then :connection_failure
+                 else :provider_error
+                 end
+          reason = error.class.name
+          reason = 'UnknownError' if reason.nil? || reason.empty?
+          Legion::Extensions::Llm::Routing::ProviderOutcome.new(kind: kind, reason: reason)
+        end
+
         def configured?
           configuration_requirements.all? { |req| @config.send(req) }
         end

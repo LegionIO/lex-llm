@@ -4,6 +4,9 @@ module Legion
   module Extensions
     module Llm
       module Routing
+        # DEPRECATED (Phase 4 removal): kept unchanged for released consumers.
+        # New providers publish Inventory::OfferingDraft; the new registry accepts
+        # no default generated offering_id from this class.
         # Describes one concrete model made available by one provider instance.
         class ModelOffering
           CAPABILITY_ALIASES = {

@@ -10,6 +10,9 @@ module Legion
       # Prerequisites on the extending module:
       #   - `PROVIDER_FAMILY` constant (Symbol, e.g. :ollama)
       #   - `provider_class` singleton method returning the Provider subclass
+      # DEPRECATED (Phase 4 removal): discover_instances/provider_aliases are kept
+      # for old consumers; no new registration side effect is added here. Migrated
+      # provider actors use Inventory::Publisher directly.
       module AutoRegistration
         # Override in each provider.  Returns { instance_id => config_hash }.
         def discover_instances
