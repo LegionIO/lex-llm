@@ -4,6 +4,8 @@ module Legion
   module Extensions
     module Llm
       module Routing
+        # DEPRECATED (Phase 4 removal): the old mutable registry, kept only for
+        # old callers. It is never returned by Inventory::Registry.snapshot.
         # In-memory index of provider-neutral model offerings.
         class OfferingRegistry
           include Enumerable

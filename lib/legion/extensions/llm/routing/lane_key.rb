@@ -4,6 +4,10 @@ module Legion
   module Extensions
     module Llm
       module Routing
+        # DEPRECATED (Phase 4 removal): retained only for protocol-v2 fleet
+        # compatibility. The new canonical execution identity comes solely from
+        # Inventory::Identity (off:v1:/lane:v1:); do not reinterpret an old
+        # five-part lane as a new lane:v1: identity.
         # Builds stable fleet lane keys from provider-neutral model offerings.
         module LaneKey
           module_function
