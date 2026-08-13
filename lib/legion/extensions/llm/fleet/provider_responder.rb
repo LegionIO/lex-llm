@@ -5,6 +5,7 @@ require 'json'
 require_relative 'protocol'
 require_relative 'settings'
 require_relative 'worker_execution'
+require 'legion/extensions/llm/inventory/registry'
 
 module Legion
   module Extensions
@@ -59,17 +60,19 @@ module Legion
             def reply_to = self[:reply_to]
             def message_context = self[:message_context] || {}
             def trace_context = self[:trace_context] || {}
+            def execution_contract = self[:execution_contract]
+            def offering_id = self[:offering_id]
           end
 
           module_function
 
           # Public runner entry point mirrors AMQP delivery callbacks, which carry both delivery and property metadata.
           # rubocop:disable Metrics/ParameterLists
-          def call(payload:, provider_family:, provider_class:, provider_instances:, delivery: nil, properties: nil)
+          def call(payload:, provider_family:, provider_class:, provider_instances:,
+                   registry: ::Legion::Extensions::Llm::Inventory::Registry, delivery: nil, properties: nil)
             envelope = parse_payload(payload)
             check_envelope!(envelope, provider_family:)
-            provider = build_provider(envelope:, provider_class:, provider_instances:)
-            response = WorkerExecution.call(envelope: envelope, provider: provider)
+            response = dispatch_request(envelope, provider_class, provider_instances, registry)
             publish_response(envelope, response)
             ack(delivery || properties)
             response
@@ -109,6 +112,34 @@ module Legion
 
             validate_protocol_version!(envelope)
             validate_provider_family!(envelope, provider_family)
+            validate_execution_contract!(envelope)
+          end
+
+          # Marker absence means legacy v2; an unknown nonempty marker is rejected;
+          # the exact marker additionally requires every EXACT_REQUIRED_FIELDS value.
+          def validate_execution_contract!(envelope)
+            marker = envelope.execution_contract
+            return if marker.nil?
+            raise ArgumentError, "unknown execution_contract: #{marker}" unless marker == Protocol::EXACT_EXECUTION_CONTRACT
+
+            Protocol::EXACT_REQUIRED_FIELDS.each do |field|
+              raise ArgumentError, "#{field} is required for #{Protocol::EXACT_EXECUTION_CONTRACT}" unless envelope.key?(field) && !envelope[field].nil?
+            end
+          end
+
+          def exact?(envelope)
+            envelope.execution_contract == Protocol::EXACT_EXECUTION_CONTRACT
+          end
+
+          # Exact requests dispatch through the registry and never call
+          # build_provider; legacy v2 keeps the provider-object path.
+          def dispatch_request(envelope, provider_class, provider_instances, registry)
+            if exact?(envelope)
+              WorkerExecution.call(envelope: envelope, registry: registry)
+            else
+              provider = build_provider(envelope:, provider_class:, provider_instances:)
+              WorkerExecution.call(envelope: envelope, provider: provider)
+            end
           end
 
           def build_provider(envelope:, provider_class:, provider_instances:)
@@ -141,7 +172,9 @@ module Legion
               tool_calls: response_field(response, :tool_calls) || [],
               usage: response_usage(response),
               finish_reason: response_field(response, :finish_reason),
-              metadata: response_metadata(response)
+              metadata: response_metadata(response),
+              execution_contract: exact?(envelope) ? envelope.execution_contract : nil,
+              offering_id: exact?(envelope) ? envelope.offering_id : nil
             ).publish
           end
 
@@ -162,7 +195,9 @@ module Legion
               message: error.message,
               error_class: error.class.name,
               retryable: retryable_error?(error),
-              metadata: {}
+              metadata: {},
+              execution_contract: exact?(envelope) ? envelope.execution_contract : nil,
+              offering_id: exact?(envelope) ? envelope.offering_id : nil
             ).publish
           end
 

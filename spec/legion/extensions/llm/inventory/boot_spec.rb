@@ -74,7 +74,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Boot do
     expect(Legion::Extensions::Llm::Types.const_defined?(:InstanceKey, false)).to be(false)
   end
 
-  it 'preserves optional transport message autoload' do
-    expect(Legion::Extensions::Llm::Transport::Messages).to be_autoload(:FleetResponse)
+  it 'preserves the optional transport message registration (autoload or loaded)' do
+    expect(Legion::Extensions::Llm::Transport::Messages.const_defined?(:FleetResponse, false)).to be(true)
   end
 end

@@ -117,4 +117,30 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
       described_class.transport_message_class(:FleetResponse)
     end.to raise_error(described_class::ConfigurationError, /fleet responder transport unavailable/)
   end
+
+  describe 'execution_contract marker validation' do
+    it 'accepts a legacy v2 envelope with no marker' do
+      envelope = described_class.parse_payload(payload)
+      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }.not_to raise_error
+    end
+
+    it 'rejects an unknown nonempty marker' do
+      envelope = described_class.parse_payload(payload.merge(execution_contract: 'made_up'))
+      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }
+        .to raise_error(ArgumentError, /unknown execution_contract/)
+    end
+
+    it 'requires offering_id for the exact marker' do
+      envelope = described_class.parse_payload(payload.merge(execution_contract: 'exact_offering_v1'))
+      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }
+        .to raise_error(ArgumentError, /offering_id is required/)
+    end
+
+    it 'accepts a complete exact envelope' do
+      exact = payload.merge(execution_contract: 'exact_offering_v1', offering_id: 'off:v1:abc')
+      envelope = described_class.parse_payload(exact)
+      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }.not_to raise_error
+      expect(described_class.exact?(envelope)).to be(true)
+    end
+  end
 end

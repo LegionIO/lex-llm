@@ -2,8 +2,13 @@
 
 require 'concurrent'
 
+require_relative 'protocol'
 require_relative 'settings'
 require_relative 'token_validator'
+require 'legion/extensions/llm/taxonomies'
+require 'legion/extensions/llm/inventory/errors'
+require 'legion/extensions/llm/inventory/identity'
+require 'legion/extensions/llm/inventory/registry'
 
 module Legion
   module Extensions
@@ -21,13 +26,14 @@ module Legion
 
           module_function
 
-          def call(envelope:, provider:)
+          def call(envelope:, registry: nil, provider: nil)
+            validate_dispatch_target!(registry, provider)
             claims = nil
             idempotency_key = nil
             claims = validate_identity!(envelope)
             validate_policy!(envelope)
             idempotency_key = validate_idempotency!(envelope)
-            response = dispatch_local_provider!(envelope: envelope, provider: provider)
+            response = dispatch!(envelope: envelope, registry: registry, provider: provider)
             mark_idempotency_success!(idempotency_key) if idempotency_key
             TokenValidator.mark_replay!(claims[:jti]) if claims.is_a?(Hash)
             response
@@ -85,6 +91,164 @@ module Legion
             else
               raise PolicyError, "unsupported fleet operation: #{operation}"
             end
+          end
+
+          ERRORS = Legion::Extensions::Llm::Inventory::Errors
+          IDENTITY = Legion::Extensions::Llm::Inventory::Identity
+
+          def validate_dispatch_target!(registry, provider)
+            return unless registry.nil? == provider.nil?
+
+            raise PolicyError, 'WorkerExecution.call requires exactly one of registry or provider'
+          end
+
+          def dispatch!(envelope:, registry:, provider:)
+            return dispatch_local_provider!(envelope: envelope, provider: provider) if provider
+
+            if envelope_value(envelope, :execution_contract) == Protocol::EXACT_EXECUTION_CONTRACT
+              exact_dispatch!(envelope: envelope, registry: registry)
+            else
+              legacy_registry_dispatch!(envelope: envelope, registry: registry)
+            end
+          end
+
+          # Exact path: resolve by signed offering_id; no model resolution, provider
+          # scan, :default, or first value.
+          def exact_dispatch!(envelope:, registry:)
+            snapshot = registry.snapshot
+            instance_key = exact_instance_key(envelope)
+            record = available_record!(snapshot, instance_key)
+            offering = record.offerings_by_id[envelope_value(envelope, :offering_id)]
+            raise ERRORS::ExactOfferingMismatchError, 'offering_id not on the activated instance' if offering.nil?
+
+            operation = exact_operation(envelope)
+            model = require_matching_model!(offering, envelope)
+            require_supported!(offering, operation)
+            execute_via_lane(registry, snapshot,
+                             { record: record, offering: offering, operation: operation, model: model, envelope: envelope })
+          end
+
+          # Registry-backed v2 compatibility path for a migrated provider: execute
+          # only when (provider_family, instance, operation, model) resolves to
+          # exactly one supported local offering.
+          def legacy_registry_dispatch!(envelope:, registry:)
+            snapshot = registry.snapshot
+            instance_key = exact_instance_key(envelope)
+            record = available_record!(snapshot, instance_key)
+            operation = Legion::Extensions::Llm::Taxonomies.normalize_operation(value: envelope_value(envelope, :operation), allow_aliases: true)
+            model = IDENTITY.normalize_text(value: envelope_value(envelope, :model), field: :model)
+            matches = record.offerings_by_id.values.select { |o| o.model == model && o.operation_status(operation: operation) == :supported }
+            raise ERRORS::ExactOfferingMismatchError, 'no matching local offering' if matches.empty?
+            raise ERRORS::AmbiguousLegacyOfferingError, 'multiple matching local offerings' if matches.size > 1
+
+            execute_via_lane(registry, snapshot,
+                             { record: record, offering: matches.first, operation: operation, model: model, envelope: envelope })
+          end
+
+          def execute_via_lane(registry, snapshot, resolution)
+            lane = matching_lane!(snapshot, resolution[:record], resolution[:offering], resolution[:operation], resolution[:model])
+            lease = registry.acquire(callable_handle: lane.callable_handle)
+            begin
+              dispatch_operation(lease.callable, resolution[:operation], resolution[:model], exact_params(resolution[:envelope]))
+            ensure
+              lease.release
+            end
+          end
+
+          def exact_instance_key(envelope)
+            IDENTITY::InstanceKey.new(
+              provider_family: envelope_value(envelope, :provider), instance_id: envelope_value(envelope, :provider_instance)
+            )
+          end
+
+          def available_record!(snapshot, instance_key)
+            record = snapshot.instance(instance_key: instance_key)
+            raise ERRORS::ExactOfferingMismatchError, 'instance is absent, initializing, or unavailable' unless record && record.availability.state == :available
+
+            record
+          end
+
+          def exact_operation(envelope)
+            Legion::Extensions::Llm::Taxonomies.normalize_operation(value: envelope_value(envelope, :operation), allow_aliases: false)
+          end
+
+          def require_matching_model!(offering, envelope)
+            model = IDENTITY.normalize_text(value: envelope_value(envelope, :model), field: :model)
+            raise ERRORS::ExactOfferingMismatchError, 'model does not match the offering' unless offering.model == model
+
+            model
+          end
+
+          def require_supported!(offering, operation)
+            return if offering.operation_status(operation: operation) == :supported
+
+            raise ERRORS::ExactOfferingMismatchError, "operation #{operation} is not supported by the offering"
+          end
+
+          def matching_lane!(snapshot, record, offering, operation, model)
+            lane_id = IDENTITY.lane_id(instance_key: record.instance_key, operation: operation, model: model, offering_id: offering.offering_id)
+            lane = snapshot.lane(lane_id: lane_id)
+            valid = lane && lane.offering_id == offering.offering_id && lane.instance_key == record.instance_key &&
+                    lane.model == model && lane.operation == operation && lane.callable_handle.equal?(record.callable_handle)
+            raise ERRORS::ExactOfferingMismatchError, 'no matching lane for the offering' unless valid
+
+            lane
+          end
+
+          def exact_params(envelope)
+            raw = envelope_value(envelope, :params) || {}
+            params = {}
+            raw.each do |key, value|
+              sym = key.respond_to?(:to_sym) ? key.to_sym : key
+              raise ERRORS::ExactOfferingMismatchError, "duplicate param spelling for #{sym}" if params.key?(sym)
+
+              params[sym] = value
+            end
+            raise ERRORS::ExactOfferingMismatchError, 'params must not contain model' if params.key?(:model)
+
+            params
+          end
+
+          def dispatch_operation(callable, operation, model, params)
+            case operation
+            when :chat then callable.chat(messages: require_param!(params, :messages, operation), model: model, **except(params, :messages))
+            when :stream_chat then callable.stream_chat(messages: require_param!(params, :messages, operation), model: model, **except(params, :messages))
+            when :count_tokens then callable.count_tokens(messages: require_param!(params, :messages, operation), model: model, **except(params, :messages))
+            when :embed then callable.embed(text: require_param!(params, :text, operation), model: model, **except(params, :text))
+            when :image then dispatch_image(callable, model, params)
+            when :transcribe then dispatch_audio(callable, :transcribe, model, params)
+            when :translate then dispatch_audio(callable, :translate, model, params)
+            when :speak then dispatch_speak(callable, model, params)
+            when :moderate then callable.moderate(require_param!(params, :input, operation), model: model, **except(params, :input))
+            else raise ERRORS::ExactOfferingMismatchError, "unsupported exact operation: #{operation}"
+            end
+          end
+
+          def dispatch_image(callable, model, params)
+            require_param!(params, :prompt, :image)
+            require_param!(params, :size, :image)
+            callable.image(prompt: params[:prompt], model: model, **except(params, :prompt))
+          end
+
+          def dispatch_audio(callable, operation, model, params)
+            require_param!(params, :audio_file, operation)
+            raise ERRORS::ExactOfferingMismatchError, "#{operation} requires the language key" unless params.key?(:language)
+
+            callable.public_send(
+              operation, params[:audio_file], model: model, language: params[:language],
+                                              **except(params, :audio_file, :model, :language)
+            )
+          end
+
+          def dispatch_speak(callable, model, params)
+            require_param!(params, :text, :speak)
+            callable.speak(params[:text], model: model, voice: params[:voice], **except(params, :text, :model, :voice))
+          end
+
+          def require_param!(params, key, operation)
+            raise ERRORS::ExactOfferingMismatchError, "#{operation} requires the #{key} param" unless params.key?(key)
+
+            params[key]
           end
 
           def unpack_legacy_options(params)

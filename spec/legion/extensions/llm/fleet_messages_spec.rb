@@ -189,6 +189,20 @@ RSpec.describe 'LLM fleet message envelopes' do
       expect(message.message).not_to include(:schema_version)
     end
 
+    it 'includes execution_contract and offering_id only for an exact request' do
+      exact = described_class.new(
+        request_id: 'req-1', correlation_id: 'corr-1', reply_to: 'llm.fleet.reply.node', content: 'hi',
+        execution_contract: 'exact_offering_v1', offering_id: 'off:v1:abc'
+      )
+      expect(exact.message).to include(execution_contract: 'exact_offering_v1', offering_id: 'off:v1:abc')
+
+      legacy = described_class.new(
+        request_id: 'req-1', correlation_id: 'corr-1', reply_to: 'llm.fleet.reply.node', content: 'hi'
+      )
+      expect(legacy.message).not_to have_key(:execution_contract)
+      expect(legacy.message).not_to have_key(:offering_id)
+    end
+
     it 'rejects response protocol versions other than v2' do
       expect do
         described_class.new(
