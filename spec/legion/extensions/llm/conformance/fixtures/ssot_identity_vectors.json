@@ -1,0 +1,84 @@
+{
+  "description": "Binding SSOT v3 identity input/byte/digest fixtures. Recompute every field and digest; do not merely check a prefix. No Ruby object hash, hash-iteration order, or delimiter splitting is used anywhere.",
+  "algorithm": {
+    "frame": "binary bytes: decimal(UTF-8 byte length) + ASCII 0x3a colon + exact UTF-8 bytes",
+    "offering_id": "off:v1: + lowercase_hex(SHA256(frame(provider_family) + frame(instance_id) + frame(provider_native_key)))",
+    "lane_id": "lane:v1: + lowercase_hex(SHA256(ASCII(\"lane-v1\\u0000\") + frame(provider_family) + frame(instance_id) + frame(operation) + frame(model) + frame(offering_id)))",
+    "lane_domain_prefix_hex": "6c616e652d763100",
+    "notes": "Tier is never an identity input. provider_native_key, model, and offering_id preserve declared case."
+  },
+  "vectors": [
+    {
+      "provider_family": "vllm",
+      "instance_id": "h200",
+      "provider_native_key": "gemma4",
+      "model": "gemma4",
+      "operation": "chat",
+      "framed_hex": {
+        "provider_family": "343a766c6c6d",
+        "instance_id": "343a68323030",
+        "provider_native_key": "363a67656d6d6134",
+        "operation": "343a63686174",
+        "model": "363a67656d6d6134",
+        "offering_id": "37313a6f66663a76313a63393636373732643766386634323863323461373762653936663934653131316261313035326266303933303938663034313362353632633130353964636431"
+      },
+      "offering_hash_input_hex": "343a766c6c6d343a68323030363a67656d6d6134",
+      "expected_offering_id": "off:v1:c966772d7f8f428c24a77be96f94e111ba1052bf093098f0413b562c1059dcd1",
+      "lane_hash_input_hex": "6c616e652d763100343a766c6c6d343a68323030343a63686174363a67656d6d613437313a6f66663a76313a63393636373732643766386634323863323461373762653936663934653131316261313035326266303933303938663034313362353632633130353964636431",
+      "expected_lane_id": "lane:v1:430444bb58975ab56329c7c3a6c483a1b9cb49d1c089a56f3c93c6aa27d5f9b3"
+    },
+    {
+      "provider_family": "vllm",
+      "instance_id": "helios1",
+      "provider_native_key": "gemma4",
+      "model": "gemma4",
+      "operation": "chat",
+      "framed_hex": {
+        "provider_family": "343a766c6c6d",
+        "instance_id": "373a68656c696f7331",
+        "provider_native_key": "363a67656d6d6134",
+        "operation": "343a63686174",
+        "model": "363a67656d6d6134",
+        "offering_id": "37313a6f66663a76313a66336333316366313830313739363436343163386166656463656261316136366135326661626630313463666632623365316438383165333639376339656334"
+      },
+      "offering_hash_input_hex": "343a766c6c6d373a68656c696f7331363a67656d6d6134",
+      "expected_offering_id": "off:v1:f3c31cf18017964641c8afedceba1a66a52fabf014cff2b3e1d881e3697c9ec4",
+      "lane_hash_input_hex": "6c616e652d763100343a766c6c6d373a68656c696f7331343a63686174363a67656d6d613437313a6f66663a76313a66336333316366313830313739363436343163386166656463656261316136366135326661626630313463666632623365316438383165333639376339656334",
+      "expected_lane_id": "lane:v1:e4a99f7884ea1e9c36b0a0e62da5038832857f0e4b69234133faa81b0e30e880"
+    },
+    {
+      "provider_family": "azure_foundry",
+      "instance_id": "prod:eastus",
+      "provider_native_key": "deploy:gpt-4o",
+      "model": "gpt-4o",
+      "operation": "chat",
+      "framed_hex": {
+        "provider_family": "31333a617a7572655f666f756e647279",
+        "instance_id": "31313a70726f643a656173747573",
+        "provider_native_key": "31333a6465706c6f793a6770742d346f",
+        "operation": "343a63686174",
+        "model": "363a6770742d346f",
+        "offering_id": "37313a6f66663a76313a37646431346639386164346266656335316666623136396561323064633137616564316562653033613363396664666365383966383638343534633035646137"
+      },
+      "offering_hash_input_hex": "31333a617a7572655f666f756e64727931313a70726f643a65617374757331333a6465706c6f793a6770742d346f",
+      "expected_offering_id": "off:v1:7dd14f98ad4bfec51ffb169ea20dc17aed1ebe03a3c9fdfce89f868454c05da7",
+      "lane_hash_input_hex": "6c616e652d76310031333a617a7572655f666f756e64727931313a70726f643a656173747573343a63686174363a6770742d346f37313a6f66663a76313a37646431346639386164346266656335316666623136396561323064633137616564316562653033613363396664666365383966383638343534633035646137",
+      "expected_lane_id": "lane:v1:2334bc87506ae6312a4f64b53798d723d07279294ee6a3181e23db298cf910aa"
+    }
+  ],
+  "tier_invariance": {
+    "note": "The vllm+h200+gemma4+chat vector reproduces identical offering_id/lane_id under every tier; tier is not framed.",
+    "base_vector_index": 0,
+    "tiers": [
+      "local",
+      "frontier"
+    ]
+  },
+  "independence": {
+    "note": "vectors[0] and vectors[1] share provider_family+model but differ by instance_id, proving vllm+h200+gemma4 and vllm+helios1+gemma4 are independent identities.",
+    "vector_indexes": [
+      0,
+      1
+    ]
+  }
+}
