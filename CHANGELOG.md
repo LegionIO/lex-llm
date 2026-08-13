@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 - 2026-08-13
+
+### Added
+- **SSOT v3 provider runtime contract (additive).** A fully typed, process-local inventory and routing contract that lets a migrated provider construct a mandatory `Inventory::InstanceKey`, claim an exact instance for an opaque fenced `PublisherToken`, build immutable `OfferingDraft` values off-registry, run an immediate safe (non-inference) readiness probe, and atomically activate a callable, complete offering snapshot, derived operation lanes, and `available` state only when startup readiness succeeds. Includes:
+  - `Inventory::Identity` with the length-framed SHA-256 `off:v1:`/`lane:v1:` encoders (tier is never an identity input) and binding identity fixtures.
+  - `Inventory` evidence, `OfferingDraft`/`OfferingRecord`/`LaneRecord`/`AvailabilityFact`/`ReadinessResult`/`InstanceRecord`/`PublicationStatus`/`MutationResult` immutable records, `CallableHandle`/`DispatchLease` lifecycle, `PublisherToken`/`ProbeToken`/`ProbeRequest`, `ProbeCoordinator`, and the synchronized `Registry` + generation-tagged `Snapshot`.
+  - `Inventory::Publisher` provider-facing wrapper plus the quarantined post-commit `ScopedRefresher::LegacyCoordinatorAdapter` old-coordinator projection.
+  - `Routing::AttemptTargetKey`/`Selection`/`Rejection`/`Exclusion`/`QuotaDomainKey`/`BodyModelHintDecision` and the provider-neutral `Routing::ProviderOutcome`.
+  - Fail-loud `Provider#speak`/`Provider#translate` base methods (no defaults; `REQUIRED_SIGNATURES` unchanged).
+  - Additive exact-offering fleet execution (`Fleet::Protocol` `exact_offering_v1` marker, signed `execution_contract`/`offering_id`, registry-backed exact dispatch) alongside the unchanged protocol-v2 path.
+  - Shared `'an SSOT v3 provider adapter'` conformance examples consumable by every provider PR.
+
+  The contract adds no dependency on `legion-llm`, LegionIO, a database, ORM, or timer, and preserves every existing provider signature and protocol-v2 fleet behavior. Only the quarantined `ScopedRefresher` retains a direct `Legion::LLM::Inventory` reverse reference (removed in Phase 4).
+
 ## 0.6.16 - 2026-08-04
 
 ### Fixed

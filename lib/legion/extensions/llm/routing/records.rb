@@ -105,8 +105,8 @@ module Legion
             canonical_model = identity.normalize_text(value: kwargs[:model], field: :model)
             canonical_operation = Legion::Extensions::Llm::Taxonomies.normalize_operation(value: kwargs[:operation], allow_aliases: false)
             family = Legion::Extensions::Llm::Inventory::RecordSupport.normalize_provider_family(value: kwargs[:provider_family])
-            resolved_instance = identity.normalize_text(value: kwargs[:instance_id], field: :instance_id)
-            unless family == instance_key.provider_family && resolved_instance == instance_key.instance_id
+            normalized_instance = identity.normalize_text(value: kwargs[:instance_id], field: :instance_id)
+            unless family == instance_key.provider_family && normalized_instance == instance_key.instance_id
               raise errors::ValidationError, 'provider_family and instance_id must equal instance_key'
             end
 
@@ -120,7 +120,7 @@ module Legion
 
             {
               lane_id: kwargs[:lane_id].dup.freeze, instance_key: instance_key, offering_id: offering_id.dup.freeze,
-              provider_family: family, instance_id: resolved_instance, model: canonical_model,
+              provider_family: family, instance_id: normalized_instance, model: canonical_model,
               operation: canonical_operation, callable_handle: callable_handle,
               publisher_token_id: kwargs[:publisher_token_id].dup.freeze
             }
@@ -254,14 +254,14 @@ module Legion
             disposition = kwargs[:disposition]
             raise errors::ValidationError, 'invalid disposition' unless Legion::Extensions::Llm::Taxonomies::BODY_MODEL_HINT_DISPOSITIONS.include?(disposition)
 
-            resolved_requested = optional_text(kwargs[:requested_model], :requested_model)
-            resolved_constraint = optional_text(kwargs[:model_constraint], :model_constraint)
-            validate_disposition_rules!(disposition, resolved_requested, resolved_constraint)
+            normalized_requested = optional_text(kwargs[:requested_model], :requested_model)
+            normalized_constraint = optional_text(kwargs[:model_constraint], :model_constraint)
+            validate_disposition_rules!(disposition, normalized_requested, normalized_constraint)
 
             super(
-              requested_model: resolved_requested,
+              requested_model: normalized_requested,
               disposition: disposition,
-              model_constraint: resolved_constraint,
+              model_constraint: normalized_constraint,
               matched_whitelist: optional_text(kwargs[:matched_whitelist], :matched_whitelist),
               matched_blacklist: optional_text(kwargs[:matched_blacklist], :matched_blacklist),
               settings_generation: support.nonnegative_integer(value: kwargs[:settings_generation], field: :settings_generation)
