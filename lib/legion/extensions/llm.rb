@@ -45,6 +45,21 @@ module Legion
       # --- Capability resolution policy (no internal deps) ---
       require_relative 'llm/capability_policy'
 
+      # --- SSOT v3 runtime contract (process-local; no legion-llm/LegionIO/transport/db/timer) ---
+      require_relative 'llm/inventory/errors'
+      require_relative 'llm/inventory/immutable_value'
+      require_relative 'llm/inventory/identity'
+      require_relative 'llm/inventory/evidence'
+      require_relative 'llm/inventory/callable_handle'
+      require_relative 'llm/inventory/probe_token'
+      require_relative 'llm/inventory/records'
+      require_relative 'llm/inventory/snapshot'
+      require_relative 'llm/inventory/registry'
+      require_relative 'llm/inventory/publisher'
+      require_relative 'llm/inventory/probe_coordinator'
+      require_relative 'llm/routing/records'
+      require_relative 'llm/routing/provider_outcome'
+
       # --- Base value objects (no internal deps) ---
       require_relative 'llm/mime_type'
       require_relative 'llm/model/info'
