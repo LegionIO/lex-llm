@@ -32,6 +32,26 @@ module SpecSupport
       @inference_calls += 1
       { content: "fake chat #{model} #{messages.size} #{rest.size}" }
     end
+
+    # Runtime error normalization on the provider callable itself, mirroring the
+    # conservative Provider#normalize_dispatch_error base contract. Raw 503/529,
+    # ServiceUnavailableError, ServerError, and unknown errors return
+    # :provider_error, never :instance_unavailable. The reason is the bounded
+    # exception class name only.
+    def normalize_dispatch_error(error:)
+      llm = Legion::Extensions::Llm
+      kind = case error
+             when llm::OverloadedError then :overloaded
+             when llm::RateLimitError then :rate_limited
+             when llm::UnauthorizedError then :authentication
+             when llm::ForbiddenError then :authorization
+             when llm::BadRequestError then :invalid_request
+             else :provider_error
+             end
+      reason = error.class.name
+      reason = 'UnknownError' if reason.nil? || reason.empty?
+      llm::Routing::ProviderOutcome.new(kind: kind, reason: reason)
+    end
   end
 
   # Phase 1 fake implementation of the shared SSOT v3 provider-harness interface

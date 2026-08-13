@@ -322,6 +322,34 @@ module Legion
           raise NotImplementedError, "#{self.class} does not implement speak"
         end
 
+        # Runtime error-to-outcome normalization consumed by the common
+        # classifier. The inherited base is deliberately conservative: raw 503,
+        # Anthropic-style 529, ServiceUnavailableError, ServerError, and every
+        # unrecognized error return :provider_error, never :instance_unavailable.
+        # Provider PRs override only when their wire semantics supply stronger
+        # evidence. The fallback reason is the bounded exception class name — never
+        # a response body, credential, endpoint, or exception object. It is a base
+        # method, not a REQUIRED_SIGNATURES reflection entry. See Phase 2 §4.5.2.
+        def normalize_dispatch_error(error:)
+          kind = case error
+                 when OverloadedError then :overloaded
+                 when RateLimitError then :rate_limited
+                 when UnauthorizedError then :authentication
+                 when PaymentRequiredError then :billing
+                 when ForbiddenError then :authorization
+                 when ContextLengthExceededError then :context_rejected
+                 when BadRequestError then :invalid_request
+                 when ModelNotFoundError then :model_missing
+                 when ModelNotAllowedError then :policy
+                 when Faraday::TimeoutError, Timeout::Error then :timeout
+                 when Faraday::ConnectionFailed, Errno::ECONNREFUSED, Errno::ECONNRESET, SocketError then :connection_failure
+                 else :provider_error
+                 end
+          reason = error.class.name
+          reason = 'UnknownError' if reason.nil? || reason.empty?
+          Legion::Extensions::Llm::Routing::ProviderOutcome.new(kind: kind, reason: reason)
+        end
+
         def configured?
           configuration_requirements.all? { |req| @config.send(req) }
         end

@@ -65,6 +65,18 @@ module Legion
             @ordered_offerings.each(&block)
           end
 
+          def each_instance(&block)
+            return to_enum(:each_instance) unless block
+
+            @instances_by_key.each_value(&block)
+          end
+
+          def each_publication_status(&block)
+            return to_enum(:each_publication_status) unless block
+
+            @publication_status_by_key.each_value(&block)
+          end
+
           private
 
           # Orders InstanceKey entries by [provider_family bytes, instance_id bytes].

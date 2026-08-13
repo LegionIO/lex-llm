@@ -56,6 +56,37 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Snapshot do
     end
   end
 
+  describe 'each_instance and each_publication_status' do
+    it 'return an Enumerator without a block' do
+      snapshot = activate_both
+      expect(snapshot.each_instance).to be_a(Enumerator)
+      expect(snapshot.each_publication_status).to be_a(Enumerator)
+    end
+
+    it 'yield immutable instance records in canonical InstanceKey order' do
+      snapshot = activate_both
+      records = snapshot.each_instance.to_a
+      expect(records.map { |record| record.instance_key.instance_id }).to eq(%w[h200 helios1])
+      expect(records).to all(be_a(Legion::Extensions::Llm::Inventory::InstanceRecord))
+      expect(records).to all(be_frozen)
+    end
+
+    it 'include initializing claims in each_publication_status but not each_instance' do
+      claim_and_activate(key: key_a, callable: fake_callable, coordinator: probe_coordinator(key_a))
+      registry.claim_instance(instance_key: key_b, callable: fake_callable, probe_request_handle: probe_coordinator(key_b))
+      snapshot = registry.snapshot
+      status_states = snapshot.each_publication_status.map(&:state)
+      expect(status_states).to contain_exactly(:complete, :initializing)
+      expect(snapshot.each_instance.map(&:instance_key)).to eq([key_a])
+    end
+
+    it 'does not expose either backing Hash' do
+      snapshot = activate_both
+      expect(snapshot).not_to respond_to(:instances_by_key)
+      expect(snapshot).not_to respond_to(:publication_status_by_key)
+    end
+  end
+
   describe 'structural immutability of an older snapshot' do
     it 'does not observe a later record or generation mutation' do
       claim_and_activate(key: key_a, callable: fake_callable, coordinator: probe_coordinator(key_a))

@@ -769,4 +769,60 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       expect(Legion::Extensions::Llm::ProviderContract::REQUIRED_SIGNATURES).not_to have_key(:speak)
     end
   end
+
+  describe '#normalize_dispatch_error' do
+    llm = Legion::Extensions::Llm
+
+    let(:provider) do
+      Class.new(described_class) do
+        def api_base = 'https://test.invalid'
+        def ensure_configured! = nil
+      end.new(request_timeout: 30, max_retries: 0, retry_interval: 0, retry_backoff_factor: 0, retry_interval_randomness: 0)
+    end
+
+    it 'returns a Routing::ProviderOutcome and is not a REQUIRED_SIGNATURES entry' do
+      outcome = provider.normalize_dispatch_error(error: StandardError.new('x'))
+      expect(outcome).to be_a(Legion::Extensions::Llm::Routing::ProviderOutcome)
+      expect(Legion::Extensions::Llm::ProviderContract::REQUIRED_SIGNATURES).not_to have_key(:normalize_dispatch_error)
+    end
+
+    it 'maps the conservative typed error table' do
+      {
+        llm::OverloadedError.new('overloaded') => :overloaded,
+        llm::RateLimitError.new('rate') => :rate_limited,
+        llm::UnauthorizedError.new('auth') => :authentication,
+        llm::PaymentRequiredError.new('pay') => :billing,
+        llm::ForbiddenError.new('forbidden') => :authorization,
+        llm::ContextLengthExceededError.new('ctx') => :context_rejected,
+        llm::BadRequestError.new('bad') => :invalid_request,
+        llm::ModelNotFoundError.new('missing') => :model_missing,
+        llm::ModelNotAllowedError.new('denied') => :policy,
+        Faraday::TimeoutError.new('timeout') => :timeout,
+        Faraday::ConnectionFailed.new('conn') => :connection_failure
+      }.each do |error, expected_kind|
+        expect(provider.normalize_dispatch_error(error: error).kind).to eq(expected_kind)
+      end
+    end
+
+    it 'never maps raw 503/529, ServiceUnavailableError, ServerError, or unknown errors to instance_unavailable' do
+      [
+        llm::Error.new('raw 503 body'),
+        llm::Error.new('raw 529 body'),
+        llm::ServiceUnavailableError.new('503'),
+        llm::ServerError.new('500'),
+        StandardError.new('unexpected'),
+        RuntimeError.new('boom')
+      ].each do |error|
+        outcome = provider.normalize_dispatch_error(error: error)
+        expect(outcome.kind).to eq(:provider_error)
+        expect(outcome.kind).not_to eq(:instance_unavailable)
+      end
+    end
+
+    it 'uses only the bounded exception class name as reason and never copies the response body' do
+      outcome = provider.normalize_dispatch_error(error: llm::OverloadedError.new(nil, 'super-secret-response-body'))
+      expect(outcome.reason).to eq('Legion::Extensions::Llm::OverloadedError')
+      expect(outcome.reason).not_to include('super-secret-response-body')
+    end
+  end
 end

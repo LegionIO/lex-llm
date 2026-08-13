@@ -171,4 +171,26 @@ RSpec.shared_examples 'an SSOT v3 provider adapter' do
     expect { identity::InstanceKey.new(provider_family: ssot_harness.provider_family, instance_id: nil) }
       .to raise_error(Legion::Extensions::Llm::Inventory::Errors::ValidationError)
   end
+
+  it 'exposes snapshot each_instance and each_publication_status as ordered blockless enumerators' do
+    bring_up(configs[0])
+    bring_up(configs[1])
+    snapshot = registry.snapshot
+    expect(snapshot.each_instance).to be_a(Enumerator)
+    expect(snapshot.each_publication_status).to be_a(Enumerator)
+    ordered_ids = snapshot.each_instance.map { |record| [record.instance_key.provider_family.to_s, record.instance_key.instance_id] }
+    expect(ordered_ids).to eq(ordered_ids.sort)
+    expect(snapshot.each_publication_status.map(&:state)).to all(eq(:complete))
+  end
+
+  it 'normalizes a dispatch error into a ProviderOutcome on the captured callable itself' do
+    callable = ssot_harness.build_callable(instance_config: configs[0])
+    expect(callable).to respond_to(:normalize_dispatch_error)
+    unavailable = callable.normalize_dispatch_error(error: Legion::Extensions::Llm::ServiceUnavailableError.new('503'))
+    expect(unavailable).to be_a(Legion::Extensions::Llm::Routing::ProviderOutcome)
+    expect(unavailable.kind).to eq(:provider_error)
+    expect(unavailable.kind).not_to eq(:instance_unavailable)
+    overloaded = callable.normalize_dispatch_error(error: Legion::Extensions::Llm::OverloadedError.new('529'))
+    expect(overloaded.kind).to eq(:overloaded)
+  end
 end

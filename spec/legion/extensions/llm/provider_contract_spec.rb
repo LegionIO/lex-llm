@@ -72,7 +72,7 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
   end
 
   it 'does not smuggle optional operations or image.size into the reflection baseline' do
-    %i[size transcribe moderate disconnect speak translate].each do |operation|
+    %i[size transcribe moderate disconnect speak translate normalize_dispatch_error].each do |operation|
       expect(described_class::REQUIRED_SIGNATURES).not_to have_key(operation)
     end
     expect(described_class::REQUIRED_SIGNATURES[:image]).to eq([%i[keyreq prompt], %i[keyreq model]])
