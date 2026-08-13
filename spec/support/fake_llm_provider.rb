@@ -96,6 +96,17 @@ module SpecSupport
     def transcribe(_audio_file, model:, language:, **)
       Legion::Extensions::Llm::Transcription.new(text: 'fake transcript', model: model, language: language)
     end
+
+    # Records exactly-once disconnect for the callable-lifecycle contract; does
+    # not add disconnect to ProviderContract::REQUIRED_SIGNATURES.
+    def disconnect_count
+      @disconnect_count || 0
+    end
+
+    def disconnect
+      @disconnect_count = disconnect_count + 1
+      super
+    end
   end
 
   class BackupFakeLLMProvider < FakeLLMProvider

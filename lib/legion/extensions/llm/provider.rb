@@ -307,6 +307,21 @@ module Legion
           parse_transcription_response(response, model:)
         end
 
+        # Fail-loud base audio operations. Unsupported providers inherit these and
+        # publish OperationEvidence(status: :unsupported) or :unknown; a provider
+        # may publish :supported only when its Phase 2 conformance spec exercises
+        # the actual callable path. Neither method reads configuration or infers a
+        # model. See phase-1-lex-llm-additive.md section 14.1.
+        def translate(audio_file, model:, language:, **provider_options)
+          _ = [audio_file, model, language, provider_options]
+          raise NotImplementedError, "#{self.class} does not implement translate"
+        end
+
+        def speak(text, model:, voice: nil, **provider_options)
+          _ = [text, model, voice, provider_options]
+          raise NotImplementedError, "#{self.class} does not implement speak"
+        end
+
         def configured?
           configuration_requirements.all? { |req| @config.send(req) }
         end

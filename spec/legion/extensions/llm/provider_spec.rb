@@ -742,4 +742,31 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       expect { provider.disconnect }.not_to raise_error
     end
   end
+
+  describe 'fail-loud base audio operations' do
+    let(:provider) do
+      Class.new(described_class) do
+        def api_base = 'https://test.invalid'
+        def ensure_configured! = nil
+      end.new(request_timeout: 30, max_retries: 0, retry_interval: 0, retry_backoff_factor: 0, retry_interval_randomness: 0)
+    end
+
+    it 'raises NotImplementedError from translate without inferring a model' do
+      expect { provider.translate('audio', model: 'm', language: 'en') }
+        .to raise_error(NotImplementedError, /translate/)
+    end
+
+    it 'raises NotImplementedError from speak' do
+      expect { provider.speak('hello', model: 'm') }.to raise_error(NotImplementedError, /speak/)
+    end
+
+    it 'declares the protected keyword signatures without joining REQUIRED_SIGNATURES' do
+      translate_params = described_class.instance_method(:translate).parameters
+      expect(translate_params).to include(%i[req audio_file], %i[keyreq model], %i[keyreq language])
+      speak_params = described_class.instance_method(:speak).parameters
+      expect(speak_params).to include(%i[req text], %i[keyreq model], %i[key voice])
+      expect(Legion::Extensions::Llm::ProviderContract::REQUIRED_SIGNATURES).not_to have_key(:translate)
+      expect(Legion::Extensions::Llm::ProviderContract::REQUIRED_SIGNATURES).not_to have_key(:speak)
+    end
+  end
 end

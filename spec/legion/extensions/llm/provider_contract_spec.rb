@@ -57,4 +57,24 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
     expect { provider.image('prompt', model: 'model') }.to raise_error(ArgumentError)
     expect { provider.count_tokens([], model: 'model') }.to raise_error(ArgumentError)
   end
+
+  it 'keeps REQUIRED_SIGNATURES as exactly the eight-entry reflection baseline' do
+    expect(described_class::REQUIRED_SIGNATURES).to eq(
+      chat: [%i[keyreq messages], %i[keyreq model]],
+      stream_chat: [%i[keyreq messages], %i[keyreq model]],
+      embed: [%i[keyreq text], %i[keyreq model]],
+      image: [%i[keyreq prompt], %i[keyreq model]],
+      list_models: [%i[key live], %i[keyrest filters]],
+      discover_offerings: [%i[key live], %i[key raise_on_unreachable], %i[keyrest filters]],
+      health: [%i[key live]],
+      count_tokens: [%i[keyreq messages], %i[keyreq model], %i[key params]]
+    )
+  end
+
+  it 'does not smuggle optional operations or image.size into the reflection baseline' do
+    %i[size transcribe moderate disconnect speak translate].each do |operation|
+      expect(described_class::REQUIRED_SIGNATURES).not_to have_key(operation)
+    end
+    expect(described_class::REQUIRED_SIGNATURES[:image]).to eq([%i[keyreq prompt], %i[keyreq model]])
+  end
 end
