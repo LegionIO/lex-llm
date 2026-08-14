@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 - 2026-08-14
+
+### Fixed
+- **Shared conformance fixtures now carry `metadata.model`.** SSOT v3 §9-compliant provider translators require an exact selected model to be present in the canonical request before `render_request` is called (they read `request.metadata[:model]`). The six request fixtures used by the shared `'a canonical provider translator'` examples previously carried no model, causing those conformance examples to fail for §9-compliant providers. Each fixture now includes `"metadata": { "model": "test-fixture-model" }`. No production behavior change; existing providers that fall back to a default model are unaffected.
+
 ## 0.7.0 - 2026-08-13
 
 ### Added
