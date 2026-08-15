@@ -82,7 +82,7 @@ module Legion
           # Orders InstanceKey entries by [provider_family bytes, instance_id bytes].
           def order_instances(by_key)
             by_key.keys.sort_by { |key| [key.provider_family.to_s.b, key.instance_id.b] }
-                  .to_h { |key| [key, by_key[key]] }
+                       .to_h { |key| [key, by_key[key]] }
           end
         end
       end
