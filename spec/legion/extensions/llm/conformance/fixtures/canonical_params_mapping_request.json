@@ -1,5 +1,6 @@
 {
   "id": "req_params_mapping_001",
+  "metadata": { "model": "test-fixture-model" },
   "messages": [
     {
       "role": "user",

@@ -1,6 +1,7 @@
 {
   "description": "Full multi-turn history: mixed client/server tool calls + thinking block per G4",
   "id": "req_tool_continuation_001",
+  "metadata": { "model": "test-fixture-model" },
   "system": "You are a helpful assistant.",
   "messages": [
     {

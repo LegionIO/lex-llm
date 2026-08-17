@@ -1,5 +1,6 @@
 {
   "id": "req_simple_text_001",
+  "metadata": { "model": "test-fixture-model" },
   "messages": [
     {
       "role": "user",

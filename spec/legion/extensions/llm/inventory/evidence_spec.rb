@@ -92,6 +92,19 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Evidence do
           .not_to raise_error
       end
     end
+
+    it 'never lets config/override sources carry :supported (enable_* is consumed router-side, not published)' do
+      %i[model_override instance_override provider_override].each do |source|
+        expect { capability_evidence.new(capability: :tools, status: :supported, source: source) }
+          .to raise_error(errors::ValidationError)
+        expect { capability_evidence.new(capability: :thinking, status: :supported, source: source) }
+          .to raise_error(errors::ValidationError)
+        expect { operation_evidence.new(operation: :chat, status: :supported, source: source) }
+          .to raise_error(errors::ValidationError)
+        expect { capability_evidence.new(capability: :tools, status: :unknown, source: source) }
+          .not_to raise_error
+      end
+    end
   end
 
   describe 'ValueEvidence' do

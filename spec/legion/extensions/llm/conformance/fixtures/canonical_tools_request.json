@@ -1,5 +1,6 @@
 {
   "id": "req_tools_001",
+  "metadata": { "model": "test-fixture-model" },
   "messages": [
     {
       "role": "user",

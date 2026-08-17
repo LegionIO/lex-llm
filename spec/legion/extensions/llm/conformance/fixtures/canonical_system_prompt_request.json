@@ -1,5 +1,6 @@
 {
   "id": "req_system_prompt_001",
+  "metadata": { "model": "test-fixture-model" },
   "system": "You are a helpful assistant that always responds in haiku form.",
   "messages": [
     {
