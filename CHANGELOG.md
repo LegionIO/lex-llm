@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.2 - 2026-08-17
+
+### Fixed
+- **`Canonical::Message.from_hash` projects onto known member keys.** The factory now builds via `build(**h.slice(*members))` (mirroring `Request.from_hash`) instead of passing the raw hash to a fixed kwarg list, so transport-only keys such as `:cache_control` (injected by the prompt-cache step on multi-message requests) are dropped instead of raising `ArgumentError: unknown keyword: :cache_control` before the HTTP request was ever sent.
+- **`sanitized_reason` coerces non-UTF-8 reasons instead of raising.** Non-UTF-8 reasons (e.g. an ASCII-8BIT `ArgumentError` message) are now `force_encoding`'d to UTF-8 and `scrub`bed (`'?'`) rather than raising `ValidationError: reason is not valid UTF-8`, which masked the original dispatch error end-to-end (never logged) and produced a retriable 500. Non-String, empty, and oversized reasons still raise.
+
+### Added
+- **Regression specs for the dispatch-boundary fixes.** `Message.from_hash` with a transport-only `cache_control` key, and `ProviderOutcome` with a non-UTF-8 reason; both proven to fail pre-fix.
+- **legion-settings floor raised to `>= 1.4.2`.** Its segments-based nested resolution fixes two-segment extensions resolving to a flat key (e.g. `:llm_vllm`) instead of `[:extensions][:llm][:vllm]`, which left `settings[:instances]` nil so SSOT discovery actors saw zero configured instances.
+
 ## 0.7.1 - 2026-08-14
 
 ### Fixed
