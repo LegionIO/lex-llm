@@ -580,17 +580,15 @@ module Legion
           }
         end
 
-        # Resolve a single policy value with instance > provider > global precedence.
+        # Resolve a single policy value with the shared cascade
+        # (SettingsCascade: instance > provider, model leg skipped — no model
+        # exists at policy-build time) plus the legacy global
+        # extensions.llm.<key> leg. Empty values fall through.
         def self.resolve_policy_value(cfg, provider_conf, global_conf, key)
-          # Instance-level
-          val = cfg[key] || cfg[key.to_s]
-          return val if val && !val.to_s.empty? && (val.is_a?(Array) ? val.any? : true)
+          value = SettingsCascade.resolve_value(provider_conf: provider_conf, instance_cfg: cfg, key: key)
+          return value unless value.nil?
 
-          # Provider-level
-          val = provider_conf[key] || provider_conf[key.to_s]
-          return val if val && !val.to_s.empty? && (val.is_a?(Array) ? val.any? : true)
-
-          # Global
+          global_conf = {} unless global_conf.is_a?(::Hash)
           global_conf[key] || global_conf[key.to_s]
         end
 
@@ -803,11 +801,11 @@ module Legion
         end
 
         def model_capability_config(model_id)
-          provider_models = provider_capability_models
-          instance_models = extract_models_config(config)
-          provider_override = provider_models[model_id.to_s] || provider_models[model_id.to_sym] || {}
-          instance_override = instance_models[model_id.to_s] || instance_models[model_id.to_sym] || {}
-          provider_override.to_h.merge(instance_override.to_h)
+          SettingsCascade.merge_model_scopes(
+            provider_conf: provider_capability_config,
+            instance_cfg: config.respond_to?(:to_h) ? config.to_h : {},
+            model: model_id
+          )
         rescue StandardError => e
           handle_exception(e, level: :warn, handled: true, operation: "#{slug}.model_capability_config")
           {}
@@ -862,21 +860,6 @@ module Legion
           rescue StandardError
             next
           end
-        end
-
-        def extract_models_config(source)
-          return {} unless source.respond_to?(:models)
-
-          models = source.models
-          models.respond_to?(:to_h) ? models.to_h : {}
-        rescue StandardError
-          {}
-        end
-
-        def provider_capability_models
-          config = provider_capability_config
-          models = config[:models] || config['models']
-          models.respond_to?(:to_h) ? models.to_h : {}
         end
 
         def offering_from_model(model, health: {})

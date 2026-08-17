@@ -106,6 +106,30 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Message do
       expect(msg.content).to eq('hello')
     end
 
+    it 'drops the transport-only :cache_control key instead of raising ArgumentError' do
+      # Regression guard (root cause B): the prompt-cache step injects :cache_control
+      # onto every >=2-message request. from_hash previously did build(**h) with the
+      # whole hash, raising ArgumentError 'unknown keyword: :cache_control' before HTTP.
+      # It now projects onto the known member keys, so the transport-only key is dropped.
+      expect do
+        described_class.from_hash(
+          role: 'user',
+          content: 'hi',
+          cache_control: { type: 'ephemeral' }
+        )
+      end.not_to raise_error
+
+      msg = described_class.from_hash(
+        role: 'user',
+        content: 'hi',
+        cache_control: { type: 'ephemeral' }
+      )
+
+      expect(msg).to be_a(described_class)
+      expect(msg.role).to eq(:user)
+      expect(msg.text).to eq('hi')
+    end
+
     it 'returns nil for nil source' do
       expect(described_class.from_hash(nil)).to be_nil
     end

@@ -93,7 +93,11 @@ module Legion
               end
             end
 
-            build(**h)
+            # Tolerate transport-only keys (e.g. the prompt-cache step's :cache_control,
+            # injected onto every >=2-message request) by projecting onto the known
+            # member set — mirrors Canonical::Request.from_hash, which folds unknown keys
+            # instead of raising. Message has no metadata field, so unknown keys are dropped.
+            build(**h.slice(*members))
           end
 
           # Wrap input: pass through if already a Message, parse if Hash.

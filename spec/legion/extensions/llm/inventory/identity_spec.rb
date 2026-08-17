@@ -183,9 +183,9 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Identity do
       expect(key.instance_id).to eq('Prod:EastUS')
     end
 
-    it 'exposes to_h with the two fields' do
+    it 'exposes to_h with the three fields (physical_id nil by default)' do
       key = instance_key_class.new(provider_family: :vllm, instance_id: 'h200')
-      expect(key.to_h).to eq(provider_family: :vllm, instance_id: 'h200')
+      expect(key.to_h).to eq(provider_family: :vllm, instance_id: 'h200', physical_id: nil)
     end
 
     it 'is value-equal for equal normalized fields' do
@@ -212,6 +212,59 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Identity do
         .to raise_error(errors::ValidationError)
       expect { instance_key_class.new(provider_family: 'vllm', instance_id: nil) }
         .to raise_error(errors::ValidationError)
+    end
+
+    it 'keeps the two-argument constructor working (physical_id defaults to nil)' do
+      key = instance_key_class.new(provider_family: :vllm, instance_id: 'apollo')
+      expect(key.physical_id).to be_nil
+    end
+
+    describe 'physical_id (secondary, not identity)' do
+      it 'normalizes like identity text: trims, NFC, frozen String' do
+        key = instance_key_class.new(provider_family: :vllm, instance_id: 'apollo', physical_id: '  10.0.0.1:8000/ak:abc123 ')
+        expect(key.physical_id).to eq('10.0.0.1:8000/ak:abc123')
+        expect(key.physical_id).to be_frozen
+      end
+
+      it 'preserves the physical id for diagnostics while identity stays the config name' do
+        key = instance_key_class.new(
+          provider_family: :vllm, instance_id: 'apollo', physical_id: '10.0.0.1:8000/ak:abc123'
+        )
+        expect(key.instance_id).to eq('apollo')
+        expect(key.physical_id).to eq('10.0.0.1:8000/ak:abc123')
+      end
+
+      it 'excludes physical_id from equality and hashing' do
+        bare = instance_key_class.new(provider_family: :vllm, instance_id: 'apollo')
+        with_physical = instance_key_class.new(
+          provider_family: :vllm, instance_id: 'apollo', physical_id: '10.0.0.1:8000/ak:abc123'
+        )
+        other_physical = instance_key_class.new(
+          provider_family: :vllm, instance_id: 'apollo', physical_id: '10.0.0.9:9000'
+        )
+        expect(bare).to eq(with_physical)
+        expect(bare.hash).to eq(with_physical.hash)
+        expect(with_physical).to eq(other_physical)
+        expect({ bare => :found }[with_physical]).to eq(:found)
+      end
+
+      it 'does not reserve "default" for physical_id (only instance_id is reserved)' do
+        key = instance_key_class.new(provider_family: :vllm, instance_id: 'apollo', physical_id: 'default')
+        expect(key.physical_id).to eq('default')
+      end
+
+      it 'rejects a blank or non-text physical_id' do
+        expect { instance_key_class.new(provider_family: 'vllm', instance_id: 'x', physical_id: '   ') }
+          .to raise_error(errors::ValidationError)
+        expect { instance_key_class.new(provider_family: 'vllm', instance_id: 'x', physical_id: 5) }
+          .to raise_error(errors::ValidationError)
+      end
+
+      it 'still distinguishes distinct config names on the same physical endpoint' do
+        apollo = instance_key_class.new(provider_family: :ollama, instance_id: 'apollo', physical_id: 'localhost:11434')
+        apollo_embed = instance_key_class.new(provider_family: :ollama, instance_id: 'apollo-embed', physical_id: 'localhost:11434')
+        expect(apollo).not_to eq(apollo_embed)
+      end
     end
   end
 

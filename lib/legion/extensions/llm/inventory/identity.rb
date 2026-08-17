@@ -101,15 +101,37 @@ module Legion
           # A mandatory, immutable provider_family + instance_id pair. Provider
           # family alone is never executable; two instances of the same provider
           # are independent targets. See section 8.1.
-          InstanceKey = ::Data.define(:provider_family, :instance_id) do
-            def initialize(provider_family:, instance_id:)
+          #
+          # instance_id is the operator's CONFIG NAME — the identity the router
+          # keys settings lookups (instances.<name>) by. physical_id is an
+          # optional SECONDARY field carrying the physical/derived id
+          # (e.g. "host:port" or "host:port/ak:<digest>") preserved for dedup
+          # and diagnostics. It is NOT identity: it never participates in
+          # equality, hashing, or registry-scope identity, so two config names
+          # pointing at the same endpoint stay distinct instances.
+          InstanceKey = ::Data.define(:provider_family, :instance_id, :physical_id) do
+            def initialize(provider_family:, instance_id:, physical_id: nil)
               family = Identity.normalize_text(value: provider_family, field: :provider_family).downcase
               raise Errors::ValidationError, 'provider_family must match /\A[a-z][a-z0-9_]*\z/' unless family.match?(/\A[a-z][a-z0-9_]*\z/)
 
               instance = Identity.normalize_text(value: instance_id, field: :instance_id)
               raise Errors::ValidationError, 'instance_id must not be the reserved value "default"' if instance == 'default'
 
-              super(provider_family: family.to_sym, instance_id: instance)
+              physical = physical_id.nil? ? nil : Identity.normalize_text(value: physical_id, field: :physical_id)
+
+              super(provider_family: family.to_sym, instance_id: instance, physical_id: physical)
+            end
+
+            # Identity is exactly (provider_family, instance_id). The
+            # secondary physical_id never affects equality, hashing, or
+            # registry-scope identity.
+            def ==(other)
+              other.is_a?(self.class) && other.provider_family == provider_family && other.instance_id == instance_id
+            end
+            alias_method :eql?, :==
+
+            def hash
+              [self.class, provider_family, instance_id].hash
             end
           end
         end

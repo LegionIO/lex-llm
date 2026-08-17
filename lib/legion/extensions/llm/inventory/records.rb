@@ -42,9 +42,16 @@ module Legion
 
           def sanitized_reason(value:, field:, max_bytes: 1024)
             raise Errors::ValidationError, "#{field} must be a String" unless value.is_a?(::String)
-            raise Errors::ValidationError, "#{field} is not valid UTF-8" unless valid_utf8?(value)
 
-            trimmed = value.strip
+            # Coerce any source encoding to valid UTF-8 rather than raising: provider
+            # error messages can be ASCII-8BIT/binary (raw response bodies, Ruby kernel
+            # error messages). A reason is diagnostic text, not operator input to reject —
+            # raising here would mask the real dispatch error as an unclassifiable 500 and
+            # defeat fail-forward. Undecodable bytes are replaced.
+            coerced = value.dup.force_encoding(::Encoding::UTF_8)
+            coerced = coerced.scrub('?') unless coerced.valid_encoding?
+
+            trimmed = coerced.strip
             raise Errors::ValidationError, "#{field} must not be empty" if trimmed.empty?
             raise Errors::ValidationError, "#{field} exceeds #{max_bytes} UTF-8 bytes" if trimmed.bytesize > max_bytes
 

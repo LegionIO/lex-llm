@@ -45,6 +45,9 @@ module Legion
       # --- Capability resolution policy (no internal deps) ---
       require_relative 'llm/capability_policy'
 
+      # --- Shared 3-level settings cascade (provider -> instance -> model) ---
+      require_relative 'llm/settings_cascade'
+
       # --- SSOT v3 runtime contract (process-local; no legion-llm/LegionIO/transport/db/timer) ---
       require_relative 'llm/inventory/errors'
       require_relative 'llm/inventory/immutable_value'

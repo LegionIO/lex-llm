@@ -24,19 +24,25 @@ module Legion
             @compatibility_adapter = compatibility_adapter
           end
 
-          def claim_instance(instance_id:, callable:, probe_request_handle:)
-            key = instance_key(instance_id)
+          # Every instance operation takes `instance_id:` — the operator's
+          # CONFIG NAME (the identity the router keys by) — and an optional
+          # `physical_id:` carrying the physical/derived id (host:port/ak) for
+          # dedup and diagnostics only. See Identity::InstanceKey.
+          def claim_instance(instance_id:, callable:, probe_request_handle:, physical_id: nil)
+            key = instance_key(instance_id: instance_id, physical_id: physical_id)
             token = @registry.claim_instance(instance_key: key, callable: callable, probe_request_handle: probe_request_handle)
             sync_compatibility(key, :claimed)
             token
           end
 
-          def readiness_probe_started(instance_id:, publisher_token:)
-            @registry.readiness_probe_started(instance_key: instance_key(instance_id), publisher_token: publisher_token)
+          def readiness_probe_started(instance_id:, publisher_token:, physical_id: nil)
+            @registry.readiness_probe_started(
+              instance_key: instance_key(instance_id: instance_id, physical_id: physical_id), publisher_token: publisher_token
+            )
           end
 
-          def activate_instance_snapshot(instance_id:, publisher_token:, offerings:, sequence:, probe_token:)
-            key = instance_key(instance_id)
+          def activate_instance_snapshot(instance_id:, publisher_token:, offerings:, sequence:, probe_token:, physical_id: nil) # rubocop:disable Metrics/ParameterLists
+            key = instance_key(instance_id: instance_id, physical_id: physical_id)
             result = @registry.activate_instance_snapshot(
               publisher_token: publisher_token, instance_key: key, offerings: offerings,
               sequence: sequence, probe_token: probe_token
@@ -44,26 +50,26 @@ module Legion
             sync_applied(key, result)
           end
 
-          def replace_instance_snapshot(instance_id:, publisher_token:, offerings:, sequence:)
-            key = instance_key(instance_id)
+          def replace_instance_snapshot(instance_id:, publisher_token:, offerings:, sequence:, physical_id: nil)
+            key = instance_key(instance_id: instance_id, physical_id: physical_id)
             result = @registry.replace_instance_snapshot(
               publisher_token: publisher_token, instance_key: key, offerings: offerings, sequence: sequence
             )
             sync_applied(key, result)
           end
 
-          def readiness_succeeded(instance_id:, probe_token:)
-            key = instance_key(instance_id)
+          def readiness_succeeded(instance_id:, probe_token:, physical_id: nil)
+            key = instance_key(instance_id: instance_id, physical_id: physical_id)
             sync_applied(key, @registry.readiness_succeeded(instance_key: key, probe_token: probe_token))
           end
 
-          def readiness_failed(instance_id:, probe_token:, reason:)
-            key = instance_key(instance_id)
+          def readiness_failed(instance_id:, probe_token:, reason:, physical_id: nil)
+            key = instance_key(instance_id: instance_id, physical_id: physical_id)
             sync_applied(key, @registry.readiness_failed(instance_key: key, probe_token: probe_token, reason: reason))
           end
 
-          def remove_instance(instance_id:, publisher_token:)
-            key = instance_key(instance_id)
+          def remove_instance(instance_id:, publisher_token:, physical_id: nil)
+            key = instance_key(instance_id: instance_id, physical_id: physical_id)
             sync_applied(key, @registry.remove_instance(instance_key: key, publisher_token: publisher_token))
           end
 
@@ -73,8 +79,8 @@ module Legion
 
           private
 
-          def instance_key(instance_id)
-            Identity::InstanceKey.new(provider_family: @provider_family, instance_id: instance_id)
+          def instance_key(instance_id:, physical_id: nil)
+            Identity::InstanceKey.new(provider_family: @provider_family, instance_id: instance_id, physical_id: physical_id)
           end
 
           def sync_applied(instance_key, result)

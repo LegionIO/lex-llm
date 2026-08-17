@@ -56,4 +56,18 @@ RSpec.describe Legion::Extensions::Llm::Routing::ProviderOutcome do
     expect { described_class.new(kind: :success, reason: 'ok', metadata: { api_key: 'x' }) }
       .to raise_error(errors::ValidationError)
   end
+
+  it 'coerces a non-UTF-8 (binary) provider error reason to valid UTF-8 instead of raising' do
+    # Regression guard (root cause A): RecordSupport.sanitized_reason previously raised
+    # ValidationError 'is not valid UTF-8' on an ASCII-8BIT/BINARY reason (a raw provider
+    # error body or Ruby kernel error message), masking the real dispatch error as an
+    # unclassifiable retriable 500. It now coerces to valid UTF-8 (undecodable bytes
+    # replaced), so a provider error can no longer mask itself.
+    raw = "provider 500 \xFF\x80 body".dup.force_encoding(Encoding::BINARY)
+    expect { described_class.new(kind: :provider_error, reason: raw) }.not_to raise_error
+
+    outcome = described_class.new(kind: :provider_error, reason: raw)
+    expect(outcome.kind).to eq(:provider_error)
+    expect(outcome.reason.valid_encoding?).to be(true)
+  end
 end
