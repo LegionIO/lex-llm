@@ -202,9 +202,16 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Identity do
         .to raise_error(errors::ValidationError)
     end
 
-    it 'rejects the reserved instance_id "default"' do
-      expect { instance_key_class.new(provider_family: 'vllm', instance_id: 'default') }
-        .to raise_error(errors::ValidationError)
+    it 'accepts "default" as a plain instance_id label (no reserved values — v2 parity)' do
+      key = instance_key_class.new(provider_family: 'vllm', instance_id: 'default')
+      expect(key.instance_id).to eq('default')
+
+      other = instance_key_class.new(provider_family: 'vllm', instance_id: '  default ')
+      expect(key).to eq(other)
+      expect(key.hash).to eq(other.hash)
+
+      expect(key.to_h).to eq(provider_family: :vllm, instance_id: 'default', physical_id: nil)
+      expect(key.inspect).to include('instance_id="default"')
     end
 
     it 'rejects nil fields' do
@@ -248,7 +255,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Identity do
         expect({ bare => :found }[with_physical]).to eq(:found)
       end
 
-      it 'does not reserve "default" for physical_id (only instance_id is reserved)' do
+      it 'accepts "default" for physical_id (no field is reserved)' do
         key = instance_key_class.new(provider_family: :vllm, instance_id: 'apollo', physical_id: 'default')
         expect(key.physical_id).to eq('default')
       end
