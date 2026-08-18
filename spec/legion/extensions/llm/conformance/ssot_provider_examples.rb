@@ -164,10 +164,10 @@ RSpec.shared_examples 'an SSOT v3 provider adapter' do
     expect(ssot_harness.inference_call_count(callable: context[:callable])).to eq(1)
   end
 
-  it 'rejects provider/model defaults and a nil instance' do
+  it 'accepts "default" as a plain instance_id label and rejects a nil instance' do
     identity = Legion::Extensions::Llm::Inventory::Identity
-    expect { identity::InstanceKey.new(provider_family: ssot_harness.provider_family, instance_id: 'default') }
-      .to raise_error(Legion::Extensions::Llm::Inventory::Errors::ValidationError)
+    key = identity::InstanceKey.new(provider_family: ssot_harness.provider_family, instance_id: 'default')
+    expect(key.instance_id).to eq('default')
     expect { identity::InstanceKey.new(provider_family: ssot_harness.provider_family, instance_id: nil) }
       .to raise_error(Legion::Extensions::Llm::Inventory::Errors::ValidationError)
   end

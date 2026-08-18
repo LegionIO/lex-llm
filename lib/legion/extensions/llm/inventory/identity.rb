@@ -109,14 +109,16 @@ module Legion
           # and diagnostics. It is NOT identity: it never participates in
           # equality, hashing, or registry-scope identity, so two config names
           # pointing at the same endpoint stay distinct instances.
+          #
+          # There are NO reserved instance_id values (v2 parity): "default" is
+          # an ordinary operator label. Synthetic default-template protection
+          # lives provider-side (template-conditional discovery skip).
           InstanceKey = ::Data.define(:provider_family, :instance_id, :physical_id) do
             def initialize(provider_family:, instance_id:, physical_id: nil)
               family = Identity.normalize_text(value: provider_family, field: :provider_family).downcase
               raise Errors::ValidationError, 'provider_family must match /\A[a-z][a-z0-9_]*\z/' unless family.match?(/\A[a-z][a-z0-9_]*\z/)
 
               instance = Identity.normalize_text(value: instance_id, field: :instance_id)
-              raise Errors::ValidationError, 'instance_id must not be the reserved value "default"' if instance == 'default'
-
               physical = physical_id.nil? ? nil : Identity.normalize_text(value: physical_id, field: :physical_id)
 
               super(provider_family: family.to_sym, instance_id: instance, physical_id: physical)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.3 - 2026-08-17
+
+### Fixed
+- **Instance identity: `default` is no longer a reserved instance_id** — the name is an operator label; synthetic-default protection is provider-side (template-conditional discovery skip). `Inventory::Identity::InstanceKey` now accepts `instance_id: 'default'` as a plain label (v2 parity — v2 lane validation had no reserved-name concept and `:default` was the stock instance label). The reserved-value rule was invented in the 8/13 identity freeze with no rationale and never appeared in the frozen binding conformance fixture. The shared `'an SSOT v3 provider adapter'` conformance example was updated to the new semantics; provider gemspec floors bump to `>= 0.7.3` in the concurrent provider wave.
+
 ## 0.7.2 - 2026-08-17
 
 ### Fixed
