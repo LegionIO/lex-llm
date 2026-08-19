@@ -7,6 +7,7 @@
 
 ### Fixed
 - **`WeightReconciler` declares its direct `set` dependency.** Direct file loads no longer rely on another framework entrypoint having already initialized the process-global `Set` constant.
+- **Fleet execution-contract lookup preserves explicit `false`.** Symbol- and string-key envelope accessors now distinguish a present false marker from an absent marker, so malformed requests are rejected before provider or registry dispatch instead of silently downgrading to the legacy path.
 
 ## 0.7.5 - 2026-08-19
 
