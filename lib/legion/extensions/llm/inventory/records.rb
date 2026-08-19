@@ -45,10 +45,11 @@ module Legion
 
             raise Errors::ValidationError, 'weight_inputs must be a Hash' \
               unless weight_inputs.is_a?(::Hash)
-            raise Errors::ValidationError,
-                  'weight_inputs must have keys tier/provider/instance/model_or_offering' \
-              unless weight_inputs.keys.length == WEIGHT_INPUT_KEYS.length &&
-                     WEIGHT_INPUT_KEYS.all? { |key| weight_inputs.key?(key) }
+            unless weight_inputs.keys.length == WEIGHT_INPUT_KEYS.length &&
+                   WEIGHT_INPUT_KEYS.all? { |key| weight_inputs.key?(key) }
+              raise Errors::ValidationError,
+                    'weight_inputs must have keys tier/provider/instance/model_or_offering'
+            end
             raise Errors::ValidationError, 'weight_inputs values must be Integers >= 0' \
               unless weight_inputs.values.all? { |value| value.is_a?(::Integer) && value >= 0 }
             raise Errors::ValidationError, 'base_weight must be an Integer >= 0' \

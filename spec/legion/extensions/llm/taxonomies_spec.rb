@@ -89,9 +89,9 @@ RSpec.describe Legion::Extensions::Llm::Taxonomies do
     it 'owns the complete frozen operation-to-lane-type mapping' do
       expect(described_class::OPERATION_TO_LANE_TYPE).to eq(mapping)
       expect(described_class::OPERATION_TO_LANE_TYPE).to be_frozen
-      expect(described_class::OPERATION_TO_LANE_TYPE.keys).to contain_exactly(*described_class::OPERATIONS)
+      expect(described_class::OPERATION_TO_LANE_TYPE.keys).to match_array(described_class::OPERATIONS)
       expect(described_class::OPERATION_TO_LANE_TYPE.values.uniq)
-        .to contain_exactly(*described_class::TYPES)
+        .to match_array(described_class::TYPES)
     end
 
     it 'resolves every canonical operation and rejects unknown operations' do

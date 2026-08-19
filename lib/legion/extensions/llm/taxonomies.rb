@@ -19,14 +19,14 @@ module Legion
         # are non-generative inference operations — no moderation/count type exists in
         # TYPES, so they map to :inference.
         OPERATION_TO_LANE_TYPE = {
-          chat:         :inference,
-          stream_chat:  :inference,
-          embed:        :embedding,
-          image:        :image,
-          transcribe:   :audio,
-          translate:    :audio,
-          speak:        :audio,
-          moderate:     :inference,
+          chat: :inference,
+          stream_chat: :inference,
+          embed: :embedding,
+          image: :image,
+          transcribe: :audio,
+          translate: :audio,
+          speak: :audio,
+          moderate: :inference,
           count_tokens: :inference
         }.freeze
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.6 - 2026-08-19
+
+### Added
+- **Shared writer-cadence weight reconciliation.** `Inventory::WeightReconciler` atomically rebuilds write-time weights, publishes changed snapshots, protects unpublished activation state, and keeps cache/sequence mutation behind each writer's existing mutex. `DormantWeightTracker` reports configured weights with no published lane once per absence cycle. The shared machinery adds no Settings callback or lifecycle coupling.
+
 ## 0.7.5 - 2026-08-19
 
 ### Added

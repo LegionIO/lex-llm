@@ -50,11 +50,7 @@ module SsotRegistryHelpers
     end
   end
 
-  def drafts(model: 'gemma4', native: 'gemma4', supported: %i[chat], tier: :local,
-             weight_inputs: nil, base_weight: nil)
-    weights = {}
-    weights[:weight_inputs] = weight_inputs unless weight_inputs.nil?
-    weights[:base_weight] = base_weight unless base_weight.nil?
+  def drafts(model: 'gemma4', native: 'gemma4', supported: %i[chat], tier: :local, **weight_pair)
     [
       Legion::Extensions::Llm::Inventory::OfferingDraft.new(
         provider_native_key: native, model: model, tier: tier,
@@ -62,7 +58,7 @@ module SsotRegistryHelpers
         context_evidence: unknown_value, max_output_evidence: unknown_value,
         embedding_dimensions_evidence: unknown_value, model_revision_evidence: unknown_value,
         tokenizer_evidence: unknown_value, publication_source: :provider_catalog,
-        **weights
+        **weight_pair
       )
     ]
   end

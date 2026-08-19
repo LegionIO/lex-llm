@@ -106,7 +106,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
       build_draft(**overrides)
     end
 
-    include_examples 'an atomic immutable weight pair'
+    it_behaves_like 'an atomic immutable weight pair'
 
     it 'builds a valid frozen draft' do
       draft = build_draft
@@ -166,7 +166,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
       build_offering_record(**overrides)
     end
 
-    include_examples 'an atomic immutable weight pair'
+    it_behaves_like 'an atomic immutable weight pair'
 
     it 'validates offering_id reproduction and exposes operation views' do
       record = build_offering_record
@@ -198,7 +198,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
       build_lane(**overrides)
     end
 
-    include_examples 'an atomic immutable weight pair'
+    it_behaves_like 'an atomic immutable weight pair'
 
     it 'builds a valid lane whose id reproduces' do
       expect(build_lane.lane_id).to eq(lane_id)
