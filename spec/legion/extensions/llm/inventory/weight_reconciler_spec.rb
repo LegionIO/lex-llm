@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'open3'
+require 'rbconfig'
 require 'legion/extensions/llm/inventory/records'
 require_relative '../../../../support/ssot_registry_helpers'
 
@@ -14,6 +16,38 @@ RSpec.describe 'Inventory::WeightReconciler' do
   let(:key) { instance_key(family: 'vllm', instance: 'helios') }
   let(:mutex) { Mutex.new }
   let(:identity_draft) { drafts.first }
+
+  it 'loads its Set dependency when directly required without the ambient constant' do
+    script = <<~RUBY
+      require 'tmpdir'
+
+      Object.send(:remove_const, :Set)
+      $LOADED_FEATURES.delete_if { |path| File.basename(path) == 'set.rb' }
+      Dir.mktmpdir do |directory|
+        File.write(File.join(directory, 'set.rb'), <<~'SET')
+          class Set
+            def initialize(values = []) = @values = values.to_a.uniq
+            def difference(other) = self.class.new(@values.reject { |value| other.include?(value) })
+            def sort_by(&block) = @values.sort_by(&block)
+            def replace(other) = (@values = other.to_a; self)
+            def include?(value) = @values.include?(value)
+            def to_a = @values.dup
+          end
+        SET
+        $LOAD_PATH.unshift(directory)
+        require 'legion/extensions/llm/inventory/weight_reconciler'
+        tracker = Legion::Extensions::Llm::Inventory::DormantWeightTracker.new
+        abort 'wrong result' unless tracker.observe(configured_keys: [[:vllm]], published_keys: []).size == 1
+      end
+    RUBY
+
+    _stdout, stderr, status = Open3.capture3(
+      RbConfig.ruby, '-Ilib', '-e', script,
+      chdir: File.expand_path('../../../../..', __dir__)
+    )
+
+    expect(status.success?).to be(true), stderr
+  end
 
   def settings_for(provider: {}, tier: 100)
     {

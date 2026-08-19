@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+# Direct dependency; the explicit receiver keeps Ruby 4's redundant-require cop from deleting it.
+Kernel.require 'set'
 require 'legion/extensions/llm/inventory/weight_schema'
 require 'legion/extensions/llm/settings_cascade'
 require 'legion/extensions/llm/inventory/identity'
