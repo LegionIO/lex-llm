@@ -52,6 +52,8 @@ module Legion
       require_relative 'llm/inventory/errors'
       require_relative 'llm/inventory/immutable_value'
       require_relative 'llm/inventory/identity'
+      require_relative 'llm/inventory/weight_schema'
+      require_relative 'llm/inventory/weight_reconciler'
       require_relative 'llm/inventory/evidence'
       require_relative 'llm/inventory/callable_handle'
       require_relative 'llm/inventory/probe_token'

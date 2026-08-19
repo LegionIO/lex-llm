@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.6 - 2026-08-19
+
+### Added
+- **Shared writer-cadence weight reconciliation.** `Inventory::WeightReconciler` atomically rebuilds write-time weights, publishes changed snapshots, protects unpublished activation state, and keeps cache/sequence mutation behind each writer's existing mutex. `DormantWeightTracker` reports configured weights with no published lane once per absence cycle. The shared machinery adds no Settings callback or lifecycle coupling.
+
+### Fixed
+- **`WeightReconciler` declares its direct `set` dependency.** Direct file loads no longer rely on another framework entrypoint having already initialized the process-global `Set` constant.
+- **Fleet execution-contract lookup preserves explicit `false`.** Symbol- and string-key envelope accessors now distinguish a present false marker from an absent marker, so malformed requests are rejected before provider or registry dispatch instead of silently downgrading to the legacy path.
+
+## 0.7.5 - 2026-08-19
+
+### Added
+- **Write-time lane weights on immutable Inventory records.** `Inventory::WeightSchema` computes the independent tier, provider, instance, and model-or-offering axes from current settings, preserving zero as an explicit disable and rejecting malformed values. `OfferingDraft`, `OfferingRecord`, and `LaneRecord` now carry an atomic validated weight pair; registry construction copies that frozen pair unchanged.
+
+## 0.7.4 - 2026-08-19
+
+### Added
+- **Authoritative Inventory lane-type mapping.** `Taxonomies::OPERATION_TO_LANE_TYPE` and `Taxonomies.lane_type_for` now own the complete canonical operation-to-lane-type mapping used by human-readable five-tuple lane identities. The deletion-scheduled coordinator adapter delegates to the same resolver instead of retaining a divergent compatibility copy.
+
 ## 0.7.3 - 2026-08-17
 
 ### Fixed

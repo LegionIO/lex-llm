@@ -328,8 +328,12 @@ module Legion
 
           def envelope_value(envelope, key)
             return nil unless envelope.respond_to?(:key?)
+            return envelope[key] if envelope.key?(key)
 
-            envelope[key] || envelope[key.to_s]
+            string_key = key.to_s
+            return envelope[string_key] if envelope.key?(string_key)
+
+            nil
           end
 
           def normalize_hash(hash)

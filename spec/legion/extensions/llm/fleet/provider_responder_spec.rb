@@ -119,9 +119,42 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
   end
 
   describe 'execution_contract marker validation' do
+    it 'preserves false values for both envelope key spellings' do
+      symbol_envelope = described_class::FleetEnvelope.new(data: { execution_contract: false })
+      string_envelope = described_class::FleetEnvelope.new(data: { 'execution_contract' => false })
+
+      expect(symbol_envelope[:execution_contract]).to be(false)
+      expect(string_envelope[:execution_contract]).to be(false)
+    end
+
     it 'accepts a legacy v2 envelope with no marker' do
       envelope = described_class.parse_payload(payload)
       expect { described_class.check_envelope!(envelope, provider_family: :ollama) }.not_to raise_error
+    end
+
+    it 'accepts an explicitly nil marker as legacy v2' do
+      envelope = described_class.parse_payload(payload.merge(execution_contract: nil))
+      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }.not_to raise_error
+    end
+
+    { symbol: { execution_contract: false }, string: { 'execution_contract' => false } }.each do |spelling, marker|
+      it "rejects a false #{spelling}-key marker before provider or registry dispatch" do
+        registry = class_spy(Legion::Extensions::Llm::Inventory::Registry)
+        allow(provider_class).to receive(:new).and_call_original
+
+        expect do
+          described_class.call(
+            payload: payload.merge(marker),
+            provider_family: :ollama,
+            provider_class: provider_class,
+            provider_instances: provider_instances,
+            registry: registry
+          )
+        end.to raise_error(ArgumentError, /unknown execution_contract: false/)
+
+        expect(provider_class).not_to have_received(:new)
+        expect(registry).not_to have_received(:snapshot)
+      end
     end
 
     it 'rejects an unknown nonempty marker' do

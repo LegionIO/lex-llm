@@ -31,6 +31,35 @@ module Legion
 
           PUBLICATION_SOURCES = %i[provider_catalog provider_static_catalog provider_control_plane].freeze
 
+          WEIGHT_INPUT_KEYS = %i[instance model_or_offering provider tier].freeze
+          IDENTITY_WEIGHT_INPUTS = {
+            tier: 100, provider: 100, instance: 100, model_or_offering: 100
+          }.freeze
+          IDENTITY_BASE_WEIGHT = 100_000_000
+
+          def validated_weight_pair(weight_inputs:, base_weight:)
+            raise Errors::ValidationError, 'weight_inputs and base_weight must be supplied together' \
+              if weight_inputs.nil? != base_weight.nil?
+
+            return [IDENTITY_WEIGHT_INPUTS, IDENTITY_BASE_WEIGHT] if weight_inputs.nil?
+
+            raise Errors::ValidationError, 'weight_inputs must be a Hash' \
+              unless weight_inputs.is_a?(::Hash)
+            unless weight_inputs.keys.length == WEIGHT_INPUT_KEYS.length &&
+                   WEIGHT_INPUT_KEYS.all? { |key| weight_inputs.key?(key) }
+              raise Errors::ValidationError,
+                    'weight_inputs must have keys tier/provider/instance/model_or_offering'
+            end
+            raise Errors::ValidationError, 'weight_inputs values must be Integers >= 0' \
+              unless weight_inputs.values.all? { |value| value.is_a?(::Integer) && value >= 0 }
+            raise Errors::ValidationError, 'base_weight must be an Integer >= 0' \
+              unless base_weight.is_a?(::Integer) && base_weight >= 0
+            raise Errors::ValidationError, 'base_weight must equal the product of weight_inputs' \
+              unless base_weight == weight_inputs.values.reduce(1, :*)
+
+            [weight_inputs.dup.freeze, base_weight]
+          end
+
           def check_unknown_kwargs!(kwargs:, members:)
             unknown = kwargs.keys - members
             raise Errors::ValidationError, "unknown keyword(s): #{unknown.join(', ')}" unless unknown.empty?
@@ -251,17 +280,21 @@ module Legion
           end
         end
 
-        # An off-registry provider draft of one offering. Carries no provider
-        # family, instance ID, offering ID, lane ID, callable, health, weight, or
-        # default model. See section 10.1.
+        # An off-registry provider draft of one offering. Carries the validated
+        # write-time weight pair, but no provider family, instance ID, offering ID,
+        # lane ID, callable, health, or default model. See section 10.1.
         OfferingDraft = ::Data.define(
           :provider_native_key, :model, :tier, :operation_evidence, :capability_evidence,
           :context_evidence, :max_output_evidence, :embedding_dimensions_evidence,
-          :model_revision_evidence, :tokenizer_evidence, :quota_domains, :metadata, :publication_source
+          :model_revision_evidence, :tokenizer_evidence, :quota_domains, :metadata, :publication_source,
+          :weight_inputs, :base_weight
         ) do
           def initialize(**kwargs)
             kwargs = { capability_evidence: {}, quota_domains: {}, metadata: {} }.merge(kwargs)
             RecordSupport.check_unknown_kwargs!(kwargs: kwargs, members: self.class.members)
+            weight_inputs, base_weight = RecordSupport.validated_weight_pair(
+              weight_inputs: kwargs[:weight_inputs], base_weight: kwargs[:base_weight]
+            )
 
             super(
               provider_native_key: Identity.normalize_text(value: kwargs[:provider_native_key], field: :provider_native_key),
@@ -272,21 +305,27 @@ module Legion
               quota_domains: RecordSupport.validate_quota_domains!(kwargs[:quota_domains]),
               metadata: RecordSupport.frozen_metadata(value: kwargs[:metadata]),
               publication_source: RecordSupport.publication_source!(value: kwargs[:publication_source]),
+              weight_inputs: weight_inputs,
+              base_weight: base_weight,
               **RecordSupport.scalar_value_evidences(kwargs)
             )
           end
         end
 
-        # A registry-owned offering with canonical identity and captured callable.
-        # Only Inventory::Publisher/Registry constructs it. See section 10.2.
+        # A registry-owned offering with canonical identity, captured callable, and
+        # the write-time weight pair copied unchanged from its draft. Only
+        # Inventory::Publisher/Registry constructs it. See section 10.2.
         OfferingRecord = ::Data.define(
           :offering_id, :provider_native_key, :instance_key, :model, :tier, :operation_evidence,
           :capability_evidence, :context_evidence, :max_output_evidence, :embedding_dimensions_evidence,
           :model_revision_evidence, :tokenizer_evidence, :quota_domains, :metadata, :callable_handle,
-          :publication_source
+          :publication_source, :weight_inputs, :base_weight
         ) do
           def initialize(**kwargs)
             RecordSupport.check_unknown_kwargs!(kwargs: kwargs, members: self.class.members)
+            weight_inputs, base_weight = RecordSupport.validated_weight_pair(
+              weight_inputs: kwargs[:weight_inputs], base_weight: kwargs[:base_weight]
+            )
             instance_key = kwargs[:instance_key]
             callable_handle = kwargs[:callable_handle]
             raise Errors::ValidationError, 'instance_key must be an InstanceKey' unless instance_key.is_a?(Identity::InstanceKey)
@@ -307,6 +346,8 @@ module Legion
               metadata: RecordSupport.frozen_metadata(value: kwargs[:metadata]),
               callable_handle: callable_handle,
               publication_source: RecordSupport.publication_source!(value: kwargs[:publication_source]),
+              weight_inputs: weight_inputs,
+              base_weight: base_weight,
               **RecordSupport.scalar_value_evidences(kwargs)
             )
           end
@@ -342,15 +383,19 @@ module Legion
         end
 
         # An executable lane derived by the registry from one supported operation
-        # of an OfferingRecord. See section 10.3.
+        # of an OfferingRecord, with its write-time weight pair copied unchanged.
+        # See section 10.3.
         LaneRecord = ::Data.define(
           :lane_id, :offering_id, :instance_key, :provider_family, :instance_id, :model, :tier, :operation,
           :capability_evidence, :context_evidence, :max_output_evidence, :embedding_dimensions_evidence,
           :model_revision_evidence, :tokenizer_evidence, :quota_domain, :metadata, :callable_handle,
-          :publication_source
+          :publication_source, :weight_inputs, :base_weight
         ) do
           def initialize(**kwargs)
             RecordSupport.check_unknown_kwargs!(kwargs: kwargs, members: self.class.members)
+            weight_inputs, base_weight = RecordSupport.validated_weight_pair(
+              weight_inputs: kwargs[:weight_inputs], base_weight: kwargs[:base_weight]
+            )
             instance_key = kwargs[:instance_key]
             callable_handle = kwargs[:callable_handle]
             raise Errors::ValidationError, 'instance_key must be an InstanceKey' unless instance_key.is_a?(Identity::InstanceKey)
@@ -383,6 +428,8 @@ module Legion
               metadata: RecordSupport.frozen_metadata(value: kwargs[:metadata]),
               callable_handle: callable_handle,
               publication_source: RecordSupport.publication_source!(value: kwargs[:publication_source]),
+              weight_inputs: weight_inputs,
+              base_weight: base_weight,
               **RecordSupport.scalar_value_evidences(kwargs)
             )
           end

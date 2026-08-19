@@ -36,7 +36,10 @@ module Legion
 
           FleetEnvelope = Struct.new(:data, keyword_init: true) do
             def [](key)
-              data[key.to_sym] || data[key.to_s]
+              symbol_key = key.to_sym
+              return data[symbol_key] if data.key?(symbol_key)
+
+              data[key.to_s]
             end
 
             def key?(key)

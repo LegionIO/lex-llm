@@ -125,4 +125,24 @@ RSpec.describe Legion::Extensions::Llm::Fleet::WorkerExecution do
 
     expect(Legion::Extensions::Llm::Fleet::TokenValidator).to have_received(:release_replay!).with('jti-2')
   end
+
+  describe '.envelope_value' do
+    it 'preserves false values for both key spellings' do
+      expect(described_class.envelope_value({ execution_contract: false }, :execution_contract)).to be(false)
+      expect(described_class.envelope_value({ 'execution_contract' => false }, :execution_contract)).to be(false)
+    end
+
+    it 'prefers a present symbol key even when its value is false' do
+      mixed = { execution_contract: false, 'execution_contract' => 'exact_offering_v1' }
+
+      expect(described_class.envelope_value(mixed, :execution_contract)).to be(false)
+    end
+
+    it 'preserves legacy absence and nil while returning the exact marker unchanged' do
+      expect(described_class.envelope_value({}, :execution_contract)).to be_nil
+      expect(described_class.envelope_value({ execution_contract: nil }, :execution_contract)).to be_nil
+      expect(described_class.envelope_value({ execution_contract: 'exact_offering_v1' }, :execution_contract))
+        .to eq('exact_offering_v1')
+    end
+  end
 end

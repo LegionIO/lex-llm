@@ -74,6 +74,24 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Registry do
       expect(snapshot.publication_status(instance_key: key).state).to eq(:complete)
     end
 
+    it 'copies the draft weight pair unchanged onto offering and lane records' do
+      weights = { tier: 150, provider: 100, instance: 115, model_or_offering: 100 }
+      claim_and_activate(
+        key: key, callable: callable, coordinator: coordinator,
+        weight_inputs: weights, base_weight: 172_500_000
+      )
+      snapshot = described_class.snapshot
+      offering = snapshot.offerings_for(instance_key: key).first
+      lane = snapshot.lanes_for(instance_key: key).first
+
+      expect(offering.weight_inputs).to eq(weights)
+      expect(offering.base_weight).to eq(172_500_000)
+      expect(lane.weight_inputs).to eq(weights)
+      expect(lane.base_weight).to eq(172_500_000)
+      expect(offering.weight_inputs).to be_frozen
+      expect(lane.weight_inputs).to be_frozen
+    end
+
     it 'accepts an explicit complete empty activation as complete, not initializing' do
       token = described_class.claim_instance(instance_key: key, callable: callable, probe_request_handle: coordinator)
       probe = described_class.readiness_probe_started(instance_key: key, publisher_token: token)

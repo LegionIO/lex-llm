@@ -57,7 +57,57 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
     )
   end
 
+  def build_lane(**overrides)
+    Legion::Extensions::Llm::Inventory::LaneRecord.new(
+      lane_id: lane_id, offering_id: offering_id, instance_key: instance_key, provider_family: :vllm,
+      instance_id: 'h200', model: 'gemma4', tier: :local, operation: :chat, capability_evidence: {},
+      quota_domain: nil, metadata: {}, callable_handle: callable_handle, publication_source: :provider_catalog,
+      **scalar_evidence_kwargs, **overrides
+    )
+  end
+
+  shared_examples 'an atomic immutable weight pair' do
+    it 'defaults both omitted fields to the frozen identity pair' do
+      record = build_record
+      expect(record.weight_inputs).to eq(tier: 100, provider: 100, instance: 100, model_or_offering: 100)
+      expect(record.weight_inputs).to be_frozen
+      expect(record.base_weight).to eq(100_000_000)
+    end
+
+    it 'requires the pair atomically and rejects every invalid shape' do
+      valid = { tier: 150, provider: 100, instance: 115, model_or_offering: 100 }
+      expect { build_record(weight_inputs: valid) }.to raise_error(errors::ValidationError)
+      expect { build_record(base_weight: 172_500_000) }.to raise_error(errors::ValidationError)
+      expect { build_record(weight_inputs: [], base_weight: 1) }.to raise_error(errors::ValidationError)
+      expect { build_record(weight_inputs: valid.merge('tier' => 150).except(:tier), base_weight: 172_500_000) }
+        .to raise_error(errors::ValidationError)
+      expect { build_record(weight_inputs: valid.merge(provider: -1), base_weight: -172_500) }
+        .to raise_error(errors::ValidationError)
+      expect { build_record(weight_inputs: valid.merge(provider: 100.0), base_weight: 172_500_000) }
+        .to raise_error(errors::ValidationError)
+      expect { build_record(weight_inputs: valid, base_weight: 172_500_000.0) }
+        .to raise_error(errors::ValidationError)
+      expect { build_record(weight_inputs: valid, base_weight: 1) }.to raise_error(errors::ValidationError)
+    end
+
+    it 'defensively freezes a supplied valid pair' do
+      source = { tier: 150, provider: 100, instance: 115, model_or_offering: 100 }
+      record = build_record(weight_inputs: source, base_weight: 172_500_000)
+      source[:tier] = 1
+
+      expect(record.weight_inputs).to eq(tier: 150, provider: 100, instance: 115, model_or_offering: 100)
+      expect(record.weight_inputs).to be_frozen
+      expect(record.base_weight).to eq(172_500_000)
+    end
+  end
+
   describe inventory::OfferingDraft do
+    def build_record(**overrides)
+      build_draft(**overrides)
+    end
+
+    it_behaves_like 'an atomic immutable weight pair'
+
     it 'builds a valid frozen draft' do
       draft = build_draft
       expect(draft).to be_frozen
@@ -112,6 +162,12 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
   end
 
   describe inventory::OfferingRecord do
+    def build_record(**overrides)
+      build_offering_record(**overrides)
+    end
+
+    it_behaves_like 'an atomic immutable weight pair'
+
     it 'validates offering_id reproduction and exposes operation views' do
       record = build_offering_record
       expect(record.supported_operations).to eq(%i[chat])
@@ -138,14 +194,11 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
   end
 
   describe inventory::LaneRecord do
-    def build_lane(**overrides)
-      Legion::Extensions::Llm::Inventory::LaneRecord.new(
-        lane_id: lane_id, offering_id: offering_id, instance_key: instance_key, provider_family: :vllm,
-        instance_id: 'h200', model: 'gemma4', tier: :local, operation: :chat, capability_evidence: {},
-        quota_domain: nil, metadata: {}, callable_handle: callable_handle, publication_source: :provider_catalog,
-        **scalar_evidence_kwargs, **overrides
-      )
+    def build_record(**overrides)
+      build_lane(**overrides)
     end
+
+    it_behaves_like 'an atomic immutable weight pair'
 
     it 'builds a valid lane whose id reproduces' do
       expect(build_lane.lane_id).to eq(lane_id)
