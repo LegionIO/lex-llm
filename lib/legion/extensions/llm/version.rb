@@ -3,7 +3,7 @@
 module Legion
   module Extensions
     module Llm
-      VERSION = '0.7.6'
+      VERSION = '0.7.7'
     end
   end
 end

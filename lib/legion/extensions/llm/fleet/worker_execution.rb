@@ -81,13 +81,13 @@ module Legion
 
             case operation
             when :chat
-              provider.chat(messages: params.fetch(:messages, []), model: model, **except(params, :messages))
+              provider.chat(messages: rehydrate_wire_messages(params.fetch(:messages, [])), model: model, **except(params, :messages))
             when :stream
-              provider.stream_chat(messages: params.fetch(:messages, []), model: model, **except(params, :messages))
+              provider.stream_chat(messages: rehydrate_wire_messages(params.fetch(:messages, [])), model: model, **except(params, :messages))
             when :embed
               provider.embed(text: params[:text], model: model, **except(params, :text))
             when :count_tokens
-              provider.count_tokens(messages: params.fetch(:messages, []), model: model, **except(params, :messages))
+              provider.count_tokens(messages: rehydrate_wire_messages(params.fetch(:messages, [])), model: model, **except(params, :messages))
             else
               raise PolicyError, "unsupported fleet operation: #{operation}"
             end
@@ -209,11 +209,28 @@ module Legion
             params
           end
 
+          # Wire rehydration at the fleet boundary: the envelope carries serialized
+          # canonical messages (JSON round-trip produces plain Hashes). Rebuild the
+          # Canonical::Message objects HERE so the callable receives canonical input
+          # only — the callable is the canonical boundary and rejects anything else.
+          def rehydrate_wire_messages(value)
+            Array(value).map do |message|
+              next message if message.is_a?(Canonical::Message)
+
+              unless message.is_a?(Hash)
+                raise ERRORS::ExactOfferingMismatchError,
+                      "fleet wire message must be a serialized Canonical::Message, got #{message.class}"
+              end
+
+              Canonical::Message.from_hash(message)
+            end
+          end
+
           def dispatch_operation(callable, operation, model, params)
             case operation
-            when :chat then callable.chat(messages: require_param!(params, :messages, operation), model: model, **except(params, :messages))
-            when :stream_chat then callable.stream_chat(messages: require_param!(params, :messages, operation), model: model, **except(params, :messages))
-            when :count_tokens then callable.count_tokens(messages: require_param!(params, :messages, operation), model: model, **except(params, :messages))
+            when :chat then callable.chat(messages: rehydrate_wire_messages(require_param!(params, :messages, operation)), model: model, **except(params, :messages))
+            when :stream_chat then callable.stream_chat(messages: rehydrate_wire_messages(require_param!(params, :messages, operation)), model: model, **except(params, :messages))
+            when :count_tokens then callable.count_tokens(messages: rehydrate_wire_messages(require_param!(params, :messages, operation)), model: model, **except(params, :messages))
             when :embed then callable.embed(text: require_param!(params, :text, operation), model: model, **except(params, :text))
             when :image then dispatch_image(callable, model, params)
             when :transcribe then dispatch_audio(callable, :transcribe, model, params)

@@ -132,6 +132,25 @@ module Legion
           self.class.configuration_requirements
         end
 
+        # N x N law — the dispatch boundary contract. Pipeline dispatch (direct
+        # SelectionDispatch, fleet worker rehydration) delivers
+        # Canonical::Message objects; provider callables are the canonical
+        # boundary and must reject anything else LOUDLY. No coercion, no
+        # hash tolerance, no fallback — a half-translated legacy shape here is
+        # the defect class the N x N method exists to kill. Provider-native
+        # entry points inside a gem (e.g. the Chat facade) do not cross this
+        # boundary and are not affected.
+        def enforce_canonical_messages!(messages)
+          Array(messages).each do |message|
+            next if message.is_a?(Canonical::Message)
+
+            raise ArgumentError,
+                  "provider input must be Canonical::Message objects, got #{message.class} — " \
+                  'non-canonical message shapes must not cross the dispatch boundary'
+          end
+          messages
+        end
+
         # rubocop:disable Metrics/ParameterLists
         def chat(messages:, model:, tools: [], temperature: nil, params: {}, headers: {}, schema: nil, thinking: nil,
                  tool_prefs: nil)
@@ -294,9 +313,9 @@ module Legion
 
         def count_tokens(messages:, model:, params: {})
           _ = [model, params]
+          enforce_canonical_messages!(messages)
           Array(messages).sum do |message|
-            content = message.respond_to?(:content) ? message.content : message[:content] || message['content']
-            estimate_text_tokens(content)
+            estimate_text_tokens(message.content)
           end
         end
 

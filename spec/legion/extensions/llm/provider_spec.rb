@@ -237,7 +237,8 @@ RSpec.describe Legion::Extensions::Llm::Provider do
     end
 
     it 'provides a deterministic token estimate fallback' do
-      expect(provider.count_tokens(messages: [{ content: 'hello world' }], model: model)).to be >= 1
+      messages = [Legion::Extensions::Llm::Canonical::Message.build(role: :user, content: 'hello world')]
+      expect(provider.count_tokens(messages: messages, model: model)).to be >= 1
     end
 
     it 'summarizes hash-backed tools for debug logging' do

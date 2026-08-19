@@ -15,7 +15,9 @@ RSpec.describe Legion::Extensions::Llm::Fleet::WorkerExecution do
   let(:provider) do
     Class.new do
       def chat(messages:, model:, **)
-        { content: "#{model}:#{messages.first[:content]}" }
+        # Fleet wire rehydration delivers Canonical::Message objects (the
+        # callable is the canonical boundary) — read them as such.
+        { content: "#{model}:#{messages.first.content}" }
       end
     end.new
   end
@@ -41,7 +43,7 @@ RSpec.describe Legion::Extensions::Llm::Fleet::WorkerExecution do
     capture_provider = Class.new do
       define_method(:chat) do |messages:, model:, **options|
         captured_options = options
-        { content: "#{model}:#{messages.first[:content]}" }
+        { content: "#{model}:#{messages.first.content}" }
       end
     end.new
     legacy_envelope = envelope.merge(

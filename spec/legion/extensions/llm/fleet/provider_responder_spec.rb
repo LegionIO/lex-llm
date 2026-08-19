@@ -41,8 +41,10 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
       end
 
       def chat(messages:, model:, **params)
+        # Fleet wire rehydration delivers Canonical::Message objects — the
+        # callable/provider is the canonical boundary and reads them as such.
         {
-          content: "chat #{model} #{messages.first[:content]}",
+          content: "chat #{model} #{messages.first.content}",
           usage: { input_tokens: 1, output_tokens: 2 },
           metadata: { temperature: params[:temperature], base_url: settings[:base_url] }
         }

@@ -41,6 +41,16 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
         { content: 'exact-ok' }
       end
 
+      def stream_chat(messages:, model:, **rest)
+        @calls << { op: :stream_chat, messages: messages, model: model, rest: rest }
+        { content: 'stream-exact-ok' }
+      end
+
+      def count_tokens(messages:, model:, **rest)
+        @calls << { op: :count_tokens, messages: messages, model: model, rest: rest }
+        1
+      end
+
       def embed(text:, model:, **rest)
         @calls << { op: :embed, text: text, model: model, rest: rest }
         { content: 'embed-ok' }
@@ -52,7 +62,10 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
 
   before do
     inventory::Registry.reset!
-    claim_and_activate(key: key, callable: recording_callable, coordinator: probe_coordinator(key))
+    claim_and_activate(
+      key: key, callable: recording_callable, coordinator: probe_coordinator(key),
+      supported: %i[chat stream_chat count_tokens]
+    )
     allow(worker).to receive_messages(validate_identity!: true, validate_idempotency!: nil)
   end
 
@@ -123,6 +136,33 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
       call = recording_callable.calls.first
       expect(call[:messages]).to eq([])
       expect(call[:rest]).to eq(temperature: 0.2)
+    end
+
+    it 'rehydrates JSON-round-tripped messages before every message operation' do
+      raw_messages = [
+        { role: 'system', content: 'follow the rules' },
+        {
+          role: 'assistant', content: '',
+          tool_calls: [{ id: 'call-1', name: 'lookup', arguments: { query: 'status' } }]
+        },
+        { role: 'tool', tool_call_id: 'call-1', content: 'clean' },
+        { role: 'user', content: 'continue' }
+      ]
+
+      %w[chat stream_chat count_tokens].each do |operation|
+        wire_envelope = Legion::JSON.load(
+          Legion::JSON.dump(exact_envelope(operation: operation, params: { messages: raw_messages }))
+        )
+        worker.call(envelope: wire_envelope, registry: inventory::Registry)
+      end
+
+      expect(recording_callable.calls.map { |call| call[:op] }).to eq(%i[chat stream_chat count_tokens])
+      recording_callable.calls.each do |call|
+        expect(call[:messages]).to all(be_a(Legion::Extensions::Llm::Canonical::Message))
+        expect(call[:messages].map(&:role)).to eq(%i[system assistant tool user])
+        expect(call[:messages][1].tool_calls.first.name).to eq('lookup')
+        expect(call[:messages][2].tool_call_id).to eq('call-1')
+      end
     end
   end
 

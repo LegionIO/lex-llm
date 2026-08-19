@@ -14,7 +14,7 @@ module Legion
           :id, :parent_id, :role, :content, :tool_calls, :tool_call_id,
           :name, :status, :version, :timestamp, :seq,
           :provider, :model, :input_tokens, :output_tokens,
-          :conversation_id, :task_id
+          :conversation_id, :task_id, :cache_control
         ) do
           ROLES = %i[system user assistant tool].freeze
 
@@ -23,7 +23,8 @@ module Legion
             id: nil, parent_id: nil, role: :user, content: nil, tool_calls: nil,
             tool_call_id: nil, name: nil, status: :created, version: 1,
             timestamp: nil, seq: nil, provider: nil, model: nil,
-            input_tokens: nil, output_tokens: nil, conversation_id: nil, task_id: nil
+            input_tokens: nil, output_tokens: nil, conversation_id: nil, task_id: nil,
+            cache_control: nil
           )
             role_sym = role.is_a?(String) ? role.to_sym : role
             unless ROLES.include?(role_sym)
@@ -48,7 +49,8 @@ module Legion
               input_tokens: input_tokens,
               output_tokens: output_tokens,
               conversation_id: conversation_id,
-              task_id: task_id
+              task_id: task_id,
+              cache_control: cache_control
             )
           end
 
@@ -93,10 +95,10 @@ module Legion
               end
             end
 
-            # Tolerate transport-only keys (e.g. the prompt-cache step's :cache_control,
-            # injected onto every >=2-message request) by projecting onto the known
-            # member set — mirrors Canonical::Request.from_hash, which folds unknown keys
-            # instead of raising. Message has no metadata field, so unknown keys are dropped.
+            # Project onto the known member set — mirrors Canonical::Request.from_hash,
+            # which folds unknown keys instead of raising. Message has no metadata field,
+            # so unknown keys are dropped. :cache_control (prompt-cache breakpoints) IS a
+            # member and survives build/to_h/JSON round-trips, including the fleet wire.
             build(**h.slice(*members))
           end
 

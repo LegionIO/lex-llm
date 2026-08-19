@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.7 - 2026-08-19
+
+### Added
+- **`Canonical::Message` carries `cache_control`.** Prompt-cache breakpoints are a first-class canonical member (build/from_hash/to_h and the fleet JSON round-trip preserve it) instead of being dropped by member projection.
+
+### Changed
+- **Fleet worker rehydrates wire messages to canonical objects.** `Fleet::WorkerExecution` rebuilds `params[:messages]` into `Canonical::Message` at the wire boundary for chat, stream, and count_tokens dispatch (exact and local-provider paths), so callables receive canonical input only. Non-Hash wire entries raise `ExactOfferingMismatchError`.
+
+### Fixed
+- **Dispatch-boundary contract helper.** `Provider#enforce_canonical_messages!` is the shared loud-reject contract for provider callables: non-canonical message shapes raise `ArgumentError` instead of being coerced or tolerated. `Provider#count_tokens` enforces it and reads canonical content, removing the hash fallback.
+- **Fleet specs assert the canonical boundary.** Worker/responder spec doubles read `.content` off `Canonical::Message` (wire rehydration delivers objects, not hashes).
+
 ## 0.7.6 - 2026-08-19
 
 ### Added
