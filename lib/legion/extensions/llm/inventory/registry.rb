@@ -491,7 +491,8 @@ module Legion
                 embedding_dimensions_evidence: draft.embedding_dimensions_evidence,
                 model_revision_evidence: draft.model_revision_evidence, tokenizer_evidence: draft.tokenizer_evidence,
                 quota_domains: draft.quota_domains, metadata: draft.metadata, callable_handle: handle,
-                publication_source: draft.publication_source
+                publication_source: draft.publication_source,
+                weight_inputs: draft.weight_inputs, base_weight: draft.base_weight
               )
             end
 
@@ -520,7 +521,8 @@ module Legion
                 embedding_dimensions_evidence: offering.embedding_dimensions_evidence,
                 model_revision_evidence: offering.model_revision_evidence, tokenizer_evidence: offering.tokenizer_evidence,
                 quota_domain: offering.quota_domain(operation: operation), metadata: offering.metadata,
-                callable_handle: handle, publication_source: offering.publication_source
+                callable_handle: handle, publication_source: offering.publication_source,
+                weight_inputs: offering.weight_inputs, base_weight: offering.base_weight
               )
             end
 

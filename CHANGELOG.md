@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.5 - 2026-08-19
+
+### Added
+- **Write-time lane weights on immutable Inventory records.** `Inventory::WeightSchema` computes the independent tier, provider, instance, and model-or-offering axes from current settings, preserving zero as an explicit disable and rejecting malformed values. `OfferingDraft`, `OfferingRecord`, and `LaneRecord` now carry an atomic validated weight pair; registry construction copies that frozen pair unchanged.
+
 ## 0.7.4 - 2026-08-19
 
 ### Added
