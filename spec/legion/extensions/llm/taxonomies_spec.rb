@@ -76,4 +76,31 @@ RSpec.describe Legion::Extensions::Llm::Taxonomies do
         .to raise_error(Legion::Extensions::Llm::Inventory::Errors::ValidationError)
     end
   end
+
+  describe '.lane_type_for' do
+    let(:mapping) do
+      {
+        chat: :inference, stream_chat: :inference, embed: :embedding,
+        image: :image, transcribe: :audio, translate: :audio, speak: :audio,
+        moderate: :inference, count_tokens: :inference
+      }
+    end
+
+    it 'owns the complete frozen operation-to-lane-type mapping' do
+      expect(described_class::OPERATION_TO_LANE_TYPE).to eq(mapping)
+      expect(described_class::OPERATION_TO_LANE_TYPE).to be_frozen
+      expect(described_class::OPERATION_TO_LANE_TYPE.keys).to contain_exactly(*described_class::OPERATIONS)
+      expect(described_class::OPERATION_TO_LANE_TYPE.values.uniq)
+        .to contain_exactly(*described_class::TYPES)
+    end
+
+    it 'resolves every canonical operation and rejects unknown operations' do
+      mapping.each do |operation, lane_type|
+        expect(described_class.lane_type_for(operation: operation)).to eq(lane_type)
+      end
+
+      expect { described_class.lane_type_for(operation: :unknown) }
+        .to raise_error(Legion::Extensions::Llm::Inventory::Errors::ValidationError)
+    end
+  end
 end

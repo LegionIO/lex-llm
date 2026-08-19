@@ -121,7 +121,6 @@ module Legion
             include Legion::Logging::Helper
 
             HEALTHY_COMPAT = { circuit_state: :closed, denied: false, available: true, adjustment: 0 }.freeze
-            LEGACY_TYPES = { embed: :embedding, image: :image, transcribe: :audio, translate: :audio, speak: :audio }.freeze
             LEGACY_CAPABILITIES = {
               chat: :completion, stream_chat: :streaming, embed: :embedding, image: :image,
               transcribe: :audio_transcription, translate: :audio_transcription, speak: :audio_speech, moderate: :moderation
@@ -174,7 +173,7 @@ module Legion
             def group_lanes(snapshot, instance_key)
               groups = {}
               snapshot.lanes_for(instance_key: instance_key).each do |lane|
-                type = LEGACY_TYPES.fetch(lane.operation, :inference)
+                type = Taxonomies.lane_type_for(operation: lane.operation)
                 key = [lane.tier, instance_key.provider_family, instance_key.instance_id, type, lane.model]
                 group = (groups[key] ||= new_group(instance_key, lane, type))
                 accumulate_group(group, lane)

@@ -11,6 +11,25 @@ module Legion
       module Taxonomies
         TIERS           = %i[direct local fleet cloud frontier].freeze
         TYPES           = %i[inference embedding image audio].freeze
+
+        # The current authoritative operation → Inventory lane-type mapping (the 4th
+        # field of the 5-tuple lane id). NON-LEGACY home: the deletion-scheduled
+        # LegacyCoordinatorAdapter consumes `lane_type_for` below until deletion;
+        # it must not retain a second mapping. moderate/count_tokens
+        # are non-generative inference operations — no moderation/count type exists in
+        # TYPES, so they map to :inference.
+        OPERATION_TO_LANE_TYPE = {
+          chat:         :inference,
+          stream_chat:  :inference,
+          embed:        :embedding,
+          image:        :image,
+          transcribe:   :audio,
+          translate:    :audio,
+          speak:        :audio,
+          moderate:     :inference,
+          count_tokens: :inference
+        }.freeze
+
         CIRCUIT_STATES  = %i[closed half_open open].freeze
         HEALTH_KEYS     = %i[circuit_state denied available adjustment].freeze
 
@@ -78,6 +97,11 @@ module Legion
         }.freeze
 
         module_function
+
+        def lane_type_for(operation:)
+          canonical = normalize_operation(value: operation, allow_aliases: false)
+          OPERATION_TO_LANE_TYPE.fetch(canonical)
+        end
 
         # Normalize an operation to one of OPERATIONS. Ingress and protocol-v2
         # compatibility adapters pass allow_aliases: true; registry records and

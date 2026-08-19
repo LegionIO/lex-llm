@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.4 - 2026-08-19
+
+### Added
+- **Authoritative Inventory lane-type mapping.** `Taxonomies::OPERATION_TO_LANE_TYPE` and `Taxonomies.lane_type_for` now own the complete canonical operation-to-lane-type mapping used by human-readable five-tuple lane identities. The deletion-scheduled coordinator adapter delegates to the same resolver instead of retaining a divergent compatibility copy.
+
 ## 0.7.3 - 2026-08-17
 
 ### Fixed

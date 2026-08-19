@@ -253,6 +253,9 @@ RSpec.describe Legion::Extensions::Llm::Inventory::ScopedRefresher do
     end
 
     it 'projects an available instance into an exact five-field legacy lane and round-trips' do
+      expect(Legion::Extensions::Llm::Taxonomies).to receive(:lane_type_for)
+        .with(operation: :chat).and_call_original
+
       result = adapter.sync_snapshot(snapshot: activate_chat, instance_key: key, mutation_reason: :activated)
       expect(result).to eq(:applied)
 
