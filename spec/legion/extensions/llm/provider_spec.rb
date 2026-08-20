@@ -1,8 +1,11 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'support/ssot_registry_helpers'
 
 RSpec.describe Legion::Extensions::Llm::Provider do
+  include SsotRegistryHelpers
+
   describe 'Hash config support' do
     let(:provider_class) do
       Class.new(described_class) do
@@ -143,12 +146,12 @@ RSpec.describe Legion::Extensions::Llm::Provider do
                            instance_id: :primary })
     end
 
-    it 'exposes a canonical chat alias over complete' do
+    it 'exposes a canonical chat alias over complete (0.8.0 signature — O4 temperature in Params)' do
       allow(provider).to receive(:complete).and_return('ok')
 
-      expect(provider.chat(messages: [], model: model)).to eq('ok')
+      expect(provider.chat([], model: 'test-model')).to eq('ok')
       expect(provider).to have_received(:complete).with(
-        [], tools: [], temperature: nil, model: model, params: {}, headers: {},
+        [], tools: [], model: 'test-model', params: nil, headers: {},
             schema: nil, thinking: nil, tool_prefs: nil
       )
     end
@@ -157,73 +160,46 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       seen = []
       allow(provider).to receive(:complete) { |_messages, **_opts, &block| block.call('chunk') }
 
-      provider.stream_chat(messages: [], model: model) { |chunk| seen << chunk }
+      provider.stream_chat([], model: 'test-model') { |chunk| seen << chunk }
 
       expect(seen).to eq(['chunk'])
     end
 
-    it 'converts live list_models results into model offerings' do
-      offerings = provider.discover_offerings(live: true)
-      offering = offerings.first
+    # 0.8.0 (07 C5): the legacy ModelOffering production path is deleted — the
+    # per-gem writer publishes; the base read path serves the activated
+    # inventory offerings for this instance from the registry snapshot.
+    def activate_contract_instance
+      key = Legion::Extensions::Llm::Inventory::Identity::InstanceKey.new(
+        provider_family: 'provider', instance_id: 'primary'
+      )
+      Legion::Extensions::Llm::Inventory::Registry.reset!
+      claim_and_activate(key: key, callable: Object.new, coordinator: probe_coordinator(key), model: 'test-model')
+    end
+
+    it 'serves the activated inventory offerings for the instance from the registry snapshot (07 C5)' do
+      activate_contract_instance
+      offerings = provider.discover_offerings
 
       expect(offerings.size).to eq(1)
-      expect(offering.provider_family).to eq(:provider)
-      expect(offering.provider_instance).to eq(:primary)
-      expect(offering.model).to eq('test-model')
-      expect(offering.usage_type).to eq(:inference)
-      expect(offering.capabilities).to include(:completion, :streaming, :tools)
-      expect(offering.context_window).to eq(8192)
+      expect(offerings.first.model).to eq('test-model')
+      expect(offerings.first.instance_key.instance_id).to eq('primary')
+      expect(offerings.first.instance_key.provider_family).to eq(:provider)
     end
 
-    it 'publishes every discovered model before policy filtering removes blocked models' do
-      blocked_model = Legion::Extensions::Llm::Model::Info.new(
-        id: 'blocked-model',
-        provider: :contract,
-        instance: :primary,
-        capabilities: %i[completion],
-        context_length: 4096
-      )
-      registry_publisher = instance_double(Legion::Extensions::Llm::RegistryPublisher)
-      allow(registry_publisher).to receive(:publish_models_async)
-      allow(provider_class).to receive(:registry_publisher).and_return(registry_publisher)
-      allow(provider).to receive_messages(list_models: [model, blocked_model], settings: { model_blacklist: ['blocked'] })
+    it 'filters snapshot offerings by model and instance keys' do
+      activate_contract_instance
 
-      offerings = provider.discover_offerings(live: true)
-
-      expect(offerings.map(&:model)).to eq(['test-model'])
-      expect(registry_publisher).to have_received(:publish_models_async).with([model], anything)
-      expect(registry_publisher).to have_received(:publish_models_async).with([blocked_model], anything)
+      expect(provider.discover_offerings(model: 'test-model')).not_to be_empty
+      expect(provider.discover_offerings(id: 'test-model')).not_to be_empty
+      expect(provider.discover_offerings(model: 'other-model')).to be_empty
+      expect(provider.discover_offerings(instance: 'other')).to be_empty
     end
 
-    it 'passes live discovery filters through to list_models' do
-      provider.discover_offerings(live: true, capability: :tools, instance: :primary)
-
-      expect(provider.list_model_calls).to include(
-        live: true,
-        filters: { capability: :tools, instance: :primary }
-      )
-    end
-
-    it 'filters generated offerings by capability and instance' do
-      provider.discover_offerings(live: true)
-
-      expect(provider.discover_offerings(capability: :tools, instance: :primary)).not_to be_empty
-      expect(provider.discover_offerings(capability: :embedding)).to be_empty
-      expect(provider.discover_offerings(instance: :other)).to be_empty
-    end
-
-    it 'does not perform live discovery for uncached non-live offerings reads' do
+    it 'never calls list_models — the production path moved to the per-gem writer' do
       allow(provider).to receive(:list_models).and_raise('unexpected live discovery')
 
-      expect(provider.discover_offerings).to eq([])
+      expect { provider.discover_offerings(live: true) }.not_to raise_error
       expect(provider).not_to have_received(:list_models)
-    end
-
-    it 'serves non-live offerings reads from the live discovery cache' do
-      provider.discover_offerings(live: true)
-      allow(provider).to receive(:list_models).and_raise('unexpected live discovery')
-
-      expect(provider.discover_offerings(capability: :tools, instance: :primary)).not_to be_empty
     end
 
     it 'returns normalized health metadata' do
@@ -408,7 +384,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       end
 
       it 'fails closed in #complete before any provider call' do
-        expect { provider.complete([], tools: [], temperature: nil, model: 'gpt-5') }
+        expect { provider.complete([], tools: [], model: 'gpt-5') }
           .to raise_error(Legion::Extensions::Llm::ModelNotAllowedError)
       end
 
@@ -422,7 +398,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       before { provider.settings = { model_blacklist: %w[sonnet] } }
 
       it 'fails closed in #complete for a blacklisted model' do
-        expect { provider.complete([], tools: [], temperature: nil, model: 'claude-sonnet-4-6') }
+        expect { provider.complete([], tools: [], model: 'claude-sonnet-4-6') }
           .to raise_error(Legion::Extensions::Llm::ModelNotAllowedError)
       end
     end

@@ -7,6 +7,17 @@ RSpec.describe Legion::Extensions::Llm::Streaming do
     Object.new.tap do |obj|
       obj.extend(described_class)
       obj.define_singleton_method(:build_chunk) { |data| "chunk:#{data['x']}" }
+      # Streaming only ships inside Provider in production; the U8 delegation
+      # passes self to ErrorMiddleware.parse_error, which calls parse_error.
+      obj.define_singleton_method(:parse_error) do |response|
+        body = response.body
+        error = body['error'] if body.is_a?(Hash)
+        if error.is_a?(String)
+          error
+        else
+          (error.is_a?(Hash) ? error['message'] : nil)
+        end
+      end
     end
   end
 

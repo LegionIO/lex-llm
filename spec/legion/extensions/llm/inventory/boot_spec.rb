@@ -69,9 +69,9 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Boot do
     expect(Thread.list.size).to eq(baseline)
   end
 
-  it 'retains legacy Types aliases and adds no new SSOT alias' do
-    expect(Legion::Extensions::Llm::Types.const_defined?(:ModelOffering, false)).to be(true)
-    expect(Legion::Extensions::Llm::Types.const_defined?(:InstanceKey, false)).to be(false)
+  it 'removes the legacy Types aliases (0.8.0 rip)' do
+    expect(Legion::Extensions::Llm.const_defined?(:Types, false)).to be(false)
+    expect(Legion::Extensions::Llm::Inventory.const_defined?(:InstanceKey, false)).to be(false)
   end
 
   it 'preserves the optional transport message registration (autoload or loaded)' do

@@ -298,7 +298,7 @@ RSpec.shared_examples 'a canonical provider translator' do |translator_class|
       it 'preserves tool call identity across chunks' do
         tool_chunks = chunks.select { |c| c['type'] == 'tool_call_delta' }
         parsed_chunks = tool_chunks.map { |c| translator.parse_chunk(c) }
-        ids = parsed_chunks.map { |c| c.tool_call&.id }
+        ids = parsed_chunks.map { |c| c.tool_call.is_a?(Hash) ? c.tool_call[:id] : c.tool_call&.id }
         expect(ids.uniq.length).to eq(1)
       end
     end

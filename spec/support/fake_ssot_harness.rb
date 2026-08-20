@@ -28,7 +28,7 @@ module SpecSupport
       true
     end
 
-    def chat(messages:, model:, **rest)
+    def chat(messages, model:, **rest)
       @inference_calls += 1
       { content: "fake chat #{model} #{messages.size} #{rest.size}" }
     end

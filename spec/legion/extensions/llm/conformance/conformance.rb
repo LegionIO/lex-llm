@@ -47,5 +47,6 @@ module Canonical
   end
 end
 
+require_relative 'canonical_type_examples'
 require_relative 'provider_translator_examples'
 require_relative 'client_translator_examples'

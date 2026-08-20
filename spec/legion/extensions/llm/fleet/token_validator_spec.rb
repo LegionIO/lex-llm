@@ -20,7 +20,11 @@ RSpec.describe Legion::Extensions::Llm::Fleet::TokenValidator do
       caller: { identity: 'user:matt' },
       trace_context: { trace_id: 'trace-1' },
       timeout_seconds: 30,
-      expires_at: expires_at
+      expires_at: expires_at,
+      # v3: exact claims are verified unconditionally (S3) — the envelope and
+      # the signed claims must both carry the exact marker + offering_id.
+      execution_contract: Legion::Extensions::Llm::Fleet::Protocol::EXACT_EXECUTION_CONTRACT,
+      offering_id: "off:v1:#{'a' * 64}"
     }
   end
   let(:claims) do

@@ -31,8 +31,8 @@ RSpec.describe Legion::Extensions::Llm::RegistryEventBuilder do
       event = builder.model_available(model, readiness: readiness)
       expect(event).to be_a(Legion::Extensions::Llm::Routing::RegistryEvent)
       expect(event.event_type).to eq(:offering_available)
-      expect(event.offering.model).to eq('llama-3.1-8b')
-      expect(event.offering.provider_family).to eq(:ollama)
+      expect(event.offering[:model]).to eq('llama-3.1-8b')
+      expect(event.offering[:provider_family]).to eq(:ollama)
     end
 
     it 'includes model health from readiness' do

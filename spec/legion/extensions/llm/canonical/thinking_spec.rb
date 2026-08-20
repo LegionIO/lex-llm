@@ -1,189 +1,87 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../conformance/conformance'
 
 RSpec.describe Legion::Extensions::Llm::Canonical::Thinking do
-  describe '.from_hash' do
-    it 'returns a Thinking instance with content and signature' do
-      thinking = described_class.from_hash(content: 'reasoning here', signature: 'sig-abc')
+  let(:type_class) { described_class }
+  let(:auto_generated_members) { [] }
+  let(:type_source) do
+    { content: 'reasoning here', signature: 'sig-abc', metadata: { origin: 'provider' } }
+  end
 
-      expect(thinking).to be_a(described_class)
-      expect(thinking.content).to eq('reasoning here')
-      expect(thinking.signature).to eq('sig-abc')
-    end
+  it_behaves_like 'a canonical type'
 
-    it 'handles string keys' do
-      thinking = described_class.from_hash('content' => 'reasoning', 'signature' => 'sig-123')
-
+  describe 'T5/T4 — construction law' do
+    it 'builds from keyword args' do
+      thinking = described_class.build(content: 'reasoning', signature: 'sig')
       expect(thinking.content).to eq('reasoning')
-      expect(thinking.signature).to eq('sig-123')
+      expect(thinking.signature).to eq('sig')
     end
 
-    it 'returns nil for nil source' do
-      expect(described_class.from_hash(nil)).to be_nil
-    end
-
-    it 'returns nil for empty content and signature' do
-      result = described_class.from_hash(content: '', signature: '')
-
-      expect(result).to be_nil
-    end
-
-    it 'returns nil when both fields are nil' do
-      result = described_class.from_hash(content: nil, signature: nil)
-
-      expect(result).to be_nil
-    end
-
-    it 'returns instance with only content' do
-      thinking = described_class.from_hash(content: 'just reasoning')
-
-      expect(thinking.content).to eq('just reasoning')
-      expect(thinking.signature).to be_nil
-    end
-
-    it 'returns instance with only signature' do
-      thinking = described_class.from_hash(signature: 'sig-only')
-
+    it 'normalizes empty strings to nil (absence, not data — 04 §8)' do
+      thinking = described_class.build(content: '', signature: '')
       expect(thinking.content).to be_nil
-      expect(thinking.signature).to eq('sig-only')
+      expect(thinking.signature).to be_nil
+      expect(thinking.empty?).to be(true)
+    end
+
+    it 'raises on a wrong-class member' do
+      expect { described_class.build(content: 42) }
+        .to raise_error(ArgumentError, /content expected String, got Integer/)
+    end
+
+    it 'survives build → to_h → JSON → from_hash (T4 signature)' do
+      thinking = described_class.build(content: 'x', signature: 'sig-1')
+      round_tripped = described_class.from_hash(Legion::JSON.load(Legion::JSON.dump(thinking.to_h)))
+      expect(round_tripped.content).to eq('x')
+      expect(round_tripped.signature).to eq('sig-1')
     end
   end
 
-  describe '#to_h' do
-    it 'serializes to compact hash' do
-      thinking = described_class.new(content: 'reasoning', signature: 'sig-1')
-      hash = thinking.to_h
+  describe Legion::Extensions::Llm::Canonical::Thinking::Config do
+    subject(:config_class) { described_class }
 
-      expect(hash).to eq(content: 'reasoning', signature: 'sig-1')
+    let(:type_class) { described_class }
+    let(:auto_generated_members) { [] }
+    let(:type_source) do
+      { effort: 'high', budget: 4096, metadata: { source: 'client' } }
     end
 
-    it 'omits nil values' do
-      thinking = described_class.new(content: 'reasoning', signature: nil)
-      hash = thinking.to_h
+    it_behaves_like 'a canonical type'
 
-      expect(hash).to eq(content: 'reasoning')
-    end
-  end
-
-  describe '#empty?' do
-    it 'returns true when both fields are nil' do
-      thinking = described_class.new(content: nil, signature: nil)
-      expect(thinking.empty?).to be true
+    it 'converts from a plain class to a Data with one name (04 §8)' do
+      expect(config_class).to be_a(Class)
+      expect(config_class.new(effort: 'low', budget: nil, metadata: {})).to be_a(config_class)
     end
 
-    it 'returns false when content is present' do
-      thinking = described_class.new(content: 'reasoning', signature: nil)
-      expect(thinking.empty?).to be false
-    end
-  end
-
-  describe 'round-trip' do
-    it 'preserves content and signature through from_hash/to_h' do
-      original = { content: 'deep reasoning', signature: 'sig-xyz' }
-      thinking = described_class.from_hash(original)
-      serialized = thinking.to_h
-
-      expect(serialized).to eq(original)
-    end
-  end
-
-  describe '::Config' do
-    let(:config_class) { Legion::Extensions::Llm::Canonical::Thinking::Config }
-
-    describe '.build' do
-      it 'creates a config with effort and budget' do
-        config = config_class.build(effort: 'high', budget: 10_000)
-
-        expect(config.effort).to eq('high')
-        expect(config.budget).to eq(10_000)
-        expect(config.enabled?).to be true
-      end
-
-      it 'converts symbol effort to string' do
-        config = config_class.build(effort: :high)
-
-        expect(config.effort).to eq('high')
-      end
-
-      it 'creates disabled config when no values' do
-        config = config_class.build
-
-        expect(config.enabled?).to be false
-      end
+    it 'normalizes symbol effort to String' do
+      config = config_class.build(effort: :low)
+      expect(config.effort).to eq('low')
     end
 
-    describe '.from_hash' do
-      it 'parses config from hash' do
-        config = config_class.from_hash(effort: 'medium', budget: 5000)
-
-        expect(config.effort).to eq('medium')
-        expect(config.budget).to eq(5000)
-      end
-
-      it 'handles string keys' do
-        config = config_class.from_hash('effort' => 'low')
-
-        expect(config.effort).to eq('low')
-      end
-
-      it 'returns nil for nil source' do
-        expect(config_class.from_hash(nil)).to be_nil
-      end
-
-      it 'returns nil for empty hash' do
-        expect(config_class.from_hash({})).to be_nil
-      end
+    it 'raises on a wrong-class effort' do
+      expect { config_class.build(effort: 3) }
+        .to raise_error(ArgumentError, /effort expected String, got Integer/)
     end
 
-    describe '#to_h' do
-      it 'serializes to compact hash' do
-        config = config_class.build(effort: 'high', budget: 10_000)
-        expect(config.to_h).to eq(effort: 'high', budget: 10_000)
-      end
-
-      it 'omits nil values' do
-        config = config_class.build(effort: 'low')
-        expect(config.to_h).to eq(effort: 'low')
-      end
+    it 'keeps the effort<->budget SSOT conversions' do
+      expect(config_class.build(effort: 'low').resolved_budget).to eq(1024)
+      expect(config_class.build(effort: 'medium').resolved_budget).to eq(8192)
+      expect(config_class.build(effort: 'high').resolved_budget).to eq(16_384)
+      expect(config_class.build(budget: 512).resolved_effort).to eq('low')
+      expect(config_class.build(budget: 8192).resolved_effort).to eq('medium')
+      expect(config_class.build(budget: 16_384).resolved_effort).to eq('high')
     end
 
-    # SSOT / one-oracle for cross-provider thinking (NxN best-effort): a client
-    # dialect supplies only ONE axis (Anthropic = budget_tokens only, OpenAI =
-    # effort only). Every provider translator must still get a usable value for
-    # whichever axis IT needs, so thinking survives ANY client×provider pair
-    # instead of being silently dropped. The conversion lives HERE (the canonical
-    # config), not scattered/one-directional in each translator. Derived accessors
-    # do NOT mutate stored state or #to_h — they only fill the gap on read.
-    describe 'derived cross-axis accessors' do
-      it 'derives budget from effort when only effort was set' do
-        expect(config_class.build(effort: 'low').resolved_budget).to eq(1024)
-        expect(config_class.build(effort: 'medium').resolved_budget).to eq(8192)
-        expect(config_class.build(effort: 'high').resolved_budget).to eq(16_384)
-      end
+    it 'is enabled only when an axis is set' do
+      expect(config_class.build(effort: 'low').enabled?).to be(true)
+      expect(config_class.build(budget: 1).enabled?).to be(true)
+      expect(config_class.build.enabled?).to be(false)
+    end
 
-      it 'derives effort from budget by band (< medium=low, < high=medium, else high)' do
-        expect(config_class.build(budget: 500).resolved_effort).to eq('low') # < 8192
-        expect(config_class.build(budget: 10_000).resolved_effort).to eq('medium') # 8192..16383
-        expect(config_class.build(budget: 20_000).resolved_effort).to eq('high') # >= 16384
-      end
-
-      it 'prefers the explicitly-set value over derivation' do
-        c = config_class.build(effort: 'high', budget: 2048)
-        expect(c.resolved_budget).to eq(2048)
-        expect(c.resolved_effort).to eq('high')
-      end
-
-      it 'returns nil derivations when neither axis is set' do
-        c = config_class.build
-        expect(c.resolved_budget).to be_nil
-        expect(c.resolved_effort).to be_nil
-      end
-
-      it 'does not fabricate the missing axis in to_h (stored state stays faithful)' do
-        expect(config_class.build(effort: 'high').to_h).to eq(effort: 'high')
-        expect(config_class.build(budget: 2048).to_h).to eq(budget: 2048)
-      end
+    it 'to_h is faithful to what was set (no fabricated axis)' do
+      expect(config_class.build(effort: 'low').to_h).to eq(effort: 'low', metadata: {})
     end
   end
 end

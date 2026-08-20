@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 module SpecSupport
+  # Contract-conformant fake provider (0.8.0): canonical in, canonical out.
+  # No HTTP — complete is overridden to return canned Canonical::Response
+  # objects (and yield Canonical::Chunk for streams).
   class FakeLLMProvider < Legion::Extensions::Llm::Provider
     class << self
       def configuration_options
@@ -29,26 +32,28 @@ module SpecSupport
       config.fake_llm_api_base || 'https://fake-llm.invalid/v1'
     end
 
-    # rubocop:disable Metrics/ParameterLists, Lint/UnusedMethodArgument
-    def complete(messages, tools:, temperature:, model:, params: {}, headers: {}, schema: nil, thinking: nil,
-                 tool_prefs: nil)
+    def complete(messages, tools: [], model:, params: nil, headers: {}, schema: nil, thinking: nil, # rubocop:disable Metrics/ParameterLists, Lint/UnusedMethodArgument, Style/KeywordParametersOrder
+                 tool_prefs: nil, &) # rubocop:disable Lint/UnusedMethodArgument
+      enforce_canonical_messages!(messages)
+
       if block_given?
-        yield Legion::Extensions::Llm::Chunk.new(content: 'streamed ', role: :assistant)
-        yield Legion::Extensions::Llm::Chunk.new(content: 'response', role: :assistant)
+        yield Legion::Extensions::Llm::Canonical::Chunk.text_delta(delta: 'streamed ', request_id: nil)
+        yield Legion::Extensions::Llm::Canonical::Chunk.text_delta(delta: 'response', request_id: nil)
+        yield Legion::Extensions::Llm::Canonical::Chunk.done(request_id: nil, stop_reason: :end_turn)
       end
 
-      if tools.any? && messages.none?(&:tool_result?)
+      has_tool_result = messages.any?(&:tool_call_id)
+      if tools.any? && !has_tool_result
         tool = tools.values.first
-        return Legion::Extensions::Llm::Message.new(
-          role: :assistant,
-          content: nil,
-          model_id: model.id,
-          tool_calls: {
-            tool.name.to_sym => Legion::Extensions::Llm::ToolCall.new(id: 'tool-call-1', name: tool.name,
-                                                                      arguments: { value: 21 })
-          },
-          input_tokens: 12,
-          output_tokens: 3
+        return Legion::Extensions::Llm::Canonical::Response.build(
+          text: nil,
+          tool_calls: [
+            Legion::Extensions::Llm::Canonical::ToolCall.build(name: tool.name, id: 'tool-call-1',
+                                                               arguments: { value: 21 })
+          ],
+          stop_reason: :tool_use,
+          model: model,
+          usage: Legion::Extensions::Llm::Canonical::Usage.build(input_tokens: 12, output_tokens: 3)
         )
       end
 
@@ -56,45 +61,46 @@ module SpecSupport
                   Legion::JSON.generate({ answer: 42 })
                 elsif thinking
                   'fake response with thinking enabled'
-                elsif messages.any?(&:tool_result?)
-                  "tool result: #{messages.last.content}"
+                elsif has_tool_result
+                  "tool result: #{messages.last.text}"
                 else
-                  "fake response to #{messages.last.content}"
+                  "fake response to #{messages.last.text}"
                 end
 
-      Legion::Extensions::Llm::Message.new(
-        role: :assistant,
-        content: content,
-        model_id: model.id,
-        input_tokens: 10,
-        output_tokens: 5
+      Legion::Extensions::Llm::Canonical::Response.build(
+        text: content,
+        model: model,
+        stop_reason: :end_turn,
+        usage: Legion::Extensions::Llm::Canonical::Usage.build(input_tokens: 10, output_tokens: 5)
       )
     end
-    # rubocop:enable Metrics/ParameterLists, Lint/UnusedMethodArgument
 
-    def embed(text:, model:, dimensions: nil)
+    def embed(text:, model:, dimensions: nil, params: nil, headers: {})
+      _ = [params, headers]
       size = dimensions || 3
       vectors = Array(text).map { Array.new(size, 0.5) }
       vectors = vectors.first unless text.is_a?(Array)
 
-      Legion::Extensions::Llm::Embedding.new(vectors: vectors, model: model, input_tokens: Array(text).size)
-    end
-
-    def moderate(_input, model:)
-      Legion::Extensions::Llm::Moderation.new(
-        id: 'moderation-1',
+      {
+        text: text,
         model: model,
-        results: [{ 'flagged' => false, 'categories' => {}, 'category_scores' => {} }]
-      )
+        embedding: vectors,
+        usage: Legion::Extensions::Llm::Canonical::Usage.build(input_tokens: Array(text).size)
+      }
     end
 
-    def paint(_prompt, model:, size:, with: nil, mask: nil, params: {}) # rubocop:disable Metrics/ParameterLists, Lint/UnusedMethodArgument
-      Legion::Extensions::Llm::Image.new(data: Base64.strict_encode64('fake-image'), mime_type: 'image/png',
-                                         model_id: model)
+    def moderate(input:, model:)
+      _ = input
+      { model: model, result: { flagged: false, categories: {} } }
+    end
+
+    def image(prompt:, model:, size:, with: nil, mask: nil, params: {}) # rubocop:disable Metrics/ParameterLists
+      _ = [prompt, with, mask, params]
+      { model: model, image: Base64.strict_encode64('fake-image'), size: }
     end
 
     def transcribe(_audio_file, model:, language:, **)
-      Legion::Extensions::Llm::Transcription.new(text: 'fake transcript', model: model, language: language)
+      { model: model, text: 'fake transcript', language: }
     end
 
     # Records exactly-once disconnect for the callable-lifecycle contract; does

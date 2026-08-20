@@ -71,17 +71,7 @@ RSpec.describe Legion::Extensions::Llm::Error do
     end
   end
 
-  describe Legion::Extensions::Llm::UnsupportedCapabilityError do
-    it 'keeps string message compatibility for existing callers' do
-      error = described_class.new('not supported')
-
-      expect(error.message).to eq('not supported')
-    end
-
-    it 'accepts the shared keyword initializer' do
-      error = described_class.new(provider: :openai, capability: :embed)
-
-      expect(error.message).to eq('Provider openai does not support embed')
-    end
+  it 'removes the UnsupportedCapabilityError compat alias (0.8.0 rip)' do
+    expect(Legion::Extensions::Llm.const_defined?(:UnsupportedCapabilityError, false)).to be(false)
   end
 end

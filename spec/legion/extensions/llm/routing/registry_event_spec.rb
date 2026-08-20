@@ -17,17 +17,19 @@ RSpec.describe Legion::Extensions::Llm::Routing::RegistryEvent do
     )
   end
 
+  # 0.8.0: the offering travels as a plain (symbol-keyed) Hash — the legacy
+  # ModelOffering type is deleted; the event edge projects what the builder
+  # supplies, unchanged.
   let(:offering) do
-    Legion::Extensions::Llm::Routing::ModelOffering.new(
+    {
       provider_family: :ollama,
-      provider_instance: :'macbook-m4-max',
-      transport: :rabbitmq,
+      provider_instance: 'macbook-m4-max',
       model: 'qwen3.6',
       capabilities: %i[chat tools],
       limits: { context_window: 32_768 },
       credentials: { api_key: 'secret' },
       metadata: { enabled: true, api_key: 'secret' }
-    )
+    }
   end
 
   it 'serializes a provider-neutral registry envelope' do
@@ -48,9 +50,8 @@ RSpec.describe Legion::Extensions::Llm::Routing::RegistryEvent do
       metadata: { observed_by: :lex_llm_ollama }
     )
     expect(event.to_h[:offering]).to include(
-      offering_id: 'ollama:macbook-m4-max:inference:qwen3-6',
       provider_family: :ollama,
-      provider_instance: :'macbook-m4-max',
+      provider_instance: 'macbook-m4-max',
       model: 'qwen3.6',
       capabilities: %i[chat tools],
       limits: { context_window: 32_768 },
@@ -65,7 +66,7 @@ RSpec.describe Legion::Extensions::Llm::Routing::RegistryEvent do
     expect(envelope[:offering][:metadata]).not_to have_key(:api_key)
   end
 
-  it 'normalizes hash offerings through ModelOffering' do
+  it 'symbolizes hash offerings (no value re-normalization — the builder owns the shape)' do
     event = described_class.heartbeat(
       {
         'provider_family' => 'bedrock',
@@ -84,11 +85,16 @@ RSpec.describe Legion::Extensions::Llm::Routing::RegistryEvent do
       occurred_at: '2026-04-28T14:31:00.000000Z'
     )
     expect(event.to_h[:offering]).to include(
-      provider_family: :bedrock,
-      provider_instance: :'us-east-1',
-      usage_type: :embedding,
-      capabilities: [:embedding]
+      provider_family: 'bedrock',
+      provider_instance: 'us-east-1',
+      usage_type: 'embedding',
+      capabilities: ['embedding']
     )
+  end
+
+  it 'rejects non-Hash offerings' do
+    expect { described_class.heartbeat('not a hash', event_id: 'x') }
+      .to raise_error(ArgumentError, /offering must be a Hash/)
   end
 
   it 'provides event-type helpers' do

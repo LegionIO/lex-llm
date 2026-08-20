@@ -1,174 +1,100 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../conformance/conformance'
 
 RSpec.describe Legion::Extensions::Llm::Canonical::Request do
-  describe '.build' do
-    it 'creates a request with required fields' do
-      req = described_class.build(messages: [{ role: :user, content: 'hello' }])
+  let(:type_class) { described_class }
+  let(:auto_generated_members) { [:id] }
+  let(:type_source) do
+    {
+      id: 'req_1',
+      messages: [{ role: 'user', content: 'how are you' }],
+      system: 'be brief',
+      tools: [{ name: 'get_weather', description: 'd', parameters: { type: 'object', properties: {} } }],
+      tool_choice: 'auto',
+      params: { temperature: 0.5 },
+      thinking: { effort: 'low' },
+      stream: false,
+      conversation_id: 'conv_1',
+      caller: 'e2e',
+      routing: { provider: 'fake' },
+      metadata: { origin: 'client' }
+    }
+  end
 
-      expect(req.id).to start_with('req_')
-      expect(req.messages).to be_an(Array)
-      expect(req.messages.first).to be_a(Legion::Extensions::Llm::Canonical::Message)
-      expect(req.stream).to be false
+  it_behaves_like 'a canonical type'
+
+  describe 'F2 fix — strict message map (no silent drops)' do
+    it 'normalizes Hash messages and passes Canonical through (T7)' do
+      canonical = Legion::Extensions::Llm::Canonical::Message.build(role: :user, content: 'hi')
+      raw = { role: 'user', content: 'there' }
+      via_build = described_class.build(messages: [canonical, raw])
+      via_hash = described_class.from_hash(messages: [canonical, raw])
+      expect(via_build.messages.map { |m| [m.role, m.content, m.class] })
+        .to eq(via_hash.messages.map { |m| [m.role, m.content, m.class] })
+      expect(via_build.messages).to all(be_a(Legion::Extensions::Llm::Canonical::Message))
     end
 
-    it 'accepts all fields' do
-      req = described_class.build(
-        id: 'req-1',
-        messages: [{ role: :user, content: 'hello' }],
-        system: 'You are helpful',
-        tools: { search: Legion::Extensions::Llm::Canonical::ToolDefinition.build(name: 'search') },
-        tool_choice: :auto,
-        params: Legion::Extensions::Llm::Canonical::Params.from_hash(max_tokens: 4096),
-        thinking: Legion::Extensions::Llm::Canonical::Thinking::Config.build(effort: 'high'),
-        stream: true,
-        conversation_id: 'conv-1',
-        caller: 'test',
-        routing: { provider: 'anthropic' },
-        metadata: { source: 'cli' }
-      )
-
-      expect(req.id).to eq('req-1')
-      expect(req.system).to eq('You are helpful')
-      expect(req.tools).to be_a(Hash)
-      expect(req.tool_choice).to eq(:auto)
-      expect(req.params).to be_a(Legion::Extensions::Llm::Canonical::Params)
-      expect(req.thinking).to be_a(Legion::Extensions::Llm::Canonical::Thinking::Config)
-      expect(req.stream).to be true
-      expect(req.conversation_id).to eq('conv-1')
-      expect(req.caller).to eq('test')
-      expect(req.routing).to eq({ provider: 'anthropic' })
-      expect(req.metadata).to eq({ source: 'cli' })
+    it 'raises on non-Message/non-Hash elements (the filter_map drop is deleted)' do
+      expect { described_class.build(messages: [42]) }
+        .to raise_error(ArgumentError, /expected Hash, got Integer/)
+      expect { described_class.build(messages: [nil]) }
+        .to raise_error(ArgumentError, /expected Hash, got NilClass/)
+      expect { described_class.from_hash(messages: ['str']) }
+        .to raise_error(ArgumentError, /expected Hash, got String/)
     end
 
-    it 'normalizes tool_choice string to symbol' do
-      req = described_class.build(tool_choice: 'auto')
-
-      expect(req.tool_choice).to eq(:auto)
-    end
-
-    it 'normalizes params from hash' do
-      req = described_class.build(params: { max_tokens: 4096, temperature: 0.7 })
-
-      expect(req.params).to be_a(Legion::Extensions::Llm::Canonical::Params)
-      expect(req.params.max_tokens).to eq(4096)
-    end
-
-    it 'normalizes thinking config from hash' do
-      req = described_class.build(thinking: { effort: 'high', budget: 10_000 })
-
-      expect(req.thinking).to be_a(Legion::Extensions::Llm::Canonical::Thinking::Config)
-      expect(req.thinking.effort).to eq('high')
-    end
-
-    it 'accepts tools as array' do
-      req = described_class.build(
-        tools: [{ name: 'search', description: 'Search' }]
-      )
-
-      expect(req.tools).to be_a(Hash)
-      expect(req.tools.keys).to include('search')
-    end
-
-    it 'accepts tools as hash' do
-      req = described_class.build(
-        tools: { search: { name: 'search', description: 'Search' } }
-      )
-
-      expect(req.tools).to be_a(Hash)
-      expect(req.tools[:search]).to be_a(Legion::Extensions::Llm::Canonical::ToolDefinition)
+    it 'raises on a wrong-class messages member' do
+      expect { described_class.build(messages: 'nope') }
+        .to raise_error(ArgumentError, /messages expected Array, got String/)
     end
   end
 
-  describe '.from_hash' do
-    it 'parses from hash with symbol keys' do
-      req = described_class.from_hash(
-        messages: [{ role: :user, content: 'hello' }],
-        system: 'You are helpful',
-        stream: true
-      )
-
-      expect(req.system).to eq('You are helpful')
-      expect(req.stream).to be true
-      expect(req.messages.first).to be_a(Legion::Extensions::Llm::Canonical::Message)
+  describe 'L2 — tools/params/thinking normalizers shared by both factories' do
+    it 'normalizes tools to Hash<name, ToolDefinition> (T7)' do
+      via_build = described_class.build(tools: [{ name: 'get_weather', parameters: {} }])
+      via_hash = described_class.from_hash(tools: [{ name: 'get_weather', parameters: {} }])
+      expect(via_build.tools).to eq(via_hash.tools)
+      expect(via_build.tools.keys).to eq(%w[get_weather])
+      expect(via_build.tools.values.first).to be_a(Legion::Extensions::Llm::Canonical::ToolDefinition)
     end
 
-    it 'moves unknown keys to metadata' do
-      req = described_class.from_hash(
-        messages: [{ role: :user, content: 'hello' }],
-        custom_field: 'value',
-        another_custom: 123
-      )
-
-      expect(req.metadata[:custom_field]).to eq('value')
-      expect(req.metadata[:another_custom]).to eq(123)
+    it 'normalizes params to Canonical::Params and thinking to Thinking::Config' do
+      request = described_class.build(params: { temperature: 1 }, thinking: { effort: 'high' })
+      expect(request.params).to be_a(Legion::Extensions::Llm::Canonical::Params)
+      expect(request.thinking).to be_a(Legion::Extensions::Llm::Canonical::Thinking::Config)
+      expect(request.thinking.effort).to eq('high')
     end
 
-    it 'merges unknown keys with existing metadata' do
-      req = described_class.from_hash(
-        messages: [{ role: :user, content: 'hello' }],
-        metadata: { existing: 'data' },
-        custom_field: 'value'
-      )
-
-      expect(req.metadata[:existing]).to eq('data')
-      expect(req.metadata[:custom_field]).to eq('value')
-    end
-
-    it 'returns nil for nil source' do
-      expect(described_class.from_hash(nil)).to be_nil
+    it 'raises on wrong-class params/thinking' do
+      expect { described_class.build(params: 'nope') }
+        .to raise_error(ArgumentError, /params expected Hash, got String/)
+      expect { described_class.from_hash(thinking: 42) }
+        .to raise_error(ArgumentError, /thinking expected Hash, got Integer/)
     end
   end
 
-  describe '#to_h' do
-    it 'serializes to hash with nested objects' do
-      req = described_class.build(
-        messages: [{ role: :user, content: 'hello' }],
-        system: 'You are helpful',
-        params: Legion::Extensions::Llm::Canonical::Params.from_hash(max_tokens: 4096)
+  describe 'T4 — member survival through the wire' do
+    it 'survives build → to_h → JSON → from_hash' do
+      request = described_class.build(
+        messages: [Legion::Extensions::Llm::Canonical::Message.build(role: :user, content: 'hi',
+                                                                     cache_control: { type: 'ephemeral' })],
+        params: { temperature: 0.25 }
       )
-      hash = req.to_h
-
-      expect(hash[:id]).to start_with('req_')
-      expect(hash[:system]).to eq('You are helpful')
-      expect(hash[:params]).to eq({ max_tokens: 4096 })
-    end
-
-    it 'serializes messages as hashes' do
-      req = described_class.build(
-        messages: [{ role: :user, content: 'hello' }]
-      )
-      hash = req.to_h
-
-      expect(hash[:messages]).to be_an(Array)
-      expect(hash[:messages].first).to be_a(Hash)
-    end
-
-    it 'serializes tools as hashes' do
-      req = described_class.build(
-        tools: { search: Legion::Extensions::Llm::Canonical::ToolDefinition.build(name: 'search') }
-      )
-      hash = req.to_h
-
-      expect(hash[:tools]).to be_a(Hash)
+      wire = Legion::JSON.load(Legion::JSON.dump(request.to_h))
+      round_tripped = described_class.from_hash(wire)
+      expect(round_tripped.messages.first.content).to eq('hi')
+      expect(round_tripped.messages.first.cache_control).to eq(type: 'ephemeral')
+      expect(round_tripped.params.temperature).to eq(0.25)
     end
   end
 
-  describe 'round-trip' do
-    it 'preserves values through from_hash/to_h' do
-      original = {
-        messages: [{ role: 'user', content: 'hello' }],
-        system: 'You are helpful',
-        stream: true,
-        conversation_id: 'conv-1'
-      }
-      req = described_class.from_hash(original)
-      serialized = req.to_h
-
-      expect(serialized[:system]).to eq('You are helpful')
-      expect(serialized[:stream]).to be true
-      expect(serialized[:conversation_id]).to eq('conv-1')
-    end
+  it 'defaults stream false, routing {} and auto-generates req ids' do
+    request = described_class.build(messages: [])
+    expect(request.stream).to be(false)
+    expect(request.routing).to eq({})
+    expect(request.id).to match(/\Areq_[0-9a-f]{24}\z/)
+    expect(request.messages).to eq([])
   end
 end

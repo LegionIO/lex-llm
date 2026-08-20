@@ -1,58 +1,57 @@
 # frozen_string_literal: true
 
+require 'spec_helper'
 require 'legion/extensions/llm/fleet/provider_responder'
+require 'support/ssot_registry_helpers'
 
 RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
+  include SsotRegistryHelpers
+
   let(:protocol) { Legion::Extensions::Llm::Fleet::Protocol }
-  let(:payload) do
+  let(:key) { instance_key(family: 'ollama', instance: 'default') }
+  let(:callable) do
+    Class.new do
+      def chat(messages, model:, **_params)
+        Legion::Extensions::Llm::Canonical::Response.build(
+          text: "chat #{model} #{messages.first.text}",
+          model: model,
+          stop_reason: :end_turn,
+          usage: Legion::Extensions::Llm::Canonical::Usage.build(input_tokens: 1, output_tokens: 2)
+        )
+      end
+    end.new
+  end
+  let(:offering_id) do
+    Legion::Extensions::Llm::Inventory::Registry.snapshot.offerings_for(instance_key: key).first.offering_id
+  end
+  let(:payload) { payload_for(offering_id) }
+
+  def payload_for(offering_id)
     {
       request_id: 'req-1',
       correlation_id: 'corr-1',
       idempotency_key: 'idem-1',
-      operation: :chat,
-      provider: :ollama,
-      provider_instance: :default,
+      operation: 'chat',
+      provider: 'ollama',
+      provider_instance: 'default',
       model: 'llama3',
-      params: { messages: [{ role: 'user', content: 'hello' }], temperature: 0.1 },
+      params: { messages: [{ role: 'user', content: 'hello' }] },
       reply_to: 'reply.queue',
       message_context: { conversation_id: 'conv-1' },
-      caller: { identity: 'user:matt' },
+      caller: { identity: 'user:test' },
       trace_context: { trace_id: 'trace-1' },
       signed_token: 'unsigned',
       timeout_seconds: 30,
       expires_at: (Time.now.utc + 30).iso8601,
-      protocol_version: protocol::VERSION
+      protocol_version: protocol::VERSION,
+      execution_contract: protocol::EXACT_EXECUTION_CONTRACT,
+      offering_id: offering_id
     }
-  end
-  let(:provider_instances) do
-    {
-      default: {
-        base_url: 'http://localhost:11434',
-        fleet: { respond_to_requests: true }
-      }
-    }
-  end
-  let(:provider_class) do
-    Class.new do
-      attr_reader :settings
-
-      def initialize(settings)
-        @settings = settings
-      end
-
-      def chat(messages:, model:, **params)
-        # Fleet wire rehydration delivers Canonical::Message objects — the
-        # callable/provider is the canonical boundary and reads them as such.
-        {
-          content: "chat #{model} #{messages.first.content}",
-          usage: { input_tokens: 1, output_tokens: 2 },
-          metadata: { temperature: params[:temperature], base_url: settings[:base_url] }
-        }
-      end
-    end
   end
 
   before do
+    Legion::Extensions::Llm::Inventory::Registry.reset!
+    claim_and_activate(key: key, callable: callable, coordinator: probe_coordinator(key), model: 'llama3')
     Legion::Extensions::Llm::Fleet::WorkerExecution.reset_idempotency_cache!
     allow(Legion::Extensions::Llm::Fleet::Settings).to receive(:value).and_call_original
     allow(Legion::Extensions::Llm::Fleet::Settings).to receive(:value)
@@ -68,47 +67,55 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
     expect(described_class).to respond_to(:call)
   end
 
-  it 'builds a provider from the requested instance, dispatches the operation, and publishes a fleet response' do
+  it 'dispatches the exact request through the registry and publishes the serialized Canonical::Response (E3)' do
     response_message = instance_double(Legion::Extensions::Llm::Transport::Messages::FleetResponse, publish: true)
-    allow(Legion::Extensions::Llm::Transport::Messages::FleetResponse).to receive(:new).and_return(response_message)
+    published_args = nil
+    allow(Legion::Extensions::Llm::Transport::Messages::FleetResponse).to receive(:new) do |*args|
+      published_args = args
+      response_message
+    end
 
     response = described_class.call(
       payload: payload,
-      provider_family: :ollama,
-      provider_class: provider_class,
-      provider_instances: provider_instances
+      provider_family: 'ollama',
+      registry: Legion::Extensions::Llm::Inventory::Registry
     )
 
-    expect(response).to include(content: 'chat llama3 hello')
-    expect(Legion::Extensions::Llm::Transport::Messages::FleetResponse).to have_received(:new).with(
-      hash_including(
-        request_id: 'req-1',
-        correlation_id: 'corr-1',
-        provider: :ollama,
-        provider_instance: :default,
-        model: 'llama3',
-        content: 'chat llama3 hello',
-        usage: { input_tokens: 1, output_tokens: 2 },
-        metadata: { temperature: 0.1, base_url: 'http://localhost:11434' }
-      )
+    expect(response).to be_a(Legion::Extensions::Llm::Canonical::Response)
+    expect(response.text).to eq('chat llama3 hello')
+    expect(published_args.first).to include(
+      request_id: 'req-1',
+      correlation_id: 'corr-1',
+      provider: 'ollama',
+      provider_instance: 'default',
+      model: 'llama3',
+      execution_contract: protocol::EXACT_EXECUTION_CONTRACT,
+      offering_id: offering_id
     )
+    published = published_args.first[:response]
+    expect(published).to include(text: 'chat llama3 hello', stop_reason: :end_turn)
+    # The envelope carries the serialized Canonical::Response; the Usage member
+    # is the canonical object (JSON encoding at publish serializes it per as_json).
+    expect(published[:usage]).to be_a(Legion::Extensions::Llm::Canonical::Usage)
+    expect(published[:usage].input_tokens).to eq(1)
+    expect(published[:usage].output_tokens).to eq(2)
     expect(response_message).to have_received(:publish)
   end
 
-  it 'rejects legacy fleet protocol fields before provider execution' do
+  it 'rejects legacy fleet protocol fields before execution (P4)' do
     expect do
       described_class.call(
         payload: payload.merge(request_type: 'chat'),
-        provider_family: :ollama,
-        provider_class: provider_class,
-        provider_instances: provider_instances
+        provider_family: 'ollama',
+        registry: Legion::Extensions::Llm::Inventory::Registry
       )
     end.to raise_error(ArgumentError, /request_type/)
   end
 
   it 'reports whether a provider instance is enabled for fleet responses' do
-    expect(described_class.enabled_for?(provider_instances)).to be(true)
+    expect(described_class.enabled_for?(default: { fleet: { respond_to_requests: true } })).to be(true)
     expect(described_class.enabled_for?(default: { fleet: { respond_to_requests: false } })).to be(false)
+    expect(described_class.enabled_for?(-> { { default: { fleet: { respond_to_requests: 'true' } } } })).to be(true)
   end
 
   it 'raises an actionable configuration error when fleet transport messages cannot load' do
@@ -120,62 +127,122 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
     end.to raise_error(described_class::ConfigurationError, /fleet responder transport unavailable/)
   end
 
-  describe 'execution_contract marker validation' do
-    it 'preserves false values for both envelope key spellings' do
-      symbol_envelope = described_class::FleetEnvelope.new(data: { execution_contract: false })
-      string_envelope = described_class::FleetEnvelope.new(data: { 'execution_contract' => false })
-
-      expect(symbol_envelope[:execution_contract]).to be(false)
-      expect(string_envelope[:execution_contract]).to be(false)
-    end
-
-    it 'accepts a legacy v2 envelope with no marker' do
-      envelope = described_class.parse_payload(payload)
-      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }.not_to raise_error
-    end
-
-    it 'accepts an explicitly nil marker as legacy v2' do
-      envelope = described_class.parse_payload(payload.merge(execution_contract: nil))
-      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }.not_to raise_error
-    end
-
-    { symbol: { execution_contract: false }, string: { 'execution_contract' => false } }.each do |spelling, marker|
-      it "rejects a false #{spelling}-key marker before provider or registry dispatch" do
-        registry = class_spy(Legion::Extensions::Llm::Inventory::Registry)
-        allow(provider_class).to receive(:new).and_call_original
-
-        expect do
-          described_class.call(
-            payload: payload.merge(marker),
-            provider_family: :ollama,
-            provider_class: provider_class,
-            provider_instances: provider_instances,
-            registry: registry
-          )
-        end.to raise_error(ArgumentError, /unknown execution_contract: false/)
-
-        expect(provider_class).not_to have_received(:new)
-        expect(registry).not_to have_received(:snapshot)
-      end
+  describe 'P2 — exact-only execution contract' do
+    it 'rejects a missing marker (legacy v2 tolerance is deleted)' do
+      legacy = payload_for(offering_id).except(:execution_contract)
+      envelope = described_class.parse_payload(legacy)
+      expect { described_class.check_envelope!(envelope, provider_family: 'ollama') }
+        .to raise_error(ArgumentError, /execution_contract is required/)
     end
 
     it 'rejects an unknown nonempty marker' do
       envelope = described_class.parse_payload(payload.merge(execution_contract: 'made_up'))
-      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }
-        .to raise_error(ArgumentError, /unknown execution_contract/)
+      expect { described_class.check_envelope!(envelope, provider_family: 'ollama') }
+        .to raise_error(Legion::Extensions::Llm::Fleet::ContractError, /execution_contract must be/)
     end
 
-    it 'requires offering_id for the exact marker' do
-      envelope = described_class.parse_payload(payload.merge(execution_contract: 'exact_offering_v1'))
-      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }
+    it 'requires the exact fields for the exact marker' do
+      envelope = described_class.parse_payload(payload.merge(offering_id: nil))
+      expect { described_class.check_envelope!(envelope, provider_family: 'ollama') }
         .to raise_error(ArgumentError, /offering_id is required/)
     end
 
+    it 'rejects a false marker before dispatch' do
+      envelope = described_class.parse_payload(payload.merge(execution_contract: false))
+      expect { described_class.check_envelope!(envelope, provider_family: 'ollama') }
+        .to raise_error(Legion::Extensions::Llm::Fleet::ContractError, /execution_contract must be/)
+    end
+
     it 'accepts a complete exact envelope' do
-      exact = payload.merge(execution_contract: 'exact_offering_v1', offering_id: 'off:v1:abc')
-      envelope = described_class.parse_payload(exact)
-      expect { described_class.check_envelope!(envelope, provider_family: :ollama) }.not_to raise_error
-      expect(described_class.exact?(envelope)).to be(true)
+      envelope = described_class.parse_payload(payload)
+      expect { described_class.check_envelope!(envelope, provider_family: 'ollama') }.not_to raise_error
+    end
+  end
+
+  describe 'P3 — explicit protocol version' do
+    it 'rejects a missing protocol_version (no default fill)' do
+      envelope = described_class.parse_payload(payload.except(:protocol_version))
+      expect { described_class.check_envelope!(envelope, provider_family: 'ollama') }
+        .to raise_error(ArgumentError, /protocol_version is required/)
+    end
+
+    it 'rejects a mismatched protocol_version' do
+      envelope = described_class.parse_payload(payload.merge(protocol_version: 2))
+      expect { described_class.check_envelope!(envelope, provider_family: 'ollama') }
+        .to raise_error(ArgumentError, /protocol_version must be 3/)
+    end
+  end
+
+  describe 'E1 — wire normalization' do
+    it 'raises on a wrong-shape payload (the silent {} fallback is deleted)' do
+      expect { described_class.parse_payload(42) }
+        .to raise_error(Legion::Extensions::Llm::Fleet::ContractError, /expected Hash or String, got Integer/)
+    end
+
+    it 'wraps Hash payloads through the single FleetEnvelope entry' do
+      envelope = described_class.parse_payload({ 'request_id' => 'r1', protocol_version: 3 })
+      expect(envelope).to be_a(Legion::Extensions::Llm::Fleet::FleetEnvelope)
+      expect(envelope.request_id).to eq('r1')
+    end
+
+    it 'reads false values for both key spellings' do
+      symbol_envelope = Legion::Extensions::Llm::Fleet::FleetEnvelope.new(data: { execution_contract: false })
+      string_envelope = Legion::Extensions::Llm::Fleet::FleetEnvelope.new(data: { 'execution_contract' => false })
+
+      expect(symbol_envelope[:execution_contract]).to be(false)
+      expect(string_envelope[:execution_contract]).to be(false)
+    end
+  end
+
+  describe 'F6 — retryability derived from the ProviderOutcome kind table' do
+    it 'never retries contract, policy, auth, or classification errors' do
+      expect(described_class.retryable_error?(Legion::Extensions::Llm::Fleet::ContractError.new('x'))).to be(false)
+      expect(described_class.retryable_error?(Legion::Extensions::Llm::Fleet::WorkerExecution::PolicyError.new('x'))).to be(false)
+      expect(described_class.retryable_error?(Legion::Extensions::Llm::Fleet::TokenError.new('x'))).to be(false)
+      expect(described_class.retryable_error?(Legion::Extensions::Llm::Inventory::Errors::ExactOfferingMismatchError.new('x'))).to be(false)
+      expect(described_class.retryable_error?(described_class::ConfigurationError.new('x'))).to be(false)
+    end
+
+    it 'retries transient provider kinds only' do
+      expect(described_class.retryable_error?(Legion::Extensions::Llm::RateLimitError.new(nil, 'x'))).to be(true)
+      expect(described_class.retryable_error?(Legion::Extensions::Llm::OverloadedError.new(nil, 'x'))).to be(true)
+      expect(described_class.retryable_error?(Timeout::Error.new('x'))).to be(true)
+      expect(described_class.retryable_error?(Legion::Extensions::Llm::UnauthorizedError.new(nil, 'x'))).to be(false)
+    end
+  end
+
+  describe 'G5 — thinking never crosses the fleet' do
+    it 'excludes thinking from the response envelope exactly once at the builder' do
+      thinking_callable = Class.new do
+        def chat(_messages, model:, **)
+          Legion::Extensions::Llm::Canonical::Response.build(
+            text: 'done',
+            model: model,
+            stop_reason: :end_turn,
+            thinking: Legion::Extensions::Llm::Canonical::Thinking.build(content: 'secret-reasoning')
+          )
+        end
+      end.new
+      key2 = instance_key(family: 'ollama', instance: 'thinking')
+      Legion::Extensions::Llm::Inventory::Registry.reset!
+      claim_and_activate(key: key2, callable: thinking_callable, coordinator: probe_coordinator(key2), model: 'llama3')
+      thinking_offering = Legion::Extensions::Llm::Inventory::Registry
+                          .snapshot.offerings_for(instance_key: key2).first.offering_id
+
+      response_message = instance_double(Legion::Extensions::Llm::Transport::Messages::FleetResponse, publish: true)
+      published_args = nil
+      allow(Legion::Extensions::Llm::Transport::Messages::FleetResponse).to receive(:new) do |*args|
+        published_args = args
+        response_message
+      end
+
+      described_class.call(
+        payload: payload_for(thinking_offering).merge(provider_instance: 'thinking'),
+        provider_family: 'ollama',
+        registry: Legion::Extensions::Llm::Inventory::Registry
+      )
+
+      expect(published_args.first[:response]).not_to have_key(:thinking)
     end
   end
 end
