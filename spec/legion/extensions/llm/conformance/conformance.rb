@@ -5,10 +5,17 @@
 # Ship location: spec/legion/extensions/llm/conformance/
 # Module: Canonical::Conformance
 #
-# Consumer pattern (in provider gem spec_helper):
+# Consumer pattern (in provider gem spec_helper) — load the kit's example
+# modules BY EXPLICIT NAME. Do NOT glob the kit dir: it also ships lex-llm's
+# own self-test specs (echo_translator_spec, ssot_*_conformance_spec) plus
+# their support files, which LoadError outside this repo.
 #   kit = File.join(Gem.loaded_specs['lex-llm'].full_gem_path,
 #                   'spec/legion/extensions/llm/conformance')
-#   Dir[File.join(kit, '**', '*.rb')].sort.each { |f| require f }
+#   %w[conformance.rb canonical_type_examples.rb client_translator_examples.rb
+#       provider_translator_examples.rb provider_tool_rendering_examples.rb
+#       ssot_contract_examples.rb ssot_provider_examples.rb].each do |f|
+#     require File.join(kit, f)
+#   end
 #
 # Then in specs:
 #   it_behaves_like 'a canonical provider translator', described_class
