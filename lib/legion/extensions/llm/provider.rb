@@ -568,8 +568,18 @@ module Legion
         # permits models containing any pattern; a blacklist denies models
         # containing any pattern; whitelist is applied before blacklist.
         # Empty list = no restriction from that side.
+        # Model identity for policy matching: the canonical id string. Model
+        # objects (e.g. Model::Info) match by their #id — never by their
+        # inspect string; bare strings pass through unchanged.
+        def self.model_identity(model)
+          candidate = model.respond_to?(:id) ? model.id : model
+          candidate = model if candidate.nil?
+
+          candidate.to_s
+        end
+
         def self.policy_allows?(model_name, whitelist: [], blacklist: [])
-          name = model_name.to_s.downcase
+          name = model_identity(model_name).downcase
           wl = Array(whitelist).map { |p| p.to_s.downcase }
           bl = Array(blacklist).map { |p| p.to_s.downcase }
 

@@ -352,6 +352,28 @@ RSpec.describe Legion::Extensions::Llm::Provider do
         expect(provider.model_allowed?('gpt-5')).to be true
       end
     end
+
+    context 'when the model is an object exposing #id (e.g. Model::Info)' do
+      let(:model_info) do
+        Legion::Extensions::Llm::Model::Info.new(id: 'claude-sonnet-4-6', provider: :anthropic)
+      end
+
+      before { provider.settings = { model_whitelist: %w[sonnet] } }
+
+      it 'matches policy against the model id, not the inspect string' do
+        expect(provider.model_allowed?(model_info)).to be true
+      end
+
+      it 'blocks object models the whitelist does not cover' do
+        other = Legion::Extensions::Llm::Model::Info.new(id: 'llama-3', provider: :ollama)
+        expect(provider.model_allowed?(other)).to be false
+      end
+
+      it 'never matches inspect-string artifacts (e.g. a data/name pattern)' do
+        provider.settings = { model_whitelist: %w[data] }
+        expect(provider.model_allowed?(model_info)).to be false
+      end
+    end
   end
 
   describe '#enforce_model_allowed! (dispatch compliance guard)' do
