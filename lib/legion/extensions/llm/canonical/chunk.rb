@@ -7,24 +7,45 @@ module Legion
       module Canonical
         # Canonical streaming chunk with full lifecycle support.
         # Per R4: block_index/item_id/signature lifecycle, multi-tool-call deltas.
-        # Per G20d: strict on produce, ignore-unknown on consume.
+        # Per G20d (04 §11, stated law): strict on produce — the named factories
+        # and the generic build validate type against CHUNK_TYPES; lenient on
+        # consume — from_hash accepts any type symbol and passes it through. # -- required for Data.define block scope
         Chunk = ::Data.define(
           :request_id, :conversation_id, :exchange_id,
           :index, :type, :block_index,
           :item_id, :delta, :tool_call, :signature,
           :usage, :stop_reason, :metadata, :timestamp
         ) do
+          # Generic produce path — the only way to construct an arbitrary-type
+          # chunk; type is validated against CHUNK_TYPES (G20d).
+          def self.build(
+            type:, request_id: nil, conversation_id: nil, exchange_id: nil,
+            index: nil, block_index: nil, item_id: nil,
+            delta: nil, tool_call: nil, signature: nil,
+            usage: nil, stop_reason: nil, metadata: {}, timestamp: nil
+          )
+            type_sym = type.is_a?(::String) ? type.to_sym : type
+            Strict.enum!(type_sym, self::CHUNK_TYPES, self::BUILD_SITE, :type)
+            new(
+              request_id:, conversation_id:, exchange_id:,
+              index:, type: type_sym, block_index:,
+              item_id:, delta:,
+              tool_call: normalize_tool_call!(tool_call, self::BUILD_SITE),
+              signature:,
+              usage: normalize_usage!(usage, self::BUILD_SITE),
+              stop_reason: stop_reason&.to_sym,
+              metadata: Strict.metadata!(metadata, self::BUILD_SITE),
+              timestamp: timestamp || ::Time.now
+            )
+          end
+
           # Build a text delta chunk.
           def self.text_delta(delta:, request_id:, conversation_id: nil, exchange_id: nil,
                               index: 0, block_index: nil, item_id: nil,
                               stop_reason: nil, usage: nil)
-            new(
-              type: :text_delta, delta: delta, index: index,
-              request_id: request_id, conversation_id: conversation_id,
-              exchange_id: exchange_id, block_index: block_index,
-              item_id: item_id, tool_call: nil, signature: nil,
-              usage: usage, stop_reason: stop_reason, metadata: {},
-              timestamp: ::Time.now
+            build(
+              type: :text_delta, delta:, request_id:, conversation_id:, exchange_id:,
+              index:, block_index:, item_id:, stop_reason:, usage:
             )
           end
 
@@ -32,117 +53,86 @@ module Legion
           def self.thinking_delta(delta:, request_id:, conversation_id: nil, exchange_id: nil,
                                   index: 0, block_index: nil, item_id: nil, signature: nil,
                                   stop_reason: nil, usage: nil)
-            new(
-              type: :thinking_delta, delta: delta, index: index,
-              request_id: request_id, conversation_id: conversation_id,
-              exchange_id: exchange_id, block_index: block_index,
-              item_id: item_id, tool_call: nil, signature: signature,
-              usage: usage, stop_reason: stop_reason, metadata: {},
-              timestamp: ::Time.now
+            build(
+              type: :thinking_delta, delta:, request_id:, conversation_id:, exchange_id:,
+              index:, block_index:, item_id:, signature:, stop_reason:, usage:
             )
           end
 
-          # Build a tool_call_delta chunk (supports multiple in-flight tool calls via tool_call.id).
+          # Build a tool_call_delta chunk (supports multiple in-flight tool calls
+          # via the fragment's id/index). tool_call is the delta fragment:
+          # { id:, name:, arguments: <String fragment>, index:, signature: }.
           def self.tool_call_delta(tool_call:, request_id:, conversation_id: nil, exchange_id: nil,
                                    index: 0, block_index: nil, item_id: nil,
                                    stop_reason: nil, usage: nil)
-            new(
-              type: :tool_call_delta, index: index,
-              request_id: request_id, conversation_id: conversation_id,
-              exchange_id: exchange_id, block_index: block_index,
-              item_id: item_id, delta: nil, tool_call: tool_call, signature: nil,
-              usage: usage, stop_reason: stop_reason, metadata: {},
-              timestamp: ::Time.now
+            build(
+              type: :tool_call_delta, tool_call:, request_id:, conversation_id:, exchange_id:,
+              index:, block_index:, item_id:, stop_reason:, usage:
             )
           end
 
           # Build a usage chunk.
           def self.usage_chunk(usage:, request_id:, conversation_id: nil, exchange_id: nil)
-            new(
-              type: :usage, request_id: request_id,
-              conversation_id: conversation_id, exchange_id: exchange_id,
-              index: nil, block_index: nil, item_id: nil,
-              delta: nil, tool_call: nil, signature: nil,
-              usage: usage, stop_reason: nil, metadata: {},
-              timestamp: ::Time.now
-            )
+            build(type: :usage, request_id:, conversation_id:, exchange_id:, usage:)
           end
 
           # Build a done chunk.
           def self.done(request_id:, usage: nil, stop_reason: nil, conversation_id: nil, exchange_id: nil)
-            new(
-              type: :done, request_id: request_id,
-              conversation_id: conversation_id, exchange_id: exchange_id,
-              index: nil, block_index: nil, item_id: nil,
-              delta: nil, tool_call: nil, signature: nil,
-              usage: usage, stop_reason: stop_reason, metadata: {},
-              timestamp: ::Time.now
-            )
+            build(type: :done, request_id:, usage:, stop_reason:, conversation_id:, exchange_id:)
           end
 
           # Build an error chunk.
-          def self.error_chunk(error:, request_id:, conversation_id: nil, exchange_id: nil, metadata: nil)
-            new(
-              type: :error, request_id: request_id,
-              conversation_id: conversation_id, exchange_id: exchange_id,
-              index: nil, block_index: nil, item_id: nil,
-              delta: nil, tool_call: nil, signature: nil,
-              usage: nil, stop_reason: :error,
-              metadata: (metadata || {}).merge(error: error),
-              timestamp: ::Time.now
+          def self.error_chunk(error:, request_id:, conversation_id: nil, exchange_id: nil, metadata: {})
+            build(
+              type: :error, request_id:, conversation_id:, exchange_id:,
+              stop_reason: :error, metadata: metadata.merge(error:)
             )
           end
 
           # Build from a Hash (raw provider response or deserialized wire payload).
-          # Per G20d: ignore-unknown on consume — unknown chunk types are passed through.
+          # Per G20d: ignore-unknown on consume — unknown chunk types pass through.
           def self.from_hash(source)
-            return nil if source.nil?
-
-            h = source.transform_keys(&:to_sym)
-
-            # Normalize type
-            type_raw = h.delete(:type)
-            type_sym = type_raw&.to_sym if type_raw
-
-            # Normalize nested objects
-            tool_call_raw = h.delete(:tool_call)
-            h[:tool_call] = if tool_call_raw.is_a?(ToolCall)
-                              tool_call_raw
-                            elsif tool_call_raw.is_a?(Hash)
-                              ToolCall.from_hash(tool_call_raw)
-                            end
-
-            usage_raw = h.delete(:usage)
-            h[:usage] = if usage_raw.is_a?(Usage)
-                          usage_raw
-                        elsif usage_raw.is_a?(Hash)
-                          Usage.from_hash(usage_raw)
-                        end
-
-            # Normalize stop_reason
-            stop_reason_raw = h.delete(:stop_reason) || h.delete(:finish_reason)
-            h[:stop_reason] = stop_reason_raw&.to_sym if stop_reason_raw
-
-            # Ensure metadata is a Hash
-            h[:metadata] = h[:metadata] || {}
-
-            # Provide defaults for missing fields
+            Strict.require_hash!(source, self::FROM_HASH_SITE)
+            hash = Strict.symbolize_keys(source)
+            metadata = Strict.fold_unknowns!(self, self::FROM_HASH_SITE, hash)
+            type_raw = hash.delete(:type)
+            tool_call = normalize_tool_call!(hash.delete(:tool_call), self::FROM_HASH_SITE)
+            usage = normalize_usage!(hash.delete(:usage), self::FROM_HASH_SITE)
+            stop_reason_raw = hash.delete(:stop_reason)
+            timestamp = hash.delete(:timestamp)
+            # Remaining keys are all members; pass through with consume defaults.
             new(
-              request_id: h[:request_id],
-              conversation_id: h[:conversation_id],
-              exchange_id: h[:exchange_id],
-              index: h[:index],
-              type: type_sym,
-              block_index: h[:block_index],
-              item_id: h[:item_id],
-              delta: h[:delta],
-              tool_call: h[:tool_call],
-              signature: h[:signature],
-              usage: h[:usage],
-              stop_reason: h[:stop_reason],
-              metadata: h[:metadata],
-              timestamp: h[:timestamp] || ::Time.now
+              request_id: hash[:request_id],
+              conversation_id: hash[:conversation_id],
+              exchange_id: hash[:exchange_id],
+              index: hash[:index],
+              type: type_raw&.to_sym,
+              block_index: hash[:block_index],
+              item_id: hash[:item_id],
+              delta: hash[:delta],
+              tool_call:,
+              signature: hash[:signature],
+              usage:,
+              stop_reason: stop_reason_raw&.to_sym,
+              metadata:,
+              timestamp: timestamp || ::Time.now
             )
+          end
+
+          # tool_call member: the delta fragment (Hash) or a full ToolCall; nil allowed.
+          def self.normalize_tool_call!(tool_call, site)
+            return nil if tool_call.nil?
+            return tool_call if tool_call.is_a?(::Hash) || tool_call.is_a?(ToolCall)
+
+            Strict.expect_type!(tool_call, [::Hash, ToolCall], site, :tool_call)
+          end
+
+          def self.normalize_usage!(usage, site)
+            return nil if usage.nil?
+            return usage if usage.is_a?(Usage)
+
+            Strict.expect_type!(usage, [::Hash], site, :usage)
+            Usage.from_hash(usage)
           end
 
           # Serialize to a Hash for AMQP/fleet/wire transport.
@@ -189,6 +179,8 @@ module Legion
         end
 
         Chunk::CHUNK_TYPES = %i[text_delta thinking_delta tool_call_delta usage done error].freeze
+        Chunk::BUILD_SITE = 'Canonical::Chunk.build'
+        Chunk::FROM_HASH_SITE = 'Canonical::Chunk.from_hash'
       end
     end
   end

@@ -101,10 +101,13 @@ module Legion
             Time.parse(value.to_s).utc
           end
 
+          # The offering travels as a plain (symbol-keyed) Hash — the legacy
+          # ModelOffering type is deleted; the event edge projects whatever the
+          # builder supplies, unchanged (07 §8).
           def normalize_offering(value)
-            return value if value.is_a?(ModelOffering)
+            raise ArgumentError, 'offering must be a Hash' unless value.is_a?(Hash)
 
-            ModelOffering.new(value)
+            value.transform_keys(&:to_sym)
           end
 
           def sanitized_offering_hash

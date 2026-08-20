@@ -4,56 +4,44 @@
 module Legion
   module Extensions
     module Llm
+      # -- required for Data.define block scope
       module Canonical
-        # rubocop:disable Lint/ConstantDefinitionInBlock -- required for Data.define block scope
         # Canonical usage/metering data for a response.
         # Ports field vocabulary from lex-llm Tokens and legion-llm Types.
         # Includes non-token units extension point per G20b.
+        # Canonical keys only (O03a): provider spellings are translated at the edges.
         Usage = ::Data.define(
           :input_tokens, :output_tokens, :cache_read_tokens, :cache_write_tokens,
-          :thinking_tokens, :units
+          :thinking_tokens, :units, :metadata
         ) do
-          USAGE_KNOWN_KEYS = %i[input_tokens output_tokens cache_read_tokens cache_write_tokens
-                                thinking_tokens units].freeze
-
-          # Build from a Hash (raw provider response or deserialized wire payload).
-          # Accepts both canonical key names and legacy provider spellings.
-          def self.from_hash(source)
-            return nil if source.nil? || source.empty?
-
-            h = source.transform_keys(&:to_sym)
-
-            # Normalize legacy key names
-            h[:input_tokens] ||= h.delete(:input) || h.delete(:prompt_tokens)
-            h[:output_tokens] ||= h.delete(:output) || h.delete(:completion_tokens)
-            h[:cache_read_tokens] ||= h.delete(:cached) || h.delete(:cache_read)
-            h[:cache_write_tokens] ||= h.delete(:cache_creation) || h.delete(:cache_write)
-            h[:thinking_tokens] ||= h.delete(:thinking) || h.delete(:reasoning)
-
-            # Extract nested details (OpenAI prompt_tokens_details / input_tokens_details)
-            h[:cache_read_tokens] ||= dig_nested(h, :prompt_tokens_details, :cached_tokens) ||
-                                      dig_nested(h, :input_tokens_details, :cached_tokens)
-            h[:thinking_tokens] ||= dig_nested(h, :completion_tokens_details, :reasoning_tokens) ||
-                                    dig_nested(h, :output_tokens_details, :reasoning_tokens)
-
-            # Extract units (non-token extension point — G20b)
-            units = h.delete(:units) || {}
-
+          # rubocop:disable Metrics/ParameterLists -- factory methods have many params
+          # Build from keyword args (primary constructor).
+          def self.build(
+            input_tokens: nil, output_tokens: nil, cache_read_tokens: nil,
+            cache_write_tokens: nil, thinking_tokens: nil, units: nil, metadata: {}
+          )
             new(
-              input_tokens: h[:input_tokens],
-              output_tokens: h[:output_tokens],
-              cache_read_tokens: h[:cache_read_tokens],
-              cache_write_tokens: h[:cache_write_tokens],
-              thinking_tokens: h[:thinking_tokens],
-              units: units
+              input_tokens:, output_tokens:, cache_read_tokens:, cache_write_tokens:,
+              thinking_tokens:, units: units || {}, metadata: Strict.metadata!(metadata, self::BUILD_SITE)
             )
           end
+          # rubocop:enable Metrics/ParameterLists
 
-          def self.dig_nested(hash, details_key, value_key)
-            details = hash[details_key]
-            return nil unless details.is_a?(Hash)
-
-            details[value_key] || details[value_key.to_s]
+          # Build from a Hash (raw provider response or deserialized wire payload).
+          # from_hash({}) is a valid all-nil Usage (the no-usage object), never nil.
+          def self.from_hash(source)
+            Strict.require_hash!(source, self::FROM_HASH_SITE)
+            hash = Strict.symbolize_keys(source)
+            metadata = Strict.fold_unknowns!(self, self::FROM_HASH_SITE, hash)
+            build(
+              input_tokens: hash[:input_tokens],
+              output_tokens: hash[:output_tokens],
+              cache_read_tokens: hash[:cache_read_tokens],
+              cache_write_tokens: hash[:cache_write_tokens],
+              thinking_tokens: hash[:thinking_tokens],
+              units: hash[:units] || {},
+              metadata:
+            )
           end
 
           # Serialize to a Hash for AMQP/fleet/wire transport.
@@ -76,7 +64,9 @@ module Legion
              thinking_tokens].compact.sum
           end
         end
-        # rubocop:enable Lint/ConstantDefinitionInBlock
+
+        Usage::BUILD_SITE = 'Canonical::Usage.build'
+        Usage::FROM_HASH_SITE = 'Canonical::Usage.from_hash'
       end
     end
   end

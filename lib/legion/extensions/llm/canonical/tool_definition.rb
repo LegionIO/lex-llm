@@ -9,16 +9,16 @@ module Legion
         COMPOSITE_SCHEMA_KEYWORDS = %i[oneOf anyOf allOf enum $ref $defs definitions].freeze
 
         # Canonical tool definition.
-        # Ports field vocabulary from Legion::LLM::Types::ToolDefinition.
-        ToolDefinition = ::Data.define(:name, :description, :parameters, :source) do
+        # Ports field vocabulary from Legion::LLM::Types::ToolDefinition. # -- required for Data.define block scope
+        ToolDefinition = ::Data.define(:name, :description, :parameters, :source, :metadata) do
           def self.normalize_parameters(parameters)
             empty = { type: 'object', properties: {} }
             return empty if parameters.nil?
 
-            schema = if parameters.respond_to?(:transform_keys)
-                       parameters.transform_keys { |k| k.respond_to?(:to_sym) ? k.to_sym : k }
-                     end
-            return empty if schema.nil? || schema.empty?
+            Strict.expect_type!(parameters, [::Hash], self::BUILD_SITE, :parameters) unless parameters.is_a?(::Hash)
+
+            schema = parameters.transform_keys { |k| k.respond_to?(:to_sym) ? k.to_sym : k }
+            return empty if schema.empty?
             return schema if schema.key?(:type)
             return schema.merge(type: 'object') if OBJECT_SCHEMA_KEYWORDS.any? { |k| schema.key?(k) }
             return schema if COMPOSITE_SCHEMA_KEYWORDS.any? { |k| schema.key?(k) }
@@ -27,43 +27,28 @@ module Legion
           end
 
           # Build from keyword args (primary constructor).
-          def self.build(name:, description: '', parameters: nil, source: nil)
+          def self.build(name:, description: '', parameters: nil, source: nil, metadata: {})
             new(
               sanitize_tool_name(name),
-              description.to_s,
+              Strict.expect_type!(description, [::String], self::BUILD_SITE, :description).to_s,
               normalize_parameters(parameters),
-              source || { type: :builtin }
+              source || { type: :builtin },
+              Strict.metadata!(metadata, self::BUILD_SITE)
             )
           end
 
           # Build from a Hash (raw provider response or deserialized wire payload).
-          def self.from_hash(hash, source: nil)
-            return nil if hash.nil?
-
-            normalized = hash.respond_to?(:transform_keys) ? hash.transform_keys(&:to_sym) : {}
+          # Canonical keys only (O03a): edges pass `parameters`, not `input_schema`.
+          def self.from_hash(source)
+            Strict.require_hash!(source, self::FROM_HASH_SITE)
+            hash = Strict.symbolize_keys(source)
+            metadata = Strict.fold_unknowns!(self, self::FROM_HASH_SITE, hash)
             build(
-              name: normalized[:name],
-              description: normalized[:description],
-              parameters: normalized[:parameters] || normalized[:input_schema],
-              source: source || normalized[:source]
-            )
-          end
-
-          # Build from a registry entry (extension/registry tool metadata).
-          def self.from_registry_entry(entry)
-            source = {
-              type: entry[:tool_class] ? :registry : :extension,
-              tool_class: entry[:tool_class],
-              extension: entry[:extension],
-              runner: entry[:runner],
-              function: entry[:function]
-            }.compact
-
-            build(
-              name: entry[:name],
-              description: entry[:description],
-              parameters: entry[:input_schema] || entry[:parameters],
-              source: source.compact
+              name: hash[:name],
+              description: hash[:description],
+              parameters: hash[:parameters],
+              source: hash[:source],
+              metadata:
             )
           end
 
@@ -85,11 +70,7 @@ module Legion
 
           # Serialize to a Hash for AMQP/fleet/wire transport.
           def to_h
-            {
-              name: name,
-              description: description,
-              parameters: parameters
-            }.compact.reject { |k, v| k == :description && v == '' }
+            super.compact
           end
 
           # MultiJson/Oj/::JSON callback — prevents Data.define #inspect leak into JSON.
@@ -101,6 +82,9 @@ module Legion
             to_h.to_json(*)
           end
         end
+
+        ToolDefinition::BUILD_SITE = 'Canonical::ToolDefinition.build'
+        ToolDefinition::FROM_HASH_SITE = 'Canonical::ToolDefinition.from_hash'
       end
     end
   end

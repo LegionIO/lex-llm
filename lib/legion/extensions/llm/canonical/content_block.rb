@@ -1,108 +1,87 @@
 # frozen_string_literal: true
 
+# rubocop:disable Metrics/ParameterLists -- factory methods have many params
 module Legion
   module Extensions
     module Llm
       module Canonical
         # Typed content block with media_type support per G20a.
-        # Ports field vocabulary from Legion::LLM::Types::ContentBlock.
-        # rubocop:disable Lint/ConstantDefinitionInBlock -- required for Data.define block scope
+        # Ports field vocabulary from Legion::LLM::Types::ContentBlock. # -- required for Data.define block scope
         ContentBlock = ::Data.define(
           :type, :text, :data, :source_type, :media_type,
           :detail, :name, :file_id,
           :id, :input, :tool_use_id, :is_error,
           :source, :start_index, :end_index,
-          :code, :message, :cache_control
+          :code, :message, :cache_control, :metadata
         ) do
-          TEXT_TYPE_ALIASES = %i[text output_text input_text].freeze
-
-          # Build a text content block.
-          def self.text(content, cache_control: nil)
+          # Build from keyword args (primary constructor).
+          def self.build(
+            type: nil, text: nil, data: nil, source_type: nil, media_type: nil,
+            detail: nil, name: nil, file_id: nil,
+            id: nil, input: nil, tool_use_id: nil, is_error: nil,
+            source: nil, start_index: nil, end_index: nil,
+            code: nil, message: nil, cache_control: nil, metadata: {}
+          )
             new(
-              type: :text, text: content, data: nil, source_type: nil, media_type: nil,
-              detail: nil, name: nil, file_id: nil, id: nil, input: nil,
-              tool_use_id: nil, is_error: nil, source: nil, start_index: nil,
-              end_index: nil, code: nil, message: nil, cache_control: cache_control
-            )
-          end
-
-          # Build a thinking content block.
-          def self.thinking(content)
-            new(
-              type: :thinking, text: content, data: nil, source_type: nil, media_type: nil,
-              detail: nil, name: nil, file_id: nil, id: nil, input: nil,
-              tool_use_id: nil, is_error: nil, source: nil, start_index: nil,
-              end_index: nil, code: nil, message: nil, cache_control: nil
-            )
-          end
-
-          # Build a tool_use content block.
-          def self.tool_use(id:, name:, input:)
-            new(
-              type: :tool_use, text: nil, data: nil, source_type: nil, media_type: nil,
-              detail: nil, name: name, file_id: nil, id: id, input: input,
-              tool_use_id: nil, is_error: nil, source: nil, start_index: nil,
-              end_index: nil, code: nil, message: nil, cache_control: nil
-            )
-          end
-
-          # Build a tool_result content block.
-          def self.tool_result(tool_use_id:, content:, is_error: false)
-            new(
-              type: :tool_result, text: content, data: nil, source_type: nil, media_type: nil,
-              detail: nil, name: nil, file_id: nil, id: nil, input: nil,
-              tool_use_id: tool_use_id, is_error: is_error, source: nil, start_index: nil,
-              end_index: nil, code: nil, message: nil, cache_control: nil
-            )
-          end
-
-          # Build an image content block with media_type (G20a).
-          def self.image(data:, media_type:, source_type: :base64, detail: nil)
-            new(
-              type: :image, text: nil, data: data, source_type: source_type, media_type: media_type,
-              detail: detail, name: nil, file_id: nil, id: nil, input: nil,
-              tool_use_id: nil, is_error: nil, source: nil, start_index: nil,
-              end_index: nil, code: nil, message: nil, cache_control: nil
+              type: normalize_type!(type, self::BUILD_SITE),
+              text:, data:, source_type:, media_type:,
+              detail:, name:, file_id:,
+              id:, input:, tool_use_id:, is_error:,
+              source:, start_index:, end_index:,
+              code:, message:, cache_control:,
+              metadata: Strict.metadata!(metadata, self::BUILD_SITE)
             )
           end
 
           # Build from a Hash (raw provider response or deserialized wire payload).
-          # Rescues NoMethodError from corrupted inputs (e.g. String elements from
-          # prior serialization bugs where ContentBlock#inspect leaked into storage).
+          # Canonical keys only (O03a); unknown keys fold into metadata (L5).
           def self.from_hash(source)
-            return nil if source.nil?
-
-            h = source.transform_keys(&:to_sym)
-            type_raw = h.delete(:type)
-            if type_raw
-              type_sym = type_raw.to_sym
-              h[:type] = TEXT_TYPE_ALIASES.include?(type_sym) ? :text : type_sym
-            end
-
-            new(
-              type: h[:type],
-              text: h[:text],
-              data: h[:data],
-              source_type: h[:source_type],
-              media_type: h[:media_type],
-              detail: h[:detail],
-              name: h[:name],
-              file_id: h[:file_id],
-              id: h[:id],
-              input: h[:input],
-              tool_use_id: h[:tool_use_id],
-              is_error: h[:is_error],
-              source: h[:source],
-              start_index: h[:start_index],
-              end_index: h[:end_index],
-              code: h[:code],
-              message: h[:message],
-              cache_control: h[:cache_control]
+            Strict.require_hash!(source, self::FROM_HASH_SITE)
+            hash = Strict.symbolize_keys(source)
+            metadata = Strict.fold_unknowns!(self, self::FROM_HASH_SITE, hash)
+            build(
+              type: hash[:type], text: hash[:text], data: hash[:data],
+              source_type: hash[:source_type], media_type: hash[:media_type],
+              detail: hash[:detail], name: hash[:name], file_id: hash[:file_id],
+              id: hash[:id], input: hash[:input], tool_use_id: hash[:tool_use_id],
+              is_error: hash[:is_error], source: hash[:source],
+              start_index: hash[:start_index], end_index: hash[:end_index],
+              code: hash[:code], message: hash[:message],
+              cache_control: hash[:cache_control], metadata:
             )
-          rescue NoMethodError => e
-            Legion::Logging.log.warn('[canonical][content_block] from_hash received non-Hash input ' \
-                                     "(#{source.class}): #{e.message}")
-            text(source.to_s)
+          end
+
+          # L6: validate against the declared block types when present.
+          def self.normalize_type!(type, site)
+            return nil if type.nil?
+
+            type_sym = type.is_a?(::String) ? type.to_sym : type
+            Strict.enum!(type_sym, self::CONTENT_BLOCK_TYPES, site, :type)
+          end
+
+          # Build a text content block.
+          def self.text(content, cache_control: nil)
+            build(type: :text, text: content, cache_control:)
+          end
+
+          # Build a thinking content block.
+          def self.thinking(content)
+            build(type: :thinking, text: content)
+          end
+
+          # Build a tool_use content block.
+          def self.tool_use(id:, name:, input:)
+            build(type: :tool_use, id:, name:, input:)
+          end
+
+          # Build a tool_result content block.
+          def self.tool_result(tool_use_id:, content:, is_error: false)
+            build(type: :tool_result, text: content, tool_use_id:, is_error:)
+          end
+
+          # Build an image content block with media_type (G20a).
+          def self.image(data:, media_type:, source_type: :base64, detail: nil)
+            build(type: :image, data:, media_type:, source_type:, detail:)
           end
 
           # Serialize to a Hash for AMQP/fleet/wire transport.
@@ -134,7 +113,7 @@ module Legion
 
           # Whether this block carries textual content.
           def text?
-            TEXT_TYPE_ALIASES.include?(type)
+            type == :text
           end
 
           # Whether this block carries thinking/reasoning content.
@@ -154,8 +133,10 @@ module Legion
         end
 
         ContentBlock::CONTENT_BLOCK_TYPES = %i[text thinking tool_use tool_result image audio video].freeze
-        # rubocop:enable Lint/ConstantDefinitionInBlock
+        ContentBlock::BUILD_SITE = 'Canonical::ContentBlock.build'
+        ContentBlock::FROM_HASH_SITE = 'Canonical::ContentBlock.from_hash'
       end
     end
   end
 end
+# rubocop:enable Metrics/ParameterLists

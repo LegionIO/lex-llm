@@ -151,7 +151,7 @@ module Legion
 
             normalized = {}
             evidence.each do |key, value|
-              op = Taxonomies.normalize_operation(value: key, allow_aliases: false)
+              op = Taxonomies.normalize_operation(value: key)
               raise Errors::ValidationError, "operation_evidence[#{op}] must be an OperationEvidence" unless value.is_a?(OperationEvidence)
               raise Errors::ValidationError, "operation_evidence[#{op}] operation must match key" unless value.operation == op
               raise Errors::ValidationError, "duplicate operation_evidence key #{op}" if normalized.key?(op)
@@ -184,7 +184,7 @@ module Legion
 
             normalized = {}
             quota_domains.each do |key, value|
-              op = Taxonomies.normalize_operation(value: key, allow_aliases: false)
+              op = Taxonomies.normalize_operation(value: key)
               normalized[op] = validate_quota_domain_value!(value: value, field: "quota_domains[#{op}]")
             end
             normalized.freeze
@@ -365,7 +365,7 @@ module Legion
           end
 
           def operation_status(operation:)
-            operation_evidence.fetch(Taxonomies.normalize_operation(value: operation, allow_aliases: false)).status
+            operation_evidence.fetch(Taxonomies.normalize_operation(value: operation)).status
           end
 
           def capability_evidence_for(capability:)
@@ -378,7 +378,7 @@ module Legion
           end
 
           def quota_domain(operation:)
-            quota_domains[Taxonomies.normalize_operation(value: operation, allow_aliases: false)]
+            quota_domains[Taxonomies.normalize_operation(value: operation)]
           end
         end
 
@@ -408,7 +408,7 @@ module Legion
             end
 
             canonical_model = Identity.normalize_text(value: kwargs[:model], field: :model)
-            canonical_operation = Taxonomies.normalize_operation(value: kwargs[:operation], allow_aliases: false)
+            canonical_operation = Taxonomies.normalize_operation(value: kwargs[:operation])
             Identity.validate_lane_id!(
               value: kwargs[:lane_id], instance_key: instance_key, operation: canonical_operation,
               model: canonical_model, offering_id: kwargs[:offering_id]

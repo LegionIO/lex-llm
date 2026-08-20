@@ -6,38 +6,33 @@ require 'securerandom'
 module Legion
   module Extensions
     module Llm
+      # -- required for Data.define block scope
       module Canonical
-        # rubocop:disable Lint/ConstantDefinitionInBlock -- required for Data.define block scope
         # Canonical message in a conversation.
-        # Ports field vocabulary from Legion::LLM::Types::Message and lex-llm Message.
+        # Ports field vocabulary from Legion::LLM::Types::Message.
+        # Unknown keys fold into the metadata member (04 L5) — never dropped.
+        # :cache_control (prompt-cache breakpoints) IS a member and survives
+        # build/to_h/JSON round-trips, including the fleet wire.
         Message = ::Data.define(
           :id, :parent_id, :role, :content, :tool_calls, :tool_call_id,
           :name, :status, :version, :timestamp, :seq,
           :provider, :model, :input_tokens, :output_tokens,
-          :conversation_id, :task_id, :cache_control
+          :conversation_id, :task_id, :cache_control, :metadata
         ) do
-          ROLES = %i[system user assistant tool].freeze
-
           # Build from keyword args (primary constructor).
           def self.build(
             id: nil, parent_id: nil, role: :user, content: nil, tool_calls: nil,
             tool_call_id: nil, name: nil, status: :created, version: 1,
             timestamp: nil, seq: nil, provider: nil, model: nil,
             input_tokens: nil, output_tokens: nil, conversation_id: nil, task_id: nil,
-            cache_control: nil
+            cache_control: nil, metadata: {}
           )
-            role_sym = role.is_a?(String) ? role.to_sym : role
-            unless ROLES.include?(role_sym)
-              raise ArgumentError,
-                    "Invalid role: #{role_sym}. Must be one of: #{ROLES.join(', ')}"
-            end
-
             new(
               id: id || "msg_#{SecureRandom.hex(12)}",
               parent_id: parent_id,
-              role: role_sym,
-              content: content,
-              tool_calls: tool_calls,
+              role: normalize_role!(role, self::BUILD_SITE),
+              content: normalize_content!(content, self::BUILD_SITE),
+              tool_calls: normalize_tool_calls!(tool_calls, self::BUILD_SITE),
               tool_call_id: tool_call_id,
               name: name,
               status: status,
@@ -50,64 +45,42 @@ module Legion
               output_tokens: output_tokens,
               conversation_id: conversation_id,
               task_id: task_id,
-              cache_control: cache_control
+              cache_control: cache_control.nil? ? nil : Strict.expect_type!(cache_control, [::Hash], self::BUILD_SITE, :cache_control),
+              metadata: Strict.metadata!(metadata, self::BUILD_SITE)
             )
           end
 
           # Build from a Hash (raw provider response or deserialized wire payload).
-          def self.from_hash(hash)
-            return nil if hash.nil?
-
-            h = hash.transform_keys(&:to_sym)
-
-            # Normalize role to symbol
-            role_raw = h[:role]
-            h[:role] = role_raw&.to_sym if role_raw
-
-            # Parse content blocks if they're an array of hashes
-            content = h[:content]
-            if content.is_a?(Array)
-              h[:content] = content.map do |block|
-                block.is_a?(ContentBlock) ? block : ContentBlock.from_hash(block)
-              end
-            elsif content.is_a?(Hash)
-              h[:content] = ContentBlock.from_hash(content)
-            end
-
-            # Parse tool calls — Array is canonical; Hash is legacy lex-llm format (name → ToolCall)
-            tool_calls = h[:tool_calls]
-            if tool_calls.is_a?(Hash)
-              h[:tool_calls] = tool_calls.values.map do |tc|
-                next tc if tc.is_a?(ToolCall)
-
-                raw = tc.respond_to?(:to_h) ? tc.to_h : tc
-                ToolCall.from_hash(raw)
-              end
-            elsif tool_calls.is_a?(Array)
-              h[:tool_calls] = tool_calls.map do |tc|
-                next tc if tc.is_a?(ToolCall)
-
-                if tc.is_a?(Hash)
-                  ToolCall.from_hash(tc)
-                else
-                  ToolCall.from_hash(tc.respond_to?(:to_h) ? tc.to_h : tc)
-                end
-              end
-            end
-
-            # Project onto the known member set — mirrors Canonical::Request.from_hash,
-            # which folds unknown keys instead of raising. Message has no metadata field,
-            # so unknown keys are dropped. :cache_control (prompt-cache breakpoints) IS a
-            # member and survives build/to_h/JSON round-trips, including the fleet wire.
-            build(**h.slice(*members))
+          def self.from_hash(source)
+            Strict.require_hash!(source, self::FROM_HASH_SITE)
+            hash = Strict.symbolize_keys(source)
+            metadata = Strict.fold_unknowns!(self, self::FROM_HASH_SITE, hash)
+            build(**hash, metadata:)
           end
 
-          # Wrap input: pass through if already a Message, parse if Hash.
-          def self.wrap(input)
-            return input if input.is_a?(Message)
-            return from_hash(input) if input.is_a?(Hash)
+          # L6: role validated at construction, in both factories.
+          def self.normalize_role!(role, site)
+            role_sym = role.is_a?(::String) ? role.to_sym : role
+            Strict.enum!(role_sym, self::ROLES, site, :role)
+          end
 
-            nil
+          # L2: one content normalizer shared by build and from_hash.
+          # String | ContentBlock | Array<ContentBlock> | nil — anything else raises.
+          def self.normalize_content!(content, site)
+            return nil if content.nil?
+            return content if content.is_a?(::String) || content.is_a?(ContentBlock)
+            raise ArgumentError, "#{site}: content expected String | ContentBlock | Array, got #{content.class}" unless content.is_a?(::Array)
+
+            content.map { |block| block.is_a?(ContentBlock) ? block : ContentBlock.from_hash(block) }
+          end
+
+          # L2: one tool-call normalizer shared by build and from_hash.
+          # Array<ToolCall> | nil (Array is canonical; the legacy Hash shape is gone).
+          def self.normalize_tool_calls!(tool_calls, site)
+            return nil if tool_calls.nil?
+
+            Strict.expect_type!(tool_calls, [::Array], site, :tool_calls)
+            tool_calls.map { |tc| tc.is_a?(ToolCall) ? tc : ToolCall.from_hash(tc) }
           end
 
           # Extract plain text from content (String or ContentBlock array).
@@ -142,15 +115,11 @@ module Legion
           def to_s
             text
           end
-
-          # Minimal provider-facing hash (role + text content).
-          def to_provider_hash
-            { role: role.to_s, content: text }.compact
-          end
         end
 
         Message::ROLES = %i[system user assistant tool].freeze
-        # rubocop:enable Lint/ConstantDefinitionInBlock
+        Message::BUILD_SITE = 'Canonical::Message.build'
+        Message::FROM_HASH_SITE = 'Canonical::Message.from_hash'
       end
     end
   end

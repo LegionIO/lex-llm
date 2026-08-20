@@ -1,25 +1,38 @@
 # frozen_string_literal: true
 
+require 'securerandom'
+
 module Legion
   module Extensions
     module Llm
-      # Assembles streaming responses from LLMs into complete messages.
+      # Assembles Canonical streaming chunks into a complete Canonical::Response.
+      #
+      # The provider's build_chunk yields Canonical::Chunk objects (text_delta /
+      # thinking_delta / tool_call_delta / usage). This accumulator owns:
+      #   - the stateful think-tag split (cross-chunk boundary buffering — the
+      #     only streaming-specific code; the segment logic is shared with
+      #     Responses::ThinkingExtractor, 10 U1),
+      #   - the untagged-preamble heuristic,
+      #   - tool-call fragment correlation: the provider's authoritative wire
+      #     INDEX first, recency only as the fallback for providers that emit
+      #     no index (the wire index-first/recency-fallback law).
+      # Fragments are assembled into a complete JSON string before the ONE
+      # strict arguments parser runs (10 U2).
       class StreamAccumulator
         include Legion::Logging::Helper
 
-        attr_reader :content, :model_id, :tool_calls, :stop_reason
+        attr_reader :model_id, :stop_reason
 
-        def initialize
+        def initialize(request_id: nil, conversation_id: nil, exchange_id: nil)
+          @request_id = request_id
+          @conversation_id = conversation_id
+          @exchange_id = exchange_id
           @content = +''
           @thinking_text = +''
           @thinking_signature = nil
           @tool_calls = {}
           @stop_reason = nil
-          @input_tokens = nil
-          @output_tokens = nil
-          @cached_tokens = nil
-          @cache_creation_tokens = nil
-          @thinking_tokens = nil
+          @usage = {}
           @inside_think_tag = false
           @pending_think_tag = +''
           @active_think_close_tag = nil
@@ -29,231 +42,183 @@ module Legion
           @index_to_id = {}
         end
 
+        # Consume one Canonical::Chunk; returns the Array of Canonical::Chunk
+        # objects to emit to the caller (empty when nothing is emitted).
         def add(chunk)
           log.debug { chunk.inspect } if Legion::Extensions::Llm.config.log_stream_debug
-          @model_id ||= chunk.model_id
+          @model_id ||= chunk.metadata[:model] if chunk.metadata.is_a?(::Hash)
+          @stop_reason = chunk.stop_reason if chunk.stop_reason
+          track_usage(chunk.usage) if chunk.usage
 
-          @last_content_delta = +''
-          @last_thinking_delta = +''
-          handle_chunk_content(chunk)
-          append_thinking_from_chunk(chunk)
-          count_tokens chunk
-          @stop_reason = chunk.stop_reason if chunk.respond_to?(:stop_reason) && chunk.stop_reason
-          log.debug { inspect } if Legion::Extensions::Llm.config.log_stream_debug
-        end
-
-        def filtered_chunk(chunk)
-          has_content = !@last_content_delta.empty?
-          has_thinking = !@last_thinking_delta.empty?
-          has_tokens = chunk.input_tokens&.positive? || chunk.output_tokens&.positive?
-          return nil unless has_content || has_thinking || chunk.tool_call? || has_tokens
-
-          Chunk.new(
-            role: :assistant,
-            content: has_content ? @last_content_delta : nil,
-            thinking: has_thinking ? Thinking.build(text: @last_thinking_delta) : chunk.thinking,
-            model_id: chunk.model_id,
-            tool_calls: chunk.tool_calls,
-            input_tokens: chunk.input_tokens,
-            output_tokens: chunk.output_tokens,
-            raw: chunk.raw
-          )
-        end
-
-        # Flush any text still held in the untagged-preamble buffer as a final
-        # streamed chunk. Without this, short responses that match the
-        # untagged-reasoning heuristic (e.g. starting with "I", "The", "Let me")
-        # and never hit a double newline are buffered for the entire stream and
-        # the caller's block never receives a single delta.
-        def flush_pending_chunk
-          return nil if @untagged_preamble_buffer.empty?
-
-          @last_content_delta = +''
-          @last_thinking_delta = +''
-          flush_pending_untagged_preamble_into_deltas
-          return nil if @last_content_delta.empty? && @last_thinking_delta.empty?
-
-          Chunk.new(
-            role: :assistant,
-            content: @last_content_delta.empty? ? nil : @last_content_delta,
-            thinking: @last_thinking_delta.empty? ? nil : Thinking.build(text: @last_thinking_delta),
-            model_id: model_id
-          )
-        end
-
-        def to_message(response)
-          flush_pending_untagged_preamble
-
-          if content.length < 50
-            log.debug '[llm][stream_accumulator] action=short_content_debug ' \
-                      "content=#{content.inspect} thinking_chars=#{@thinking_text.length} " \
-                      "tool_calls=#{tool_calls.size} " \
-                      "inside_think_tag=#{@inside_think_tag} " \
-                      "pending_think_tag=#{@pending_think_tag.inspect} " \
-                      "untagged_preamble_pending=#{@untagged_preamble_pending} " \
-                      "thinking_start=#{@thinking_text[0, 200].inspect} " \
-                      "thinking_end=#{@thinking_text[-200..].inspect}"
-            if content.length < 5 && @thinking_text.length > 100 && tool_calls.empty?
-              log.debug '[llm][stream_accumulator] action=POSSIBLE_CONTENT_EATEN ' \
-                        "full_thinking=#{@thinking_text.inspect}"
-            end
+          case chunk.type
+          when :text_delta then add_text_delta(chunk)
+          when :thinking_delta then add_thinking_delta(chunk)
+          when :tool_call_delta then add_tool_call_delta(chunk)
+          when :usage then [chunk]
+          else []
           end
+        end
 
-          Message.new(
-            role: :assistant,
-            content: content.empty? ? nil : content,
-            thinking: Thinking.build(
-              text: @thinking_text.empty? ? nil : @thinking_text,
-              signature: @thinking_signature
-            ),
-            tokens: Tokens.build(
-              input: @input_tokens,
-              output: @output_tokens,
-              cached: @cached_tokens,
-              cache_creation: @cache_creation_tokens,
-              thinking: @thinking_tokens
-            ),
-            model_id: model_id,
-            tool_calls: tool_calls_from_stream,
+        # Flush any text still held by the untagged-preamble heuristic so
+        # short responses still stream at least one delta (the superset flush —
+        # 10 #19: folds the buffer into content AND emits the held text).
+        def flush_pending_chunk
+          return [] if @untagged_preamble_buffer.empty?
+
+          content, thinking = Responses::ThinkingExtractor.extract_untagged_preamble(@untagged_preamble_buffer)
+          emitted = []
+          if thinking
+            @content << content
+            @thinking_text << thinking
+            emitted << thinking_delta_for(thinking)
+            emitted << text_delta_for(content) unless content.empty?
+          else
+            @content << @untagged_preamble_buffer
+            emitted << text_delta_for(@untagged_preamble_buffer)
+          end
+          @untagged_preamble_buffer = +''
+          @untagged_preamble_pending = false
+          emitted
+        end
+
+        # The accumulated Canonical::Response (05 O5). model falls back to the
+        # Selection-derived model when the provider wire reported none.
+        def to_response(model: nil)
+          Canonical::Response.build(
+            text: @content.empty? ? nil : @content,
+            thinking: accumulated_thinking,
+            tool_calls: accumulated_tool_calls,
+            usage: accumulated_usage,
             stop_reason: @stop_reason,
-            raw: response
+            model: @model_id || model
           )
         end
 
         private
 
-        def tool_calls_from_stream
-          tool_calls.transform_values do |tc|
-            arguments = parse_accumulated_arguments(tc.arguments)
-
-            ToolCall.new(
-              id: tc.id,
-              name: tc.name,
-              arguments: arguments,
-              thought_signature: tc.thought_signature
-            )
-          end
-        end
-
-        def parse_accumulated_arguments(arguments)
-          return arguments unless arguments.is_a?(String)
-          return {} if arguments.empty?
-
-          Legion::JSON.parse(arguments, symbolize_names: false)
-        rescue Legion::JSON::ParseError => e
-          handle_exception(e, level: :warn, handled: true, operation: 'llm.stream.parse_tool_arguments')
-          {}
-        end
-
-        def accumulate_tool_calls(new_tool_calls)
-          log.debug { "Accumulating tool calls: #{new_tool_calls}" } if Legion::Extensions::Llm.config.log_stream_debug
-          new_tool_calls.each_value do |tool_call|
-            if tool_call.id
-              start_tool_call(tool_call)
-            elsif tool_call.name && @latest_tool_call_id.nil?
-              start_tool_call_without_id(tool_call)
-            else
-              append_tool_call_fragment(tool_call)
-            end
-          end
-        end
-
-        def start_tool_call(tool_call)
-          resolved_id = tool_call.id.empty? ? SecureRandom.uuid : tool_call.id
-          @tool_calls[resolved_id] = ToolCall.new(
-            id: resolved_id,
-            name: tool_call.name,
-            arguments: mutable_tool_arguments(tool_call.arguments),
-            thought_signature: tool_call.thought_signature
-          )
-          @latest_tool_call_id = resolved_id
-          @index_to_id[tool_call.index] = resolved_id unless tool_call.index.nil?
-        end
-
-        def mutable_tool_arguments(arguments)
-          if arguments.nil? || (arguments.respond_to?(:empty?) && arguments.empty?)
-            +''
-          elsif arguments.is_a?(String)
-            +arguments
-          else
-            arguments
-          end
-        end
-
-        def start_tool_call_without_id(tool_call)
-          generated_id = SecureRandom.uuid
-          @tool_calls[generated_id] = ToolCall.new(
-            id: generated_id,
-            name: tool_call.name,
-            arguments: mutable_tool_arguments(tool_call.arguments),
-            thought_signature: tool_call.thought_signature
-          )
-          @latest_tool_call_id = generated_id
-          @index_to_id[tool_call.index] = generated_id unless tool_call.index.nil?
-        end
-
-        # Correlate a continuation fragment (id=nil, name=nil) to its call by the
-        # provider's authoritative wire index. Interleaved parallel calls
-        # (opener0, opener1, frag0, frag1, ...) only reassemble correctly when
-        # each fragment lands on the call at ITS index; recency (@latest_tool_call_id)
-        # sends every fragment to the last-opened call, losing one call's arguments
-        # and contaminating the other. Recency is retained only as the fallback for
-        # providers that emit no index.
-        def append_tool_call_fragment(tool_call)
-          target_id = @index_to_id[tool_call.index] if tool_call.index
-          target_id ||= @latest_tool_call_id
-          existing = @tool_calls[target_id]
-          return unless existing
-
-          existing.arguments << tool_call.arguments.to_s
-          return unless tool_call.thought_signature && existing.thought_signature.nil?
-
-          existing.thought_signature = tool_call.thought_signature
-        end
-
-        def count_tokens(chunk)
-          @input_tokens = chunk.input_tokens if chunk.input_tokens
-          @output_tokens = chunk.output_tokens if chunk.output_tokens
-          @cached_tokens = chunk.cached_tokens if chunk.cached_tokens
-          @cache_creation_tokens = chunk.cache_creation_tokens if chunk.cache_creation_tokens
-          @thinking_tokens = chunk.thinking_tokens if chunk.thinking_tokens
-        end
-
-        def handle_chunk_content(chunk)
-          return accumulate_tool_calls(chunk.tool_calls) if chunk.tool_call?
-
-          content_text = chunk.content || ''
-          if content_text.is_a?(String)
-            append_text_with_thinking(content_text)
-          else
-            @content << content_text.to_s
-          end
-        end
-
-        def append_text_with_thinking(text)
-          content_chunk, thinking_chunk = extract_think_tags(text)
-          if @content.empty? && !content_chunk.empty?
-            log.debug '[llm][stream_accumulator] action=first_content_after_extract ' \
-                      "content_chunk_start=#{content_chunk[0, 50].inspect} " \
-                      "thinking_chunk_present=#{!thinking_chunk.nil?} " \
-                      "thinking_text_so_far=#{@thinking_text.length} " \
-                      "raw_text_start=#{text[0, 50].inspect}"
-          end
+        def add_text_delta(chunk)
+          emitted = []
+          content_chunk, thinking_chunk = extract_think_tags(chunk.delta.to_s)
           content_chunk, untagged_thinking = extract_untagged_preamble(content_chunk)
-          @content << content_chunk
-          @last_content_delta << content_chunk
+          thinking_total = [untagged_thinking, thinking_chunk].compact.join
+          thinking_total = nil if thinking_total.empty?
           if untagged_thinking
             log.debug '[llm][stream_accumulator] action=untagged_thinking_from_chunk ' \
                       "content_kept=#{content_chunk[0, 50].inspect} " \
                       "untagged_thinking=#{untagged_thinking[0, 100].inspect} " \
                       "inside_think_tag=#{@inside_think_tag}"
-            @thinking_text << untagged_thinking
-            @last_thinking_delta << untagged_thinking
           end
-          return unless thinking_chunk
 
-          @thinking_text << thinking_chunk
-          @last_thinking_delta << thinking_chunk
+          @content << content_chunk
+          @thinking_text << thinking_total if thinking_total
+          emitted << thinking_delta_for(thinking_total) if thinking_total
+          emitted << text_delta_for(content_chunk) unless content_chunk.empty?
+          emitted
+        end
+
+        def add_thinking_delta(chunk)
+          thinking_text = chunk.delta.to_s
+          @thinking_text << thinking_text
+          @thinking_signature ||= chunk.signature
+          thinking_text.empty? ? [] : [chunk]
+        end
+
+        def add_tool_call_delta(chunk)
+          accumulate_tool_call_fragment(chunk.tool_call) if chunk.tool_call
+          [chunk]
+        end
+
+        def thinking_delta_for(text)
+          Canonical::Chunk.thinking_delta(
+            delta: text, request_id: @request_id, conversation_id: @conversation_id, exchange_id: @exchange_id,
+            signature: @thinking_signature
+          )
+        end
+
+        def text_delta_for(text)
+          Canonical::Chunk.text_delta(delta: text, request_id: @request_id, conversation_id: @conversation_id, exchange_id: @exchange_id)
+        end
+
+        def accumulated_thinking
+          return nil if @thinking_text.empty?
+
+          Canonical::Thinking.build(content: @thinking_text, signature: @thinking_signature)
+        end
+
+        def accumulated_tool_calls
+          @tool_calls.values.map do |fragment|
+            # The thought signature (provider dialect, e.g. Gemini) has no
+            # canonical ToolCall member — it travels in metadata, never dropped.
+            Canonical::ToolCall.build(
+              name: fragment[:name].to_s,
+              id: fragment[:id],
+              arguments: Responses::ToolArguments.parse!(fragment[:arguments]),
+              metadata: fragment[:signature] ? { signature: fragment[:signature] } : {}
+            )
+          end
+        end
+
+        def accumulated_usage
+          return nil if @usage.empty?
+
+          Canonical::Usage.build(**@usage)
+        end
+
+        def track_usage(usage)
+          @usage[:input_tokens] = usage.input_tokens if usage.input_tokens
+          @usage[:output_tokens] = usage.output_tokens if usage.output_tokens
+          @usage[:cache_read_tokens] = usage.cache_read_tokens if usage.cache_read_tokens
+          @usage[:cache_write_tokens] = usage.cache_write_tokens if usage.cache_write_tokens
+          @usage[:thinking_tokens] = usage.thinking_tokens if usage.thinking_tokens
+        end
+
+        # Tool-call fragment correlation. The wire law (dead-stop postmortem):
+        # a continuation fragment (id=nil, name=nil) lands on the call at ITS
+        # provider index; recency (@latest_tool_call_id) is retained only as
+        # the fallback for providers that emit no index.
+        def accumulate_tool_call_fragment(fragment)
+          if fragment[:id]
+            start_tool_call(fragment)
+          elsif fragment[:name] && @latest_tool_call_id.nil?
+            start_tool_call_without_id(fragment)
+          else
+            append_tool_call_fragment(fragment)
+          end
+        end
+
+        def start_tool_call(fragment)
+          raw_id = fragment[:id].to_s
+          resolved_id = raw_id.empty? ? SecureRandom.uuid : raw_id
+          @tool_calls[resolved_id] = {
+            id: resolved_id,
+            name: fragment[:name],
+            arguments: +fragment[:arguments].to_s,
+            signature: fragment[:signature]
+          }
+          @latest_tool_call_id = resolved_id
+          @index_to_id[fragment[:index]] = resolved_id if fragment[:index]
+        end
+
+        def start_tool_call_without_id(fragment)
+          generated_id = SecureRandom.uuid
+          @tool_calls[generated_id] = {
+            id: generated_id,
+            name: fragment[:name],
+            arguments: +fragment[:arguments].to_s,
+            signature: fragment[:signature]
+          }
+          @latest_tool_call_id = generated_id
+          @index_to_id[fragment[:index]] = generated_id if fragment[:index]
+        end
+
+        def append_tool_call_fragment(fragment)
+          target_id = @index_to_id[fragment[:index]] if fragment[:index]
+          target_id ||= @latest_tool_call_id
+          existing = @tool_calls[target_id]
+          return unless existing
+
+          existing[:arguments] << fragment[:arguments].to_s
+          existing[:signature] ||= fragment[:signature]
         end
 
         def extract_untagged_preamble(content_chunk)
@@ -286,52 +251,8 @@ module Legion
           [content, thinking]
         end
 
-        def flush_pending_untagged_preamble
-          return if @untagged_preamble_buffer.empty?
-
-          content, thinking = Responses::ThinkingExtractor.extract_untagged_preamble(@untagged_preamble_buffer)
-          if thinking
-            log.debug '[llm][stream_accumulator] action=untagged_preamble_classified_as_thinking ' \
-                      "buffer=#{@untagged_preamble_buffer[0, 100].inspect} " \
-                      "content_kept=#{content[0, 50].inspect} thinking_extracted=#{thinking[0, 100].inspect}"
-            @content << content
-            @thinking_text << thinking
-          else
-            @content << @untagged_preamble_buffer
-          end
-          @untagged_preamble_buffer = +''
-          @untagged_preamble_pending = false
-        end
-
-        # Same as flush_pending_untagged_preamble, but also records the flushed
-        # text in the per-chunk delta accumulators so flush_pending_chunk can
-        # surface it to the streaming block.
-        def flush_pending_untagged_preamble_into_deltas
-          content, thinking = Responses::ThinkingExtractor.extract_untagged_preamble(@untagged_preamble_buffer)
-          if thinking
-            @content << content
-            @last_content_delta << content
-            @thinking_text << thinking
-            @last_thinking_delta << thinking
-          else
-            @content << @untagged_preamble_buffer
-            @last_content_delta << @untagged_preamble_buffer
-          end
-          @untagged_preamble_buffer = +''
-          @untagged_preamble_pending = false
-        end
-
-        def append_thinking_from_chunk(chunk)
-          thinking = chunk.thinking
-          return unless thinking
-
-          if thinking.text
-            @thinking_text << thinking.text.to_s
-            @last_thinking_delta << thinking.text.to_s
-          end
-          @thinking_signature ||= thinking.signature # rubocop:disable Naming/MemoizedInstanceVariableName
-        end
-
+        # The stateful think-tag split — cross-chunk buffering only; the
+        # tag-matching/segment logic is the shared ThinkingExtractor core (U1).
         def extract_think_tags(text)
           remaining = @pending_think_tag + text
           @pending_think_tag = +''
@@ -350,7 +271,7 @@ module Legion
             remaining = if @inside_think_tag
                           consume_think_content(remaining, @active_think_close_tag, thinking)
                         else
-                          consume_non_think_content(remaining, output)
+                          consume_non_think_content(remaining, output, thinking)
                         end
           end
 
@@ -365,12 +286,11 @@ module Legion
             @active_think_close_tag = nil
             remaining.slice((end_index + end_tag.length)..) || +''
           else
-            consumed = remaining.slice(0, remaining.length - longest_suffix_prefix(remaining, [end_tag]))
-            if @content.length.positive? && consumed.length > 20
+            if @content.length.positive? && remaining.length > 20
               log.debug '[llm][stream_accumulator] action=think_consuming_without_close ' \
-                        "end_tag=#{end_tag.inspect} consumed_chars=#{consumed.length} " \
-                        "consumed_start=#{consumed[0, 80].inspect} " \
-                        "total_thinking=#{thinking.length + consumed.length}"
+                        "end_tag=#{end_tag.inspect} consumed_chars=#{remaining.length} " \
+                        "consumed_start=#{remaining[0, 80].inspect} " \
+                        "total_thinking=#{thinking.length + remaining.length}"
             end
             suffix_len = longest_suffix_prefix(remaining, [end_tag])
             thinking << remaining.slice(0, remaining.length - suffix_len)
@@ -379,11 +299,13 @@ module Legion
           end
         end
 
-        def consume_non_think_content(remaining, output)
-          unmatched_close = next_stream_tag_match(remaining, :close)
-          start_match = next_stream_tag_match(remaining, :open)
+        def consume_non_think_content(remaining, output, thinking)
+          unmatched_close = Responses::ThinkingExtractor.next_tag_match(remaining, :close)
+          start_match = Responses::ThinkingExtractor.next_tag_match(remaining, :open)
           if unmatched_close && (start_match.nil? || unmatched_close[:index] < start_match[:index])
-            consume_unmatched_think_close(remaining, unmatched_close)
+            rest, eaten = consume_unmatched_think_close(remaining, unmatched_close)
+            thinking << eaten
+            rest
           elsif start_match
             if @content.length > 10 || output.length > 10
               log.debug '[llm][stream_accumulator] action=think_tag_opened_mid_content ' \
@@ -396,7 +318,7 @@ module Legion
             @active_think_close_tag = start_match[:close_tag]
             remaining.slice((start_match[:index] + start_match[:tag].length)..) || +''
           else
-            suffix_len = longest_suffix_prefix(remaining, stream_tag_tokens)
+            suffix_len = longest_suffix_prefix(remaining, Responses::ThinkingExtractor.tag_tokens)
             output << remaining.slice(0, remaining.length - suffix_len)
             @pending_think_tag = remaining.slice(-suffix_len, suffix_len)
             +''
@@ -404,31 +326,16 @@ module Legion
         end
 
         def consume_unmatched_think_close(remaining, close_match)
-          thinking = remaining.slice(0, close_match[:index])
-          if thinking.length > 5
+          eaten = remaining.slice(0, close_match[:index])
+          if eaten.length > 5
             log.debug '[llm][stream_accumulator] action=unmatched_close_eating_content ' \
                       "close_tag=#{close_match[:tag].inspect} " \
-                      "eaten_chars=#{thinking.length} " \
-                      "eaten_start=#{thinking[0, 80].inspect} " \
+                      "eaten_chars=#{eaten.length} " \
+                      "eaten_start=#{eaten[0, 80].inspect} " \
                       "inside_think_tag=#{@inside_think_tag} " \
                       "content_so_far=#{@content.length}"
           end
-          @thinking_text << thinking
-          @last_thinking_delta << thinking
-          remaining.slice((close_match[:index] + close_match[:tag].length)..).to_s.sub(/\A[[:space:]]+/, '')
-        end
-
-        def next_stream_tag_match(text, type)
-          matches = Responses::ThinkingExtractor::THINK_TAG_PAIRS.filter_map do |open_tag, close_tag|
-            tag = type == :open ? open_tag : close_tag
-            index = text.index(tag)
-            { index: index, tag: tag, close_tag: close_tag } if index
-          end
-          matches.min_by { |match| match[:index] }
-        end
-
-        def stream_tag_tokens
-          Responses::ThinkingExtractor::THINK_TAG_PAIRS.flat_map { |open_tag, close_tag| [open_tag, close_tag] }
+          [remaining.slice((close_match[:index] + close_match[:tag].length)..).to_s.sub(/\A[[:space:]]+/, ''), eaten]
         end
 
         def longest_suffix_prefix(text, tags)

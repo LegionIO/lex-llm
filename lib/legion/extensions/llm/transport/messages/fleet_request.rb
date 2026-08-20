@@ -11,7 +11,8 @@ module Legion
     module Llm
       module Transport
         module Messages
-          # Strict protocol-v2 request envelope for outbound fleet work.
+          # Strict protocol-v3 request envelope for outbound fleet work.
+          # E2: required fields come from the one Fleet::Protocol::REQUIRED_FIELDS list.
           class FleetRequest < ::Legion::Transport::Message
             include Fleet::EnvelopeValidation
             include Fleet::PublishSafety
@@ -23,11 +24,6 @@ module Legion
               spool: false,
               return_result: true
             }.freeze
-            REQUIRED_OPTIONS = %i[
-              request_id correlation_id operation provider provider_instance model params reply_to
-              message_context caller trace_context signed_token timeout_seconds expires_at protocol_version
-              idempotency_key
-            ].freeze
 
             def exchange = Exchanges::Fleet
             def type = Fleet::Protocol::REQUEST_TYPE
@@ -78,7 +74,7 @@ module Legion
             def validate
               reject_legacy_options!
               require_option!(:routing_key)
-              REQUIRED_OPTIONS.each { |key| require_option!(key) }
+              Fleet::Protocol::REQUIRED_FIELDS.each { |key| require_option!(key) }
               require_protocol_version!
               @valid = true
             end
@@ -100,7 +96,9 @@ module Legion
                 trace_context: @options[:trace_context],
                 signed_token: @options[:signed_token],
                 timeout_seconds: @options[:timeout_seconds],
-                expires_at: @options[:expires_at]
+                expires_at: @options[:expires_at],
+                execution_contract: @options[:execution_contract],
+                offering_id: @options[:offering_id]
               ).compact
             end
 

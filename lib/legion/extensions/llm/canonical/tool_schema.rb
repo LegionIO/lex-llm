@@ -4,40 +4,33 @@ module Legion
   module Extensions
     module Llm
       module Canonical
-        # Extracts and normalizes tool schemas from heterogeneous sources.
+        # Extracts and normalizes tool schemas from ToolDefinition ONLY (04 §6).
+        # A schema extractor that tolerates raw hashes is a hidden path over the
+        # canonical type — wrong-class input raises (L3).
         module ToolSchema
           EMPTY_OBJECT = { type: 'object', properties: {} }.freeze
 
           module_function
 
-          def extract(tool)
-            raw = raw_schema(tool)
-            ToolDefinition.normalize_parameters(raw)
+          def extract(tool_definition)
+            require_tool_definition!(tool_definition, 'ToolSchema.extract')
+            ToolDefinition.normalize_parameters(tool_definition.parameters)
           end
 
-          def raw_schema(tool)
-            return nil if tool.nil?
-            return tool.params_schema if tool.respond_to?(:params_schema) && tool.params_schema
-            return tool.parameters if tool.respond_to?(:parameters) && tool.parameters
-
-            return unless tool.respond_to?(:[])
-
-            tool[:parameters] || tool['parameters'] || tool[:input_schema] || tool['input_schema'] ||
-              tool[:params_schema] || tool['params_schema']
+          def tool_name(tool_definition)
+            require_tool_definition!(tool_definition, 'ToolSchema.tool_name')
+            tool_definition.name
           end
 
-          def tool_name(tool)
-            return tool.name if tool.respond_to?(:name) && !tool.is_a?(Hash)
-            return tool[:name] || tool['name'] if tool.respond_to?(:[])
-
-            'unknown'
+          def tool_description(tool_definition)
+            require_tool_definition!(tool_definition, 'ToolSchema.tool_description')
+            tool_definition.description
           end
 
-          def tool_description(tool)
-            return tool.description if tool.respond_to?(:description) && !tool.is_a?(Hash)
-            return (tool[:description] || tool['description'] || '').to_s if tool.respond_to?(:[])
+          def require_tool_definition!(tool_definition, site)
+            return tool_definition if tool_definition.is_a?(ToolDefinition)
 
-            ''
+            raise ArgumentError, "#{site}: expected Canonical::ToolDefinition, got #{tool_definition.class}"
           end
         end
       end
