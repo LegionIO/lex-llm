@@ -3,34 +3,13 @@
 module Legion
   module Extensions
     module Llm
-      # Manages model aliases for provider-specific versions
+      # Manages model aliases for provider-specific versions.
+      # H4: alias resolution requires an explicit provider — the
+      # provider-less `values.first` (arbitrary provider mapping) is deleted.
       class Aliases
         class << self
-          def resolve(model_id, provider = nil)
-            return model_id unless aliases[model_id]
-
-            if provider
-              aliases[model_id][provider.to_s] || model_id
-            else
-              aliases[model_id].values.first || model_id
-            end
-          end
-
-          def normalize_model_alias(model_id)
-            model_id.to_s.strip
-          end
-
-          def canonical_model_alias(model_id, provider = nil)
-            normalized = normalize_model_alias(model_id)
-            provider_name = provider&.to_s
-
-            aliases.each do |alias_name, provider_map|
-              next unless alias_matches?(provider_map, normalized, provider_name)
-
-              return alias_name
-            end
-
-            normalized
+          def resolve(model_id:, provider:)
+            aliases[model_id.to_s]&.dig(provider.to_s) || model_id
           end
 
           def aliases
@@ -51,14 +30,6 @@ module Legion
 
           def reload!
             @aliases = load_aliases
-          end
-
-          private
-
-          def alias_matches?(provider_map, model_id, provider)
-            return provider_map[provider] == model_id if provider
-
-            provider_map.value?(model_id)
           end
         end
       end

@@ -74,6 +74,44 @@ RSpec.describe Legion::Extensions::Llm::Models do
     expect(registry.find('alias-model', :normalizing_fake).id).to eq('fake-chat-model')
   end
 
+  describe 'H4 — the catalog looks up, it does not choose' do
+    let(:ambiguous) do
+      described_class.new([
+                            Legion::Extensions::Llm::Model::Info.from_hash(id: 'gpt-x', provider: 'openai'),
+                            Legion::Extensions::Llm::Model::Info.from_hash(id: 'gpt-x', provider: 'ollama')
+                          ])
+    end
+
+    it 'raises a typed error for an ambiguous model id without a provider' do
+      expect { ambiguous.find('gpt-x') }
+        .to raise_error(ArgumentError, /Ambiguous model id: gpt-x exists for providers ollama, openai/)
+    end
+
+    it 'still resolves a provider-qualified model id' do
+      expect(ambiguous.find('gpt-x', :ollama).provider).to eq(:ollama)
+    end
+
+    it 'raises ModelNotFoundError for an unknown model id' do
+      expect { ambiguous.find('nope') }
+        .to raise_error(Legion::Extensions::Llm::ModelNotFoundError, /Unknown model: nope/)
+    end
+
+    it 'exposes no cross-provider preference ordering' do
+      expect(described_class).not_to respond_to(:PROVIDER_PREFERENCE)
+      expect(ambiguous).not_to respond_to(:preferred_match)
+    end
+
+    it 'requires an explicit provider for alias resolution (arbitrary mapping deleted)' do
+      expect { Legion::Extensions::Llm::Aliases.resolve('alias') }
+        .to raise_error(ArgumentError)
+      expect(Legion::Extensions::Llm::Aliases.resolve(model_id: 'alias', provider: 'openai')).to eq('alias')
+    end
+
+    it 'exposes no fabricated-capability factory' do
+      expect(Legion::Extensions::Llm::Model::Info).not_to respond_to(:default)
+    end
+  end
+
   it 'raises when a model exists but its provider extension is not registered' do
     registry = described_class.new([
                                      Legion::Extensions::Llm::Model::Info.from_hash(

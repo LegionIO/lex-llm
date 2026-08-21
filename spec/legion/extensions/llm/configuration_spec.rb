@@ -17,9 +17,14 @@ RSpec.describe Legion::Extensions::Llm::Configuration do
     it 'exposes a discoverable options API' do
       expect(described_class.options).to include(
         :request_timeout,
-        :default_model,
-        :default_embedding_model,
         :model_registry_file
+      )
+    end
+
+    it 'declares no model-defaulting options (H4: model choice belongs to the router)' do
+      expect(described_class.options).not_to include(
+        :default_model, :default_embedding_model, :default_moderation_model,
+        :default_image_model, :default_transcription_model
       )
     end
 

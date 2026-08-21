@@ -10,7 +10,6 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
       def self.configuration_requirements = []
       def self.local? = false
       def self.remote? = true
-      def self.assume_models_exist? = false
 
       def ensure_configured! = nil
       def api_base = 'http://example.invalid'

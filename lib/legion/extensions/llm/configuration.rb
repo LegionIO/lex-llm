@@ -36,11 +36,9 @@ module Legion
         # System-level options are declared here.
         # Provider-specific options are declared in each provider extension via
         # `self.configuration_options`.
-        option :default_model, nil
-        option :default_embedding_model, nil
-        option :default_moderation_model, nil
-        option :default_image_model, nil
-        option :default_transcription_model, nil
+        # H4: the dormant default_model / default_*_model options are deleted —
+        # a model-defaulting authority with no consumer (verified in-repo and
+        # in consumer gems). Model selection belongs to the router.
 
         option :model_registry_file, -> { File.expand_path('models.json', __dir__) }
 

@@ -456,10 +456,6 @@ module Legion
           self.class.remote?
         end
 
-        def assume_models_exist?
-          self.class.assume_models_exist?
-        end
-
         def readiness(live: false)
           metadata = {
             provider: slug.to_sym,
@@ -801,10 +797,6 @@ module Legion
 
           def remote?
             !local?
-          end
-
-          def assume_models_exist?
-            false
           end
 
           def resolve_model_id(model_id, config: nil) # rubocop:disable Lint/UnusedMethodArgument
