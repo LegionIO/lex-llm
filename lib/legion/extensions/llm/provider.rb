@@ -152,6 +152,30 @@ module Legion
           messages
         end
 
+        # N x N law — the tools half of the dispatch boundary contract (H3).
+        # Enforced HERE, once, like messages: a non-empty tools value must be
+        # Hash<name, Canonical::ToolDefinition>. Hash-tolerant renderers and
+        # legacy Lex::Llm::Tool values are the defect class this check kills —
+        # the shared ToolSchema extractor already refuses them (04 §6).
+        def enforce_canonical_tools!(tools)
+          return tools if tools.nil? || tools.empty?
+
+          unless tools.is_a?(::Hash)
+            raise ArgumentError,
+                  "provider tools must be Hash<name, Canonical::ToolDefinition>, got #{tools.class} — " \
+                  'non-canonical tool shapes must not cross the dispatch boundary'
+          end
+
+          tools.each_value do |tool|
+            next if tool.is_a?(Canonical::ToolDefinition)
+
+            raise ArgumentError,
+                  "provider tools values must be Canonical::ToolDefinition, got #{tool.class} — " \
+                  'non-canonical tool shapes must not cross the dispatch boundary'
+          end
+          tools
+        end
+
         # rubocop:disable Metrics/ParameterLists
         # The single completion funnel (05 O1/O2): chat/stream_chat are thin
         # delegates. Central enforcement — canonical input is checked HERE, once,
@@ -170,6 +194,7 @@ module Legion
                      tool_prefs: nil, &)
           enforce_model_allowed!(model)
           enforce_canonical_messages!(messages)
+          enforce_canonical_tools!(tools)
           log_provider_request(
             messages: messages,
             tools: tools,
@@ -201,24 +226,57 @@ module Legion
         end
         # rubocop:enable Metrics/ParameterLists
 
+        # H5: the base read path is ALWAYS live (one HTTP fetch to
+        # models_url) — it has no non-live view, so `live:` is accepted for
+        # signature compatibility (REQUIRED_SIGNATURES) and has no effect
+        # here. `filters` are applied to the parsed list: model/id/name match
+        # the model id, instance the instance label, provider/provider_family
+        # the provider; unknown keys pass (see filter_model_list).
         def list_models(live: false, **filters)
-          _ = [live, filters]
-          response = @connection.get models_url
-          parse_list_models_response response, slug, capabilities
+          _live = live
+          models = parse_list_models_response(@connection.get(models_url), slug, capabilities)
+          filter_model_list(models, filters)
         end
 
         # Read path (07 C5): serves the activated inventory offerings for this
         # provider instance from the SSOT registry snapshot. The legacy
         # ModelOffering production path is deleted; the per-gem writer is the
-        # sole publication path.
+        # sole publication path. H5: this read path performs NO transport —
+        # it is an in-memory snapshot lookup — so `live:` and
+        # `raise_on_unreachable:` are accepted for signature compatibility
+        # and have no effect here. `filters` select from the snapshot.
         def discover_offerings(live: false, raise_on_unreachable: false, **filters)
-          _ = [live, raise_on_unreachable]
+          _live = live
+          _raise_on_unreachable = raise_on_unreachable
           instance_key = Inventory::Identity::InstanceKey.new(
             provider_family: slug.to_sym, instance_id: provider_instance_id
           )
           record = Inventory::Registry.snapshot.instance(instance_key: instance_key)
           offerings = record ? record.offerings_by_id.values : []
           filter_inventory_offerings(offerings, filters)
+        end
+
+        # Read-path filter over parsed model lists (H5): the same key
+        # semantics as filter_inventory_offerings, matched against Model::Info.
+        def filter_model_list(models, filters)
+          return models if filters.empty?
+
+          models.select do |model|
+            filters.all? do |key, value|
+              next true if value.nil? || (value.respond_to?(:empty?) && value.empty?)
+
+              case key.to_sym
+              when :model, :id, :name
+                model.id.to_s == value.to_s
+              when :instance, :instance_id, :provider_instance
+                model.instance.to_s == value.to_s
+              when :provider, :provider_family
+                model.provider.to_s == value.to_s
+              else
+                true
+              end
+            end
+          end
         end
 
         # Read-path filter over inventory offerings: model/id/name match the
@@ -910,17 +968,14 @@ module Legion
           model
         end
 
+        # H3: the funnel enforces Canonical::ToolDefinition before logging,
+        # so the Hash-tolerance branch is deleted — only canonical names or
+        # a class name for anything that slips a direct private call.
         def debug_tool_names(tools)
           tool_definitions = tools.is_a?(Hash) ? tools.values : Array(tools)
 
           tool_definitions.filter_map do |tool|
-            if tool.respond_to?(:name)
-              tool.name
-            elsif tool.is_a?(Hash)
-              tool[:name] || tool['name']
-            else
-              tool.class.name
-            end
+            tool.respond_to?(:name) ? tool.name : tool.class.name
           end
         end
 

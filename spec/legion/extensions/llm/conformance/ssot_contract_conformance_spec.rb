@@ -28,18 +28,22 @@ RSpec.describe 'SSOT v4 contract conformance kit' do
       def self.configuration_requirements = []
       def api_base = 'https://kit.invalid'
 
-      def chat(messages, model:, **_rest)
+      def chat(messages, model:, tools: nil, **_rest)
         enforce_canonical_messages!(messages)
+        enforce_canonical_tools!(tools)
         Legion::Extensions::Llm::Canonical::Response.build(text: 'ok', model: model, stop_reason: :end_turn)
       end
 
-      def stream_chat(messages, **_contract, &block)
+      # rubocop:disable Lint/UnusedMethodArgument -- model: mirrors the 0.8.0 callable contract
+      def stream_chat(messages, model: nil, tools: nil, **_contract, &block)
         enforce_canonical_messages!(messages)
+        enforce_canonical_tools!(tools)
         block&.call(Legion::Extensions::Llm::Canonical::Chunk.text_delta(delta: 'ok', request_id: nil))
         block&.call(Legion::Extensions::Llm::Canonical::Chunk.done(request_id: nil, stop_reason: :end_turn,
                                                                    usage: Legion::Extensions::Llm::Canonical::Usage.build(input_tokens: 1)))
         nil
       end
+      # rubocop:enable Lint/UnusedMethodArgument
 
       def count_tokens(messages:, **_contract)
         enforce_canonical_messages!(messages)
@@ -102,6 +106,7 @@ RSpec.describe 'SSOT v4 contract conformance kit' do
   end
 
   it_behaves_like 'B1 — central canonical enforcement (08 F2)'
+  it_behaves_like 'B1b — central canonical tool enforcement (H3)'
   it_behaves_like 'B2 — canonical outputs (05 O5, 08 R2)'
   it_behaves_like 'B3 — operation preservation (PR #189 defect class)'
   it_behaves_like 'B4 — no model re-derivation (PR #45 law)'

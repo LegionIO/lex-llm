@@ -134,7 +134,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
         end
 
         def parse_completion_response(_response)
-          Legion::Extensions::Llm::Message.new(role: :assistant, content: 'ok')
+          Legion::Extensions::Llm::Message.build(role: :assistant, content: 'ok')
         end
       end
     end
@@ -202,6 +202,60 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       expect(provider).not_to have_received(:list_models)
     end
 
+    describe 'H5 — honest read-path contract (accepted-for-compat params are documented, not silently discarded)' do
+      it 'accepts the full discover_offerings signature against the snapshot' do
+        expect { provider.discover_offerings(live: true, raise_on_unreachable: true) }.not_to raise_error
+        expect(provider.discover_offerings(raise_on_unreachable: true, model: 'test-model').size).to eq(1)
+      end
+
+      it 'applies filters to the parsed model list (list_models no longer drops them)' do
+        models = [
+          Legion::Extensions::Llm::Model::Info.new(id: 'model-a', provider: :prov, instance: :i1),
+          Legion::Extensions::Llm::Model::Info.new(id: 'model-b', provider: :prov, instance: :i2)
+        ]
+
+        expect(provider.filter_model_list(models, model: 'model-a').map(&:id)).to eq(['model-a'])
+        expect(provider.filter_model_list(models, id: 'model-b').map(&:id)).to eq(['model-b'])
+        expect(provider.filter_model_list(models, instance: 'i2').map(&:id)).to eq(['model-b'])
+        expect(provider.filter_model_list(models, provider: :other).map(&:id)).to be_empty
+        expect(provider.filter_model_list(models, {}).map(&:id)).to eq(%w[model-a model-b])
+        expect(provider.filter_model_list(models, unknown_key: 'x').map(&:id)).to eq(%w[model-a model-b])
+      end
+    end
+
+    describe 'H3 — the funnel enforces the tool contract (one contract, one oracle)' do
+      let(:tool) { Legion::Extensions::Llm::Canonical::ToolDefinition.build(name: 'get_weather') }
+
+      before do
+        allow(provider).to receive(:sync_response).and_return('ok') # -- stream_response's model: kwarg is not exercised here
+        allow(provider).to receive(:stream_response) { |_connection, _payload, _headers, **_opts, &stream_block| stream_block&.call('c') }
+      end
+
+      it 'accepts Hash<name, Canonical::ToolDefinition> through chat and stream_chat' do
+        expect(provider.chat([], model: 'test-model', tools: { get_weather: tool })).to eq('ok')
+        expect do
+          # rubocop:disable Lint/EmptyBlock -- the streamed chunk is consumed by the stub
+          provider.stream_chat([], model: 'test-model', tools: { get_weather: tool }) { |_c| }
+          # rubocop:enable Lint/EmptyBlock
+        end.not_to raise_error
+      end
+
+      it 'rejects Hash tool values with a typed ArgumentError' do
+        expect { provider.chat([], model: 'test-model', tools: { get_weather: { name: 'get_weather' } }) }
+          .to raise_error(ArgumentError, /Canonical::ToolDefinition/)
+      end
+
+      it 'rejects a non-Hash tools container with a typed ArgumentError' do
+        expect { provider.chat([], model: 'test-model', tools: [tool]) }
+          .to raise_error(ArgumentError, /Hash<name, Canonical::ToolDefinition>/)
+      end
+
+      it 'rejects legacy tool objects with a typed ArgumentError' do
+        expect { provider.chat([], model: 'test-model', tools: { get_weather: Legion::Extensions::Llm::Tool.new }) }
+          .to raise_error(ArgumentError, /Canonical::ToolDefinition/)
+      end
+    end
+
     it 'returns normalized health metadata' do
       expect(provider.health).to include(
         provider: :provider,
@@ -217,13 +271,13 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       expect(provider.count_tokens(messages: messages, model: model)).to be >= 1
     end
 
-    it 'summarizes hash-backed tools for debug logging' do
+    it 'summarizes canonical tools for debug logging' do
       tools = {
-        current: { name: 'current' },
-        legacy: { 'name' => 'legacy' }
+        current: Legion::Extensions::Llm::Canonical::ToolDefinition.build(name: 'current'),
+        other: Legion::Extensions::Llm::Canonical::ToolDefinition.build(name: 'other')
       }
 
-      expect(provider.send(:debug_tool_names, tools)).to eq(%w[current legacy])
+      expect(provider.send(:debug_tool_names, tools)).to eq(%w[current other])
     end
 
     it 'deep merges embedding params into the provider payload' do

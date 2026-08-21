@@ -71,18 +71,21 @@ module Legion
             messages.map do |message|
               {
                 role: message.role.to_s,
-                content: openai_content(message.content, role: message.role),
+                content: openai_content(message.content),
                 tool_call_id: message.tool_call_id,
                 tool_calls: format_openai_tool_calls(message.tool_calls)
               }.compact
             end
           end
 
-          def openai_content(content, role:)
-            return content.map { |block| openai_content(block, role:) } if content.is_a?(::Array)
+          # L10: the role-parameterized sanitizer is deleted — text content
+          # passes through verbatim in every role (the decision comment
+          # below documents why).
+          def openai_content(content)
+            return content.map { |block| openai_content(block) } if content.is_a?(::Array)
             return content.to_s if content.nil? || content.is_a?(::String)
 
-            return sanitize_openai_text(content.text.to_s, role:) if content.text?
+            return content.text.to_s if content.text?
 
             {
               type: content.type.to_s,
@@ -98,15 +101,12 @@ module Legion
             }.compact
           end
 
-          def sanitize_openai_text(text, role:)
-            return text unless role.to_sym == :assistant && text.is_a?(String)
-
-            # Preserve thinking tags in the content — qwen3.6 outputs thinking in
-            #  tags and expects to see its own reasoning on subsequent rounds.
-            # The Anthropic API layer separates thinking into distinct content blocks
-            # for client-facing responses; the OpenAI compat layer passes them through.
-            text
-          end
+          # Thinking-tag pass-through decision (L10: the vestigial sanitizer
+          # is deleted, the decision stays): qwen3.6 outputs thinking in
+          # tags and expects to see its own reasoning on subsequent rounds.
+          # The Anthropic API layer separates thinking into distinct content
+          # blocks for client-facing responses; the OpenAI compat layer passes
+          # them through untouched.
 
           def format_openai_tool_calls(tool_calls)
             return nil unless tool_calls&.any?
@@ -125,7 +125,7 @@ module Legion
           end
 
           def format_openai_tools(tools)
-            return nil if tools.empty?
+            return nil if tools.nil? || tools.empty?
 
             tools.values.map do |tool|
               {

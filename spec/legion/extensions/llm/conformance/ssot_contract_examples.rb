@@ -48,6 +48,36 @@ RSpec.shared_examples 'B1 — central canonical enforcement (08 F2)' do
   end
 end
 
+# H3: the tools half of the same boundary — one contract, one oracle.
+# A non-empty tools value must be Hash<name, Canonical::ToolDefinition>;
+# Hash/legacy tool values raise before any provider rendering.
+RSpec.shared_examples 'B1b — central canonical tool enforcement (H3)' do
+  let(:tool) { CAN::ToolDefinition.build(name: 'get_weather') }
+
+  it 'chat accepts Hash<name, Canonical::ToolDefinition>' do
+    expect do
+      callable.chat([CAN::Message.build(role: :user, content: 'hi')], model: 'm',
+                                                                      tools: { get_weather: tool })
+    end.not_to raise_error
+  end
+
+  it 'chat rejects Hash tool values with a typed ArgumentError' do
+    expect do
+      callable.chat([CAN::Message.build(role: :user, content: 'hi')], model: 'm',
+                                                                      tools: { get_weather: { name: 'get_weather' } })
+    end
+      .to raise_error(ArgumentError, /Canonical::ToolDefinition/)
+  end
+
+  it 'chat rejects a non-Hash tools container with a typed ArgumentError' do
+    expect do
+      callable.chat([CAN::Message.build(role: :user, content: 'hi')], model: 'm',
+                                                                      tools: [tool])
+    end
+      .to raise_error(ArgumentError, /Hash<name, Canonical::ToolDefinition>/)
+  end
+end
+
 RSpec.shared_examples 'B2 — canonical outputs (05 O5, 08 R2)' do
   it 'chat returns a Canonical::Response (asserted by type)' do
     expect(callable.chat([CAN::Message.build(role: :user, content: 'hi')], model: 'm'))
