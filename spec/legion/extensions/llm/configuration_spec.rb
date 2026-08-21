@@ -41,6 +41,30 @@ RSpec.describe Legion::Extensions::Llm::Configuration do
     end
   end
 
+  describe 'L5 — log defaults come from the settings system (no ENV reads)' do
+    around do |example|
+      original_extensions = Legion::Settings.loader.settings[:extensions]
+      example.run
+    ensure
+      Legion::Settings.loader.settings[:extensions] = original_extensions
+    end
+
+    it 'defaults log_level to INFO and log_stream_debug to false when settings are unset' do
+      Legion::Settings.loader.settings[:extensions] = {}
+      expect(described_class.log_settings_defaults).to eq(level: Logger::INFO, stream_debug: false)
+    end
+
+    it 'reads log_level / log_stream_debug from extensions.llm settings' do
+      Legion::Settings.loader.settings[:extensions] = { llm: { log_level: :debug, log_stream_debug: true } }
+      expect(described_class.log_settings_defaults).to eq(level: Logger::DEBUG, stream_debug: true)
+    end
+
+    it 'raises on an unknown log_level name (configuration error, no fallback)' do
+      Legion::Settings.loader.settings[:extensions] = { llm: { log_level: :bogus } }
+      expect { described_class.log_settings_defaults }.to raise_error(NameError)
+    end
+  end
+
   describe '.register_provider_options' do
     after do
       # Clean up test options to avoid polluting other specs

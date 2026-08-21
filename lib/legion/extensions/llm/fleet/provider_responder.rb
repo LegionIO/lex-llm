@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'json'
-
 require 'legion/extensions/llm/utils'
 require 'legion/extensions/llm/inventory/errors'
 require 'legion/extensions/llm/routing/provider_outcome'
@@ -41,12 +39,11 @@ module Legion
           module_function
 
           # Public runner entry point mirrors AMQP delivery callbacks, which carry both delivery and property metadata.
-          # provider_class/provider_instances remain for the existing two-file
-          # wiring; v3 dispatch is exact-only and never constructs a provider.
-          # rubocop:disable Metrics/ParameterLists -- the responder entry mirrors the AMQP wiring
-          def call(payload:, provider_family:, provider_class: nil, provider_instances: nil,
+          # L6: the dead provider_class/provider_instances params are deleted —
+          # v3 dispatch is exact-only and never constructs a provider; passing
+          # provider objects here was a latent second execution truth.
+          def call(payload:, provider_family:,
                    registry: ::Legion::Extensions::Llm::Inventory::Registry, delivery: nil, properties: nil)
-            _ = [provider_class, provider_instances]
             envelope = parse_payload(payload)
             check_envelope!(envelope, provider_family:)
             response = WorkerExecution.call(envelope: envelope, registry:)
@@ -60,7 +57,6 @@ module Legion
             reject(delivery || properties, requeue: requeue_error?(e))
             raise
           end
-          # rubocop:enable Metrics/ParameterLists
 
           def enabled_for?(provider_instances)
             instances = resolve_provider_instances(provider_instances)
@@ -186,12 +182,10 @@ module Legion
             end
           end
 
+          # L1: Legion::JSON only (house rule) — the bare ::JSON fallback is
+          # deleted; Legion::JSON is a hard dependency of this gem.
           def parse_json(payload)
-            if defined?(::Legion::JSON)
-              ::Legion::JSON.parse(payload)
-            else
-              ::JSON.parse(payload)
-            end
+            ::Legion::JSON.parse(payload)
           end
 
           def reject_legacy_fields!(envelope)

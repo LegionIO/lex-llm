@@ -240,11 +240,9 @@ module Legion
           raw = File.read(path)
           raise ConfigurationError, "credential file is empty: #{path}" if raw.strip.empty?
 
-          if defined?(::Legion::JSON)
-            ::Legion::JSON.parse(raw, symbolize_names: true)
-          else
-            ::JSON.parse(raw, symbolize_names: true)
-          end
+          # L1: Legion::JSON only (house rule) — the bare ::JSON fallback is
+          # deleted; Legion::JSON is a hard dependency of this gem.
+          ::Legion::JSON.parse(raw, symbolize_names: true)
         end
 
         # JWT expiry check.  Decodes the base64 payload segment and checks
@@ -253,12 +251,13 @@ module Legion
         # parseable token with no exp claim has nothing to violate.
         def token_valid?(token)
           require 'base64'
-          require 'json'
 
           parts = token.to_s.split('.')
           return false if parts.length < 2
 
-          payload = ::JSON.parse(Base64.urlsafe_decode64(parts[1]))
+          # L1: Legion::JSON only (string keys — the JWT payload is read by
+          # string key).
+          payload = ::Legion::JSON.parse(Base64.urlsafe_decode64(parts[1]), symbolize_names: false)
           exp = payload['exp']
           return true if exp.nil?
 

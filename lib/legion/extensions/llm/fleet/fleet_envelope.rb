@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'legion/extensions/llm/utils'
+require_relative 'contract_error'
 
 module Legion
   module Extensions
@@ -13,8 +14,13 @@ module Legion
         # String/Symbol param spellings (W5).
         FleetEnvelope = Struct.new(:data, keyword_init: true) do
           # Wrap a wire payload (Hash) or pass an existing envelope through.
+          # L12: a non-Hash payload is a typed ContractError at the wrap
+          # boundary — the module is total instead of relying on call-site
+          # discipline (an untyped NoMethodError at the first reader).
           def self.wrap(payload)
             return payload if payload.is_a?(FleetEnvelope)
+
+            raise ContractError, "fleet envelope payload expected Hash, got #{payload.class}" unless payload.is_a?(::Hash)
 
             new(data: payload)
           end

@@ -60,6 +60,14 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
       .with(:fleet, :responder, :require_idempotency, default: nil).and_return(false)
   end
 
+  it 'L6: the dead provider_class/provider_instances params are deleted (v3 dispatch never constructs a provider)' do
+    params = described_class.instance_method(:call).parameters
+    expect(params).not_to include(%i[key provider_class])
+    expect(params).not_to include(%i[key provider_instances])
+    expect { described_class.call(payload: payload, provider_family: 'ollama', provider_class: Object) }
+      .to raise_error(ArgumentError, /provider_class/)
+  end
+
   it 'does not require the legion-llm namespace on responder nodes' do
     hide_const('Legion::LLM') if defined?(Legion::LLM)
 

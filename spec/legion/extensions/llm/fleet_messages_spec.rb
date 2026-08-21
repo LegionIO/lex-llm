@@ -73,6 +73,23 @@ RSpec.describe 'LLM fleet message envelopes' do
     end
   end
 
+  describe Legion::Extensions::Llm::Fleet::FleetEnvelope do
+    let(:envelope_class) { described_class }
+
+    it 'wraps a Hash payload and passes an existing envelope through' do
+      expect(envelope_class.wrap(a: 1).to_h).to eq(a: 1)
+      envelope = envelope_class.new(data: { b: 2 })
+      expect(envelope_class.wrap(envelope)).to be(envelope)
+    end
+
+    it 'L12: a non-Hash payload is a typed ContractError at the wrap boundary' do
+      expect { envelope_class.wrap('not a hash') }
+        .to raise_error(Legion::Extensions::Llm::Fleet::ContractError, /expected Hash, got String/)
+      expect { envelope_class.wrap(42) }
+        .to raise_error(Legion::Extensions::Llm::Fleet::ContractError, /expected Hash, got Integer/)
+    end
+  end
+
   describe Legion::Extensions::Llm::Transport::Messages::FleetRequest do
     it 'builds a strict protocol v3 request envelope' do
       message = described_class.new(**valid_request_options)

@@ -26,11 +26,39 @@ module Legion
             Array(keys).each { |key| option(key.to_sym) }
           end
 
+          include Legion::Logging::Helper
+
+          # L5: the log defaults, read from the settings system (the ENV
+          # reads are deleted). A configured log_level Symbol/String names a
+          # Logger constant — an unknown name is a configuration error (it
+          # raises, it does not fall back).
+          def log_settings_defaults
+            {
+              level: log_level_value(llm_setting(:log_level)),
+              stream_debug: llm_setting(:log_stream_debug) == true
+            }
+          end
+
           private
 
           def option_keys = @option_keys ||= []
           def defaults = @defaults ||= {}
-          private :option
+
+          def log_level_value(value)
+            return Logger::INFO if value.nil?
+
+            value.is_a?(::Integer) ? value : Logger.const_get(value.to_s.upcase)
+          end
+
+          def llm_setting(key)
+            return nil unless defined?(::Legion::Settings) && ::Legion::Settings.respond_to?(:dig)
+
+            ::Legion::Settings.dig(:extensions, :llm, key)
+          rescue StandardError => e
+            handle_exception(e, level: :warn, handled: true, operation: 'llm.configuration.setting', key:)
+            nil
+          end
+          private :option, :log_level_value, :llm_setting
         end
 
         # System-level options are declared here.
@@ -51,8 +79,12 @@ module Legion
 
         option :logger, nil
         option :log_file, -> { $stdout }
-        option :log_level, -> { ENV['LEGION_LLM_DEBUG'] ? Logger::DEBUG : Logger::INFO }
-        option :log_stream_debug, -> { ENV['LEGION_LLM_STREAM_DEBUG'] == 'true' }
+        # L5: the ENV reads (LEGION_LLM_DEBUG / LEGION_LLM_STREAM_DEBUG) are
+        # deleted — every tunable lives in the settings system:
+        # extensions.llm.log_level (Symbol/Integer; Logger::INFO when unset)
+        # and extensions.llm.log_stream_debug (boolean; false when unset).
+        option :log_level, -> { self.class.log_settings_defaults[:level] }
+        option :log_stream_debug, -> { self.class.log_settings_defaults[:stream_debug] }
         option :log_regexp_timeout, -> { Regexp.respond_to?(:timeout) ? (Regexp.timeout || 1.0) : nil }
 
         # Prompt caching
