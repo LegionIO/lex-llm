@@ -93,11 +93,24 @@ module Legion
           def error?
             stop_reason == :error
           end
+
+          # H1: the single strict constructor — .new runs the same member
+          # contract as the factories; the factories fill their defaults and
+          # delegate here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:thinking] = normalize_thinking!(values[:thinking], site)
+            values[:tool_calls] = normalize_tool_calls!(values[:tool_calls], site)
+            values[:usage] = normalize_usage!(values[:usage], site)
+            values[:stop_reason] = normalize_stop_reason!(values[:stop_reason], site)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         Response::STOP_REASONS = %i[end_turn tool_use max_tokens stop_sequence content_filter error].freeze
         Response::BUILD_SITE = 'Canonical::Response.build'
         Response::FROM_HASH_SITE = 'Canonical::Response.from_hash'
+        Response::NEW_SITE = 'Canonical::Response.new'
       end
     end
   end

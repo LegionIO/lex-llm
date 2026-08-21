@@ -4,7 +4,6 @@ module Legion
   module Extensions
     module Llm
       module Canonical
-        TOOL_NAME_MAX_LENGTH = 64
         OBJECT_SCHEMA_KEYWORDS    = %i[properties required additionalProperties].freeze
         COMPOSITE_SCHEMA_KEYWORDS = %i[oneOf anyOf allOf enum $ref $defs definitions].freeze
 
@@ -15,7 +14,7 @@ module Legion
             empty = { type: 'object', properties: {} }
             return empty if parameters.nil?
 
-            Strict.expect_type!(parameters, [::Hash], self::BUILD_SITE, :parameters) unless parameters.is_a?(::Hash)
+            Strict.expect_type!(parameters, [::Hash], self::NORMALIZE_PARAMETERS_SITE, :parameters) unless parameters.is_a?(::Hash)
 
             schema = parameters.transform_keys { |k| k.respond_to?(:to_sym) ? k.to_sym : k }
             return empty if schema.empty?
@@ -26,13 +25,17 @@ module Legion
             { type: 'object', properties: schema }
           end
 
-          # Build from keyword args (primary constructor).
+          # Build from keyword args (primary constructor). M5: the name is the
+          # authoritative client/registry fact — never rewritten, stripped,
+          # truncated, or fabricated here; per-dialect name constraints belong
+          # to the provider translator edge. source is explicit or absent —
+          # never fabricated ({ type: :builtin } is deleted).
           def self.build(name:, description: '', parameters: nil, source: nil, metadata: {})
             new(
-              sanitize_tool_name(name),
-              Strict.expect_type!(description, [::String], self::BUILD_SITE, :description).to_s,
+              name,
+              description,
               normalize_parameters(parameters),
-              source || { type: :builtin },
+              source,
               Strict.metadata!(metadata, self::BUILD_SITE)
             )
           end
@@ -52,12 +55,20 @@ module Legion
             )
           end
 
-          # Sanitize a tool name to be safe for all wire formats.
-          def self.sanitize_tool_name(raw)
-            name = raw.to_s.tr('.', '_')
-            name = name.gsub(/[^a-zA-Z0-9_-]/, '')
-            name = name[0, TOOL_NAME_MAX_LENGTH] if name.length > TOOL_NAME_MAX_LENGTH
-            name.empty? ? 'tool' : name
+          # M5: a tool name is authoritative — missing or empty is a contract
+          # error, never a fabricated label.
+          def self.require_name!(name, site)
+            raise ArgumentError, "#{site}: name must be a non-empty String, got #{name.class}: #{name.inspect}" unless name.is_a?(::String) && !name.empty?
+
+            name
+          end
+
+          # M5: description is a String; absence is the empty string (the
+          # documented no-description value), wrong class raises.
+          def self.description_value!(description, site)
+            return '' if description.nil?
+
+            Strict.expect_type!(description, [::String], site, :description)
           end
 
           def params_schema
@@ -81,10 +92,25 @@ module Legion
           def to_json(*)
             to_h.to_json(*)
           end
+
+          # H1/M5: the single strict constructor — .new runs the same member
+          # contract as the factories (authoritative name, String
+          # description, normalized parameters, explicit-or-absent source);
+          # the factories fill their defaults and delegate here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:name] = require_name!(values[:name], site)
+            values[:description] = description_value!(values[:description], site)
+            values[:parameters] = normalize_parameters(values[:parameters])
+            values[:source] = Strict.expect_type!(values[:source], [::Hash], site, :source)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         ToolDefinition::BUILD_SITE = 'Canonical::ToolDefinition.build'
         ToolDefinition::FROM_HASH_SITE = 'Canonical::ToolDefinition.from_hash'
+        ToolDefinition::NEW_SITE = 'Canonical::ToolDefinition.new'
+        ToolDefinition::NORMALIZE_PARAMETERS_SITE = 'Canonical::ToolDefinition.normalize_parameters'
       end
     end
   end

@@ -65,10 +65,31 @@ module Legion
           def to_json(*)
             to_h.to_json(*)
           end
+
+          # H1/M3: the single strict constructor. .new validates every member
+          # against its wire type (Integer token counts and seeds, Numeric
+          # ratios and penalties, String|Array stop sequences, String|Hash
+          # response format) — garbage is rejected here, not on the provider
+          # wire. The factories fill their defaults and delegate here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:max_tokens] = Strict.expect_type!(values[:max_tokens], [::Integer], site, :max_tokens)
+            values[:max_thinking_tokens] = Strict.expect_type!(values[:max_thinking_tokens], [::Integer], site, :max_thinking_tokens)
+            values[:temperature] = Strict.expect_type!(values[:temperature], [::Numeric], site, :temperature)
+            values[:top_p] = Strict.expect_type!(values[:top_p], [::Numeric], site, :top_p)
+            values[:top_k] = Strict.expect_type!(values[:top_k], [::Integer], site, :top_k)
+            values[:stop_sequences] = Strict.expect_type!(values[:stop_sequences], [::String, ::Array], site, :stop_sequences)
+            values[:seed] = Strict.expect_type!(values[:seed], [::Integer], site, :seed)
+            values[:frequency_penalty] = Strict.expect_type!(values[:frequency_penalty], [::Numeric], site, :frequency_penalty)
+            values[:presence_penalty] = Strict.expect_type!(values[:presence_penalty], [::Numeric], site, :presence_penalty)
+            values[:response_format] = Strict.expect_type!(values[:response_format], [::String, ::Hash], site, :response_format)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         Params::BUILD_SITE = 'Canonical::Params.build'
         Params::FROM_HASH_SITE = 'Canonical::Params.from_hash'
+        Params::NEW_SITE = 'Canonical::Params.new'
       end
     end
   end

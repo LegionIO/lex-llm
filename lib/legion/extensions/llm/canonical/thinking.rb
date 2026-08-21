@@ -54,10 +54,21 @@ module Legion
           def empty?
             content.nil? && signature.nil?
           end
+
+          # H1: the single strict constructor — .new runs the same member
+          # contract as the factories; the factories fill their defaults and
+          # delegate here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:content] = absence!(values[:content], site, :content)
+            values[:signature] = absence!(values[:signature], site, :signature)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         Thinking::BUILD_SITE = 'Canonical::Thinking.build'
         Thinking::FROM_HASH_SITE = 'Canonical::Thinking.from_hash'
+        Thinking::NEW_SITE = 'Canonical::Thinking.new'
 
         # Normalized config for thinking across providers — one name, one shape
         # (04 §8): Canonical::Thinking::Config. # -- required for Data.define block scope
@@ -75,11 +86,18 @@ module Legion
             build(effort: hash[:effort], budget: hash[:budget], metadata:)
           end
 
+          # M4: effort is a closed enum (the EFFORT_BUDGET keys), not an
+          # unbounded string — an unrecognized effort is a contract error at
+          # construction, never a silently-derived budget.
           def self.effort_string!(effort, site)
             return nil if effort.nil?
-            return effort.to_s if effort.is_a?(::Symbol)
 
-            Strict.expect_type!(effort, [::String], site, :effort)
+            value = effort.is_a?(::Symbol) ? effort.to_s : Strict.expect_type!(effort, [::String], site, :effort)
+            normalized = value.downcase
+            allowed = self::EFFORT_BUDGET.keys
+            raise ArgumentError, "#{site}: Invalid effort: #{value.inspect}. Must be one of: #{allowed.join(', ')}" unless allowed.include?(normalized)
+
+            normalized
           end
 
           # Serialize to a Hash for AMQP/fleet/wire transport. Faithful to what was
@@ -102,28 +120,39 @@ module Legion
           end
 
           # Budget for a provider that needs a token budget (e.g. Anthropic),
-          # derived from effort when budget was not explicitly set. nil only when
-          # neither axis is configured.
+          # derived from effort when budget was not explicitly set. nil only
+          # when neither axis is configured. M4: effort is enum-validated at
+          # construction, so the lookup cannot miss — the silent medium
+          # fallback is deleted.
           def resolved_budget
             return budget unless budget.nil?
             return nil if effort.nil?
 
-            self.class::EFFORT_BUDGET[effort.to_s.downcase] || self.class::EFFORT_BUDGET['medium']
+            self.class::EFFORT_BUDGET[effort]
           end
 
           # Effort for a provider that needs an effort level (e.g. OpenAI),
-          # derived from budget when effort was not explicitly set. nil only when
-          # neither axis is configured.
+          # derived from budget when effort was not explicitly set. nil only
+          # when neither axis is configured.
           def resolved_effort
             return effort unless effort.nil?
             return nil if budget.nil?
 
             bands = self.class::EFFORT_BUDGET
-            b = budget.to_i
-            if b < bands['medium'] then 'low'
-            elsif b < bands['high'] then 'medium'
+            if budget < bands['medium'] then 'low'
+            elsif budget < bands['high'] then 'medium'
             else 'high'
             end
+          end
+
+          # H1/M4: the single strict constructor — .new runs the same member
+          # contract as the factories (effort enum, Integer budget); the
+          # factories fill their defaults and delegate here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:effort] = effort_string!(values[:effort], site)
+            values[:budget] = Strict.expect_type!(values[:budget], [::Integer], site, :budget)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
           end
         end
 
@@ -137,6 +166,7 @@ module Legion
         Thinking::Config::EFFORT_BUDGET = { 'low' => 1024, 'medium' => 8192, 'high' => 16_384 }.freeze
         Thinking::Config::BUILD_SITE = 'Canonical::Thinking::Config.build'
         Thinking::Config::FROM_HASH_SITE = 'Canonical::Thinking::Config.from_hash'
+        Thinking::Config::NEW_SITE = 'Canonical::Thinking::Config.new'
       end
     end
   end

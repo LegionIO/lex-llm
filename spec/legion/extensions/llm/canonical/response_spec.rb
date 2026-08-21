@@ -21,6 +21,18 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Response do
 
   it_behaves_like 'a canonical type'
 
+  describe 'H1 — .new is as strict as the factories' do
+    it 'rejects a poison stop_reason' do
+      expect { described_class.new(text: 'x', stop_reason: :bogus_reason) }
+        .to raise_error(ArgumentError, /Invalid stop_reason/)
+    end
+
+    it 'rejects a wrong-class usage member' do
+      expect { described_class.new(usage: 'nope') }
+        .to raise_error(ArgumentError, /usage expected Hash, got String/)
+    end
+  end
+
   describe 'T5 — stop_reason enum (validated in both factories)' do
     it 'accepts every canonical stop reason in both factories' do
       described_class::STOP_REASONS.each do |reason|

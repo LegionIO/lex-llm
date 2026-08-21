@@ -130,11 +130,21 @@ module Legion
           def tool_result?
             type == :tool_result
           end
+
+          # H1: the single strict constructor — .new runs the same member
+          # contract as the factories; the factories fill their defaults and
+          # delegate here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:type] = normalize_type!(values[:type], site)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         ContentBlock::CONTENT_BLOCK_TYPES = %i[text thinking tool_use tool_result image audio video].freeze
         ContentBlock::BUILD_SITE = 'Canonical::ContentBlock.build'
         ContentBlock::FROM_HASH_SITE = 'Canonical::ContentBlock.from_hash'
+        ContentBlock::NEW_SITE = 'Canonical::ContentBlock.new'
       end
     end
   end

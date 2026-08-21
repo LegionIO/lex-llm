@@ -34,6 +34,24 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Params do
     end
   end
 
+  describe 'H1/M3 — wire-type validation in every constructor' do
+    it 'rejects garbage numeric members in build, from_hash, and .new' do
+      expect { described_class.build(max_tokens: 'abc') }
+        .to raise_error(ArgumentError, /max_tokens expected Integer, got String/)
+      expect { described_class.from_hash(temperature: :hot) }
+        .to raise_error(ArgumentError, /temperature expected Numeric, got Symbol/)
+      expect { described_class.new(seed: -3.5) }
+        .to raise_error(ArgumentError, /seed expected Integer, got Float/)
+    end
+
+    it 'rejects wrong-class stop_sequences and response_format' do
+      expect { described_class.new(stop_sequences: 42) }
+        .to raise_error(ArgumentError, /stop_sequences expected String \| Array, got Integer/)
+      expect { described_class.build(response_format: 42) }
+        .to raise_error(ArgumentError, /response_format expected String \| Hash, got Integer/)
+    end
+  end
+
   describe 'construction law' do
     it 'from_hash({}) is a valid all-nil Params (never nil)' do
       params = described_class.from_hash({})

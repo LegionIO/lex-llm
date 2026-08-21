@@ -41,6 +41,12 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Chunk do
       chunk = described_class.from_hash(type: 'weird_custom_type', delta: 'x')
       expect(chunk.type).to eq(:weird_custom_type)
     end
+
+    it 'H1: .new validates member shapes (type is String|Symbol, never a Hash)' do
+      expect { described_class.new(type: { not: :a_type }, request_id: 'r') }
+        .to raise_error(ArgumentError, /type expected String or Symbol, got Hash/)
+      expect(described_class.new(type: 'text_delta', request_id: 'r').type).to eq(:text_delta)
+    end
   end
 
   describe 'O03a — no finish_reason alias' do

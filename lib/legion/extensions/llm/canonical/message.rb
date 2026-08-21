@@ -115,11 +115,25 @@ module Legion
           def to_s
             text
           end
+
+          # H1: the single strict constructor — .new runs the same member
+          # contract as the factories (normalize or raise); the factories
+          # fill their defaults and delegate here. Missing members follow the
+          # nil contract of each member.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:role] = normalize_role!(values[:role], site)
+            values[:content] = normalize_content!(values[:content], site)
+            values[:tool_calls] = normalize_tool_calls!(values[:tool_calls], site)
+            values[:cache_control] = values[:cache_control].nil? ? nil : Strict.expect_type!(values[:cache_control], [::Hash], site, :cache_control)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         Message::ROLES = %i[system user assistant tool].freeze
         Message::BUILD_SITE = 'Canonical::Message.build'
         Message::FROM_HASH_SITE = 'Canonical::Message.from_hash'
+        Message::NEW_SITE = 'Canonical::Message.new'
       end
     end
   end

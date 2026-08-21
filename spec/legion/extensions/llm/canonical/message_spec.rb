@@ -20,6 +20,27 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Message do
 
   it_behaves_like 'a canonical type'
 
+  describe 'H1 — .new is as strict as the factories (the bypass is closed)' do
+    it 'rejects a poison role that would pass every is_a? check' do
+      expect { described_class.new(role: :banana, content: 'x') }
+        .to raise_error(ArgumentError, /Invalid role: :banana/)
+    end
+
+    it 'rejects a poison content member' do
+      expect { described_class.new(role: :user, content: :symbol) }
+        .to raise_error(ArgumentError, /content expected String \| ContentBlock \| Array, got Symbol/)
+    end
+
+    it 'rejects the legacy Hash tool_calls shape' do
+      expect { described_class.new(role: :assistant, tool_calls: { a: { name: 'x' } }) }
+        .to raise_error(ArgumentError, /tool_calls expected Array, got Hash/)
+    end
+
+    it 'still constructs valid data (consumer .new calls keep working)' do
+      expect(described_class.new(role: :assistant, content: 'ok')).to be_a(described_class)
+    end
+  end
+
   describe 'T5 — role enum (validated in both factories)' do
     it 'accepts the four roles as symbols or strings' do
       described_class::ROLES.each do |role|

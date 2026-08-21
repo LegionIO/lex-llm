@@ -89,6 +89,13 @@ module Legion
             )
           end
 
+          def self.shape_symbol!(value, site, member)
+            return nil if value.nil?
+            return value.to_sym if value.is_a?(::String) || value.is_a?(::Symbol)
+
+            raise ArgumentError, "#{site}: #{member} expected String or Symbol, got #{value.class}"
+          end
+
           # Build from a Hash (raw provider response or deserialized wire payload).
           # Per G20d: ignore-unknown on consume — unknown chunk types pass through.
           def self.from_hash(source)
@@ -176,11 +183,26 @@ module Legion
           def content?
             %i[text_delta thinking_delta].include?(type)
           end
+
+          # H1: the single strict constructor. Member shapes are validated
+          # (type/stop_reason as String|Symbol, tool_call/usage through the
+          # normalizers, metadata as a Hash). Per G20d the TYPE is only
+          # shape-checked here — the produce-side enum pin stays in build,
+          # and from_hash (consume) passes unknown types through.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:type] = shape_symbol!(values[:type], site, :type)
+            values[:stop_reason] = shape_symbol!(values[:stop_reason], site, :stop_reason)
+            values[:tool_call] = normalize_tool_call!(values[:tool_call], site)
+            values[:usage] = normalize_usage!(values[:usage], site)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         Chunk::CHUNK_TYPES = %i[text_delta thinking_delta tool_call_delta usage done error].freeze
         Chunk::BUILD_SITE = 'Canonical::Chunk.build'
         Chunk::FROM_HASH_SITE = 'Canonical::Chunk.from_hash'
+        Chunk::NEW_SITE = 'Canonical::Chunk.new'
       end
     end
   end

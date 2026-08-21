@@ -25,6 +25,18 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Request do
 
   it_behaves_like 'a canonical type'
 
+  describe 'H1 — .new is as strict as the factories' do
+    it 'rejects non-canonical messages in the member contract' do
+      expect { described_class.new(messages: [42]) }
+        .to raise_error(ArgumentError, /expected Hash, got Integer/)
+    end
+
+    it 'normalizes Hash tools to ToolDefinition like the factories' do
+      request = described_class.new(tools: [{ name: 'f', parameters: {} }])
+      expect(request.tools.values.first).to be_a(Legion::Extensions::Llm::Canonical::ToolDefinition)
+    end
+  end
+
   describe 'F2 fix — strict message map (no silent drops)' do
     it 'normalizes Hash messages and passes Canonical through (T7)' do
       canonical = Legion::Extensions::Llm::Canonical::Message.build(role: :user, content: 'hi')

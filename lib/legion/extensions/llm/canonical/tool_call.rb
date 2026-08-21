@@ -64,7 +64,9 @@ module Legion
             Strict.enum!(value_sym, allowed, site, member)
           end
 
-          # Return a new ToolCall with execution result attached.
+          # Return a new ToolCall with execution result attached. The strict
+          # constructor re-validates every carried member (status enum
+          # included) — the escape-hatch .new of the pre-H1 world is gone.
           def with_result(result:, status:, duration_ms: nil, finished_at: nil)
             self.class.new(
               id: id,
@@ -72,7 +74,7 @@ module Legion
               name: name,
               arguments: arguments,
               source: source,
-              status: Strict.enum!(status, self.class::STATUS_VALUES, 'Canonical::ToolCall.with_result', :status),
+              status: status,
               duration_ms: duration_ms,
               result: result,
               error: status == :error ? result : error,
@@ -107,12 +109,25 @@ module Legion
           def to_json(*)
             to_h.to_json(*)
           end
+
+          # H1: the single strict constructor — .new runs the same member
+          # contract as the factories; the factories fill their defaults and
+          # delegate here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:name] = Strict.expect_type!(values[:name], [::String], site, :name)
+            values[:arguments] = values[:arguments].nil? ? {} : Strict.expect_type!(values[:arguments], [::Hash], site, :arguments)
+            values[:source] = normalize_enum!(values[:source], self::SOURCE_VALUES, site, :source)
+            values[:status] = normalize_enum!(values[:status], self::STATUS_VALUES, site, :status)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         ToolCall::SOURCE_VALUES = %i[client registry special extension mcp].freeze
         ToolCall::STATUS_VALUES = %i[pending running success error].freeze
         ToolCall::BUILD_SITE = 'Canonical::ToolCall.build'
         ToolCall::FROM_HASH_SITE = 'Canonical::ToolCall.from_hash'
+        ToolCall::NEW_SITE = 'Canonical::ToolCall.new'
       end
     end
   end

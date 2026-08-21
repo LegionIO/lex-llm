@@ -65,6 +65,28 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Thinking do
         .to raise_error(ArgumentError, /effort expected String, got Integer/)
     end
 
+    describe 'H1/M4 — effort is a closed enum, validated in every constructor' do
+      it 'rejects an unrecognized effort in build, from_hash, and .new' do
+        expect { config_class.build(effort: 'banana') }
+          .to raise_error(ArgumentError, /Invalid effort: "banana"/)
+        expect { config_class.from_hash(effort: 'banana') }
+          .to raise_error(ArgumentError, /Invalid effort: "banana"/)
+        expect { config_class.new(effort: 'banana') }
+          .to raise_error(ArgumentError, /Invalid effort: "banana"/)
+      end
+
+      it 'accepts the enum case-insensitively (symbol or string)' do
+        expect(config_class.build(effort: :HIGH).effort).to eq('high')
+        expect(config_class.new(effort: 'Medium').effort).to eq('medium')
+      end
+
+      it 'resolved_budget derives from the validated effort (no silent medium fallback)' do
+        expect(config_class.new(effort: 'low').resolved_budget).to eq(1024)
+        expect(config_class.build(budget: 123).resolved_budget).to eq(123)
+        expect(config_class.build.resolved_budget).to be_nil
+      end
+    end
+
     it 'keeps the effort<->budget SSOT conversions' do
       expect(config_class.build(effort: 'low').resolved_budget).to eq(1024)
       expect(config_class.build(effort: 'medium').resolved_budget).to eq(8192)

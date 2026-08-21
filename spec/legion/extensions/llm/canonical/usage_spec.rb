@@ -20,6 +20,17 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Usage do
 
   it_behaves_like 'a canonical type'
 
+  describe 'H1/M3 — Integer token validation in every constructor' do
+    it 'rejects a string token count in build, from_hash, and .new' do
+      expect { described_class.build(input_tokens: 'many') }
+        .to raise_error(ArgumentError, /input_tokens expected Integer, got String/)
+      expect { described_class.from_hash(output_tokens: 3.5) }
+        .to raise_error(ArgumentError, /output_tokens expected Integer, got Float/)
+      expect { described_class.new(thinking_tokens: 'x', units: 42) }
+        .to raise_error(ArgumentError)
+    end
+  end
+
   describe 'O03a — canonical keys only' do
     it 'does not translate provider spellings (they fold into metadata)' do
       usage = described_class.from_hash(prompt_tokens: 7, completion_tokens: 3)

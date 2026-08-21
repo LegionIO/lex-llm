@@ -114,10 +114,24 @@ module Legion
           def to_json(*)
             to_h.to_json(*)
           end
+
+          # H1: the single strict constructor — .new runs the same member
+          # contract as the factories; the factories fill their defaults and
+          # delegate here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:messages] = normalize_messages!(values[:messages], site)
+            values[:tools] = normalize_tools(values[:tools], site)
+            values[:tool_choice] = values[:tool_choice].is_a?(::String) ? values[:tool_choice].to_sym : values[:tool_choice]
+            values[:params] = normalize_params!(values[:params], site)
+            values[:thinking] = normalize_thinking!(values[:thinking], site)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         Request::BUILD_SITE = 'Canonical::Request.build'
         Request::FROM_HASH_SITE = 'Canonical::Request.from_hash'
+        Request::NEW_SITE = 'Canonical::Request.new'
       end
     end
   end

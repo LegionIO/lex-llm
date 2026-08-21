@@ -82,4 +82,25 @@ RSpec.shared_examples 'a canonical type' do
       expect(built.to_json).to eq(built.to_h.to_json)
     end
   end
+
+  # H1: .new is the single strict constructor — it runs the same member
+  # contract as the factories. Poison that passes an is_a? check is not
+  # constructible through ANY public path.
+  describe 'T8 — strict .new (H1: one validated constructor)' do
+    let(:member_kwargs) { type_source.transform_keys(&:to_sym) }
+
+    it 'rejects unknown members with a typed ArgumentError (no silent drops)' do
+      expect { type_class.new(**member_kwargs, not_a_member: true) }
+        .to raise_error(ArgumentError, /not_a_member/)
+    end
+
+    it 'rejects a non-Hash metadata member' do
+      expect { type_class.new(**member_kwargs, metadata: 'not-a-hash') }
+        .to raise_error(ArgumentError, /metadata expected Hash, got String/)
+    end
+
+    it 'constructs valid data (the factories and .new share one contract)' do
+      expect { type_class.new(**member_kwargs) }.not_to raise_error
+    end
+  end
 end

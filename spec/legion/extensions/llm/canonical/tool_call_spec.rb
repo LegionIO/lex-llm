@@ -20,6 +20,18 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ToolCall do
 
   it_behaves_like 'a canonical type'
 
+  describe 'H1 — .new is as strict as the factories' do
+    it 'rejects a poison source enum' do
+      expect { described_class.new(name: 'x', source: :bogus) }
+        .to raise_error(ArgumentError, /Invalid source: :bogus/)
+    end
+
+    it 'rejects JSON-string arguments (Hash only, O03a)' do
+      expect { described_class.new(name: 'x', arguments: '{"a":1}') }
+        .to raise_error(ArgumentError, /arguments expected Hash, got String/)
+    end
+  end
+
   describe 'T5 — enum law (declared enums enforced in both factories)' do
     it 'validates source against SOURCE_VALUES' do
       expect { described_class.build(name: 'x', source: 'client') }.not_to raise_error

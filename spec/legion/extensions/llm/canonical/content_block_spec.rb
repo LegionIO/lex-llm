@@ -26,6 +26,13 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ContentBlock do
     end
   end
 
+  describe 'H1 — .new is as strict as the factories' do
+    it 'rejects an unknown type in .new' do
+      expect { described_class.new(type: :bogus, text: 'x') }
+        .to raise_error(ArgumentError, /Invalid type: :bogus/)
+    end
+  end
+
   describe 'named factories (produce side)' do
     it 'builds a text block' do
       block = described_class.text('hi', cache_control: { type: :ephemeral })

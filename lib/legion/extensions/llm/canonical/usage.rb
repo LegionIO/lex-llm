@@ -63,10 +63,27 @@ module Legion
             [input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
              thinking_tokens].compact.sum
           end
+
+          # H1/M3: the single strict constructor. .new validates the token
+          # members as Integers (a string count would raise deep in
+          # StreamAccumulator#total_tokens instead of at construction) and
+          # units as a Hash. The factories fill their defaults and delegate
+          # here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:input_tokens] = Strict.expect_type!(values[:input_tokens], [::Integer], site, :input_tokens)
+            values[:output_tokens] = Strict.expect_type!(values[:output_tokens], [::Integer], site, :output_tokens)
+            values[:cache_read_tokens] = Strict.expect_type!(values[:cache_read_tokens], [::Integer], site, :cache_read_tokens)
+            values[:cache_write_tokens] = Strict.expect_type!(values[:cache_write_tokens], [::Integer], site, :cache_write_tokens)
+            values[:thinking_tokens] = Strict.expect_type!(values[:thinking_tokens], [::Integer], site, :thinking_tokens)
+            values[:units] = values[:units].nil? ? {} : Strict.expect_type!(values[:units], [::Hash], site, :units)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
+          end
         end
 
         Usage::BUILD_SITE = 'Canonical::Usage.build'
         Usage::FROM_HASH_SITE = 'Canonical::Usage.from_hash'
+        Usage::NEW_SITE = 'Canonical::Usage.new'
       end
     end
   end

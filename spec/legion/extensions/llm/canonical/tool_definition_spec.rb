@@ -53,17 +53,33 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ToolDefinition do
     end
   end
 
-  describe 'name sanitization (cross-wire safety)' do
-    it 'sanitizes dots, strips unsafe chars, caps length' do
-      expect(described_class.build(name: 'get.weather').name).to eq('get_weather')
-      expect(described_class.sanitize_tool_name('a' * 80)).to eq('a' * 64)
-      expect(described_class.sanitize_tool_name('')).to eq('tool')
+  describe 'M5 — the name is authoritative (no rewrite, no fabrication)' do
+    it 'preserves the client/registry name verbatim (dialect rules live at the provider edge)' do
+      expect(described_class.build(name: 'get.weather').name).to eq('get.weather')
+      expect(described_class.build(name: 'a' * 80).name).to eq('a' * 80)
+      expect(described_class).not_to respond_to(:sanitize_tool_name)
+    end
+
+    it 'raises on a missing or empty name (the "tool" fabrication is deleted)' do
+      expect { described_class.build(name: nil) }
+        .to raise_error(ArgumentError, /name must be a non-empty String/)
+      expect { described_class.build(name: '') }
+        .to raise_error(ArgumentError, /name must be a non-empty String/)
+      expect { described_class.from_hash({}) }
+        .to raise_error(ArgumentError, /name must be a non-empty String/)
+    end
+
+    it 'does not fabricate a source (explicit or absent, never laundered to builtin)' do
+      expect(described_class.build(name: 'x').source).to be_nil
+      expect(described_class.build(name: 'x', source: { type: :client }).source).to eq(type: :client)
+      expect { described_class.build(name: 'x', source: 'client') }
+        .to raise_error(ArgumentError, /source expected Hash/)
     end
   end
 
-  it 'builds from keyword args with defaults' do
+  it 'builds from keyword args with defaults (empty description, absent source)' do
     td = described_class.build(name: 'x')
     expect(td.description).to eq('')
-    expect(td.source).to eq(type: :builtin)
+    expect(td.source).to be_nil
   end
 end
