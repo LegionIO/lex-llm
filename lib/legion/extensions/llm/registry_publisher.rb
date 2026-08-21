@@ -8,16 +8,20 @@ module Legion
       # Best-effort publisher for LLM provider availability events.
       # Parameterized by `provider_family` so each lex-llm-* gem can reuse this
       # class without defining its own copy.
+      # M6: the instance identity is CARRIED in (`provider_instance:` — the
+      # operator's config name); the publisher no longer derives identity
+      # from node settings.
       class RegistryPublisher
         include Legion::Logging::Helper
 
         ASYNC_THREAD_POOL = Concurrent::FixedThreadPool.new(1, fallback_policy: :caller_runs)
 
-        attr_reader :provider_family
+        attr_reader :provider_family, :provider_instance
 
-        def initialize(provider_family:, builder: nil)
+        def initialize(provider_family:, provider_instance:, builder: nil)
           @provider_family = provider_family.to_s.downcase.to_sym
-          @builder = builder || RegistryEventBuilder.new(provider_family: @provider_family)
+          @provider_instance = provider_instance
+          @builder = builder || RegistryEventBuilder.new(provider_family: @provider_family, provider_instance: @provider_instance)
         end
 
         def app_id

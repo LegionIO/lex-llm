@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 RSpec.describe Legion::Extensions::Llm::RegistryPublisher do
-  subject(:publisher) { described_class.new(provider_family: :ollama, builder: builder) }
+  subject(:publisher) { described_class.new(provider_family: :ollama, provider_instance: 'primary', builder: builder) }
 
   let(:builder) { instance_double(Legion::Extensions::Llm::RegistryEventBuilder) }
 
@@ -15,7 +15,7 @@ RSpec.describe Legion::Extensions::Llm::RegistryPublisher do
 
   describe '#provider_family' do
     it 'normalizes to a downcased symbol' do
-      pub = described_class.new(provider_family: 'Anthropic', builder: builder)
+      pub = described_class.new(provider_family: 'Anthropic', provider_instance: 'primary', builder: builder)
       expect(pub.provider_family).to eq(:anthropic)
     end
   end

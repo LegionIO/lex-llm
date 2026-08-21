@@ -68,6 +68,19 @@ module Legion
             "lane:v1:#{digest}"
           end
 
+          # M6: the ONE config→instance-id derivation (R6 owner law).
+          # Instance identity is the operator's CONFIG NAME from the provider
+          # config; when the operator configured no instance name, "default"
+          # is the ordinary label (no reserved values — see InstanceKey).
+          # Consumers CARRY this derivation; they never mint a local variant
+          # (node canonical names, family fallbacks, and read-time synthesis
+          # are deleted).
+          def instance_id(config)
+            return config.instance_id.to_s if config.respond_to?(:instance_id) && config.instance_id
+
+            'default'
+          end
+
           def validate_offering_id!(value:, instance_key:, provider_native_key:)
             expected = offering_id(instance_key: instance_key, provider_native_key: provider_native_key)
             raise Errors::ValidationError, 'offering_id does not reproduce from its identity fields' unless value == expected

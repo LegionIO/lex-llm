@@ -3,12 +3,25 @@
 require 'spec_helper'
 
 RSpec.describe Legion::Extensions::Llm::RegistryEventBuilder do
-  subject(:builder) { described_class.new(provider_family: :ollama) }
+  subject(:builder) { described_class.new(provider_family: :ollama, provider_instance: 'primary') }
 
   describe '#provider_family' do
     it 'normalizes to a downcased symbol' do
-      b = described_class.new(provider_family: 'Anthropic')
+      b = described_class.new(provider_family: 'Anthropic', provider_instance: 'node-a')
       expect(b.provider_family).to eq(:anthropic)
+    end
+  end
+
+  describe 'M6 — the instance identity is carried, never derived' do
+    it 'stamps the carried identity on offering and runtime (no node-settings derivation)' do
+      event = builder.readiness({ ready: true, configured: true })
+      expect(event.offering[:provider_instance]).to eq('primary')
+      expect(event.runtime[:node]).to eq('primary')
+    end
+
+    it 'rejects an empty instance identity at the boundary' do
+      expect { described_class.new(provider_family: :ollama, provider_instance: '  ') }
+        .to raise_error(Legion::Extensions::Llm::Inventory::Errors::ValidationError, /provider_instance/)
     end
   end
 

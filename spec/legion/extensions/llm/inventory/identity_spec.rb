@@ -275,10 +275,23 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Identity do
     end
   end
 
+  describe 'M6 — the single config→instance-id derivation (owner law)' do
+    it 'derives the operator config name from a provider config' do
+      config = Struct.new(:instance_id).new('h200')
+      expect(described_class.instance_id(config)).to eq('h200')
+    end
+
+    it 'uses the ordinary "default" label (not a reserved value) when no instance name is configured' do
+      expect(described_class.instance_id(Struct.new(:instance_id).new(nil))).to eq('default')
+      expect(described_class.instance_id({})).to eq('default')
+      expect(described_class.instance_id(nil)).to eq('default')
+    end
+  end
+
   describe 'public surface' do
-    it 'exposes exactly the seven documented module methods' do
+    it 'exposes exactly the eight documented module methods' do
       expected = %i[
-        normalize_text normalize_enum length_frame offering_id lane_id
+        normalize_text normalize_enum length_frame offering_id lane_id instance_id
         validate_offering_id! validate_lane_id!
       ].sort
       expect(described_class.singleton_methods(false).sort).to eq(expected)

@@ -756,10 +756,11 @@ module Legion
           end
         end
 
+        # M6: the instance identity is CARRIED from the owner (R6) — the
+        # single config→id derivation lives in Inventory::Identity. No local
+        # re-derivation (node names, family fallbacks) exists here.
         def provider_instance_id
-          return config.instance_id.to_sym if config.respond_to?(:instance_id) && config.instance_id
-
-          :default
+          Inventory::Identity.instance_id(config).to_sym
         end
 
         class << self

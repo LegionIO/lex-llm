@@ -180,12 +180,19 @@ module Legion
         end
 
         def handle_data(data, env)
+          # An empty data frame carries nothing — it is not a parse failure.
+          return if data.to_s.strip.empty?
+
           parsed = Legion::JSON.parse(data, symbolize_names: false)
           return parsed unless parsed.is_a?(Hash) && parsed.key?('error')
 
           handle_parsed_error(parsed, env)
         rescue Legion::JSON::ParseError => e
+          # M1: an unparseable mid-stream data frame is still a provider
+          # error — a classified failure through the one mapper, never a
+          # silent drop (the stream must not complete "successfully").
           handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.handle_data')
+          raise_unparseable_streaming_error(env, data, 'data frame')
         end
 
         def handle_error_event(data, env)
@@ -210,7 +217,21 @@ module Legion
           parsed_data = Legion::JSON.parse(data, symbolize_names: false)
           handle_parsed_error(parsed_data, env)
         rescue Legion::JSON::ParseError => e
+          # M1: an error event that cannot be parsed is STILL an error event
+          # — a classified failure, never a silent nil (the pre-M1 fail-open
+          # completed the stream "successfully" on the provider's explicit
+          # error signal).
           handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.parse_error_from_json')
+          raise_unparseable_streaming_error(env, data, 'error event')
+        end
+
+        # One classified failure for unparseable stream error content — the
+        # same 500 classification the PARSEABLE in-band error path uses
+        # (parse_streaming_error): an in-band provider error event is a
+        # failure regardless of the stream's HTTP status. The raw payload is
+        # bounded (200 chars) — never the full body.
+        def raise_unparseable_streaming_error(_env, data, kind)
+          raise_streaming_status_error(500, "Provider error: unparseable #{kind} (#{data.to_s[0, 200].inspect})")
         end
 
         def build_stream_error_response(parsed_data, env, status)

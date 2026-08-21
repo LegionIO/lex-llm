@@ -172,10 +172,19 @@ module Legion
           @usage[:thinking_tokens] = usage.thinking_tokens if usage.thinking_tokens
         end
 
-        # Tool-call fragment correlation. The wire law (dead-stop postmortem):
-        # a continuation fragment (id=nil, name=nil) lands on the call at ITS
-        # provider index; recency (@latest_tool_call_id) is retained only as
-        # the fallback for providers that emit no index.
+        # Tool-call fragment correlation. The wire law (dead-stop postmortem,
+        # documented edge trade-off — keep this comment in sync with the
+        # behavior):
+        #   - a continuation fragment (id=nil, name=nil) lands on the call at
+        #     ITS provider index; recency (@latest_tool_call_id) is retained
+        #     only as the fallback for providers that emit no index;
+        #   - a continuation with an UNKNOWN index and no recency target is
+        #     DROPPED (the incomplete JSON then fails the strict arguments
+        #     parser at to_response — a dropped empty-string fragment is the
+        #     known invisible case);
+        #   - when the provider omits the tool-call id, a UUID is FABRICATED:
+        #     the client sees an id the provider never issued, so downstream
+        #     correlation must not assume provider-issued ids.
         def accumulate_tool_call_fragment(fragment)
           if fragment[:id]
             start_tool_call(fragment)
