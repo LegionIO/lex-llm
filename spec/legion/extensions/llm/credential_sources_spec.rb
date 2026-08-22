@@ -410,26 +410,25 @@ RSpec.describe Legion::Extensions::Llm::CredentialSources do
       end
     end
 
-    it 'returns empty hash for missing file' do
-      result = mod.send(:read_json, '/nonexistent/file.json')
-      expect(result).to eq({})
+    it 'raises a configuration error for a missing file (O11 fail-closed)' do
+      expect { mod.send(:read_json, '/nonexistent/file.json') }
+        .to raise_error(Legion::Extensions::Llm::ConfigurationError, /credential file is missing/)
     end
 
-    it 'returns empty hash for invalid JSON' do
+    it 'raises for invalid JSON (O11 fail-closed)' do
       Dir.mktmpdir do |dir|
         path = File.join(dir, 'bad.json')
         File.write(path, 'not json{{{')
-        result = mod.send(:read_json, path)
-        expect(result).to eq({})
+        expect { mod.send(:read_json, path) }.to raise_error(Legion::JSON::ParseError)
       end
     end
 
-    it 'returns empty hash for empty file' do
+    it 'raises a configuration error for an empty file (O11 fail-closed)' do
       Dir.mktmpdir do |dir|
         path = File.join(dir, 'empty.json')
         File.write(path, '')
-        result = mod.send(:read_json, path)
-        expect(result).to eq({})
+        expect { mod.send(:read_json, path) }
+          .to raise_error(Legion::Extensions::Llm::ConfigurationError, /credential file is empty/)
       end
     end
   end
@@ -457,12 +456,12 @@ RSpec.describe Legion::Extensions::Llm::CredentialSources do
       expect(mod.send(:token_valid?, token)).to be true
     end
 
-    it 'returns true on parse error (malformed token)' do
-      expect(mod.send(:token_valid?, 'not.a.jwt')).to be true
+    it 'returns false on parse error (O11 fail-closed — no benefit of the doubt)' do
+      expect(mod.send(:token_valid?, 'not.a.jwt')).to be false
     end
 
-    it 'returns true for nil token' do
-      expect(mod.send(:token_valid?, nil)).to be true
+    it 'returns false for nil token (O11 fail-closed)' do
+      expect(mod.send(:token_valid?, nil)).to be false
     end
   end
 end

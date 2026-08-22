@@ -6,13 +6,18 @@ module Legion
       # Builds sanitized lex-llm registry envelopes for provider state.
       # Parameterized by `provider_family` so each lex-llm-* gem can reuse this
       # class without defining its own copy.
+      # M6: the instance identity is CARRIED in (`provider_instance:` — the
+      # operator's config name, per Inventory::Identity's owner law). The
+      # node-canonical-name derivation is deleted — a nearby layer does not
+      # get to redefine identity.
       class RegistryEventBuilder
-        include Legion::Logging::Helper
+        attr_reader :provider_family, :provider_instance
 
-        attr_reader :provider_family
-
-        def initialize(provider_family:)
+        def initialize(provider_family:, provider_instance:)
           @provider_family = provider_family.to_s.downcase.to_sym
+          @provider_instance = Legion::Extensions::Llm::Inventory::Identity.normalize_text(
+            value: provider_instance, field: :provider_instance
+          )
         end
 
         def readiness(readiness)
@@ -120,16 +125,6 @@ module Legion
 
         def extension_sym
           :"llm_#{provider_family}"
-        end
-
-        def provider_instance
-          configured_node = (::Legion::Settings.dig(:node, :canonical_name) if defined?(::Legion::Settings))
-          value = configured_node.to_s.strip
-          value.empty? ? provider_family : value.to_sym
-        rescue StandardError => e
-          handle_exception(e, level: :warn, handled: true,
-                              operation: "#{provider_family}.registry.provider_instance")
-          provider_family
         end
 
         def registry_event_class

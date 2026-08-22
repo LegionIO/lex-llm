@@ -12,25 +12,38 @@ RSpec.describe 'Inventory::WeightSchema' do
     inventory::Identity::InstanceKey.new(provider_family: :vllm, instance_id: 'helios')
   end
 
+  def operation_evidence(supported: %i[chat], **)
+    Legion::Extensions::Llm::Taxonomies::OPERATIONS.to_h do |op|
+      status, source = supported.include?(op) ? %i[supported provider_implementation] : %i[unknown absent]
+      [op, Legion::Extensions::Llm::Inventory::OperationEvidence.new(operation: op, status: status, source: source)]
+    end
+  end
+
   def settings_for(provider: {})
     { extensions: { llm: { vllm: provider } }, llm: { routing: { tier_weights: { direct: 100 } } } }
   end
 
-  def inputs(settings, native: 'deployment-x', model: 'model-y')
+  # The offering-scope settings key is the lane's 5 tuple (operator-readable).
+  def lane_id(tier: :direct, model: 'model-y', type: :inference)
+    Legion::Extensions::Llm::Inventory::Identity.compose_lane_id(
+      tier: tier, provider_family: 'vllm', instance_id: 'helios', type: type, model: model
+    )
+  end
+
+  def inputs(settings, operation: :chat, model: 'model-y')
     schema.weight_inputs(
-      settings: settings, instance_key: instance_key,
-      provider_native_key: native, model: model, tier: :direct
+      settings: settings, instance_key: instance_key, model: model, tier: :direct,
+      operation_evidence: operation_evidence(supported: [operation])
     )
   end
 
   it 'multiplies independent scopes without double-counting and lets offering override model' do
-    offering_id = inventory::Identity.offering_id(instance_key: instance_key, provider_native_key: 'deployment-x')
     settings = settings_for(
       provider: {
         weight: 100,
         models: { 'model-y' => { weight: 200 } },
         instances: { helios: { weight: 115 } },
-        offerings: { offering_id => { weight: 300 } }
+        offerings: { lane_id => { weight: 300 } }
       }
     )
 
@@ -60,14 +73,51 @@ RSpec.describe 'Inventory::WeightSchema' do
     expect(schema.base_weight(identity)).to eq(100_000_000)
   end
 
-  it 'derives offering identity from the provider-native key rather than the model' do
-    deployment_id = inventory::Identity.offering_id(
-      instance_key: instance_key, provider_native_key: 'deployment-x'
+  it 'treats the offering scope as the lane 5 tuple: a different model key does not apply' do
+    other_model_key = lane_id(model: 'other-model')
+    settings = settings_for(
+      provider: { offerings: { other_model_key => { weight: 999 }, lane_id => { weight: 321 } } }
     )
-    model_id = inventory::Identity.offering_id(instance_key: instance_key, provider_native_key: 'model-y')
-    settings = settings_for(provider: { offerings: { deployment_id => { weight: 321 }, model_id => { weight: 999 } } })
 
     expect(inputs(settings)[:model_or_offering]).to eq(321)
+  end
+
+  it 'derives the offering scope type from the operation: an embed key does not apply to a chat lane' do
+    embed_key = lane_id(type: :embedding)
+    settings = settings_for(provider: { offerings: { embed_key => { weight: 999 } } })
+
+    expect(inputs(settings, operation: :embed)[:model_or_offering]).to eq(999)
+    expect(inputs(settings)[:model_or_offering]).to eq(100) # chat draft: no inference key configured
+  end
+
+  it 'falls through to the model scope when no offering-scope key is configured' do
+    settings = settings_for(provider: { models: { 'model-y' => { weight: 200 } } })
+    expect(inputs(settings)[:model_or_offering]).to eq(200)
+  end
+
+  it 'raises when a multi-type draft has differing configured weights across its lanes' do
+    inference_key = lane_id(type: :inference)
+    embedding_key = lane_id(type: :embedding)
+    settings = settings_for(
+      provider: { offerings: { inference_key => { weight: 100 }, embedding_key => { weight: 200 } } }
+    )
+    expect do
+      schema.weight_inputs(
+        settings: settings, instance_key: instance_key, model: 'model-y', tier: :direct,
+        operation_evidence: operation_evidence(supported: %i[chat embed])
+      )
+    end.to raise_error(ArgumentError, /ambiguous/)
+
+    # Equal weights across the draft's lanes resolve to that weight.
+    settings = settings_for(
+      provider: { offerings: { inference_key => { weight: 100 }, embedding_key => { weight: 100 } } }
+    )
+    expect(
+      schema.weight_inputs(
+        settings: settings, instance_key: instance_key, model: 'model-y', tier: :direct,
+        operation_evidence: operation_evidence(supported: %i[chat embed])
+      )[:model_or_offering]
+    ).to eq(100)
   end
 
   it 'rejects every present malformed configuration scope instead of defaulting it' do

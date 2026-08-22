@@ -145,18 +145,11 @@ module Legion
             'chat'
           end
 
-          # Factory for assumed-to-exist models without full metadata.
-          def self.default(model_id, provider)
-            new(
-              id: model_id,
-              name: model_id.tr('-', ' ').capitalize,
-              provider: provider,
-              capabilities: %w[function_calling streaming vision structured_output],
-              modalities_input: %w[text image],
-              modalities_output: %w[text],
-              metadata: { warning: 'Assuming model exists, capabilities may not be accurate' }
-            )
-          end
+          # H4: the `Model::Info.default` factory is deleted — it asserted
+          # function_calling/streaming/vision/structured_output for models the
+          # system never observed. Capability evidence is owned by provider
+          # publication (Inventory::Evidence); an unknown model is a
+          # ModelNotFoundError, not a fabricated record.
 
           # Factory that accepts both legacy and new-style hashes and maps
           # them to the new struct fields. Handles round-tripping through to_h.

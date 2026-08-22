@@ -1,8 +1,11 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'support/ssot_registry_helpers'
 
 RSpec.describe Legion::Extensions::Llm::Provider do
+  include SsotRegistryHelpers
+
   describe 'Hash config support' do
     let(:provider_class) do
       Class.new(described_class) do
@@ -100,38 +103,19 @@ RSpec.describe Legion::Extensions::Llm::Provider do
   end
 
   describe 'canonical provider contract' do
-    let(:model) do
-      Legion::Extensions::Llm::Model::Info.new(
-        id: 'test-model',
-        provider: :contract,
-        instance: :primary,
-        capabilities: %i[completion streaming tools],
-        context_length: 8192,
-        metadata: { max_output_tokens: 2048 }
-      )
-    end
-
     let(:provider_class) do
-      model_info = model
       Class.new(described_class) do
         def self.name = 'Provider'
 
         define_method(:api_base) { 'https://contract.invalid' }
         define_method(:models_url) { '/v1/models' }
-        attr_reader :list_model_calls
-
-        define_method(:list_models) do |live: false, **filters|
-          @list_model_calls ||= []
-          @list_model_calls << { live: live, filters: filters }
-          [model_info]
-        end
 
         def render_payload(_messages, **)
           {}
         end
 
         def parse_completion_response(_response)
-          Legion::Extensions::Llm::Message.new(role: :assistant, content: 'ok')
+          Legion::Extensions::Llm::Canonical::Response.build(text: 'ok')
         end
       end
     end
@@ -143,12 +127,12 @@ RSpec.describe Legion::Extensions::Llm::Provider do
                            instance_id: :primary })
     end
 
-    it 'exposes a canonical chat alias over complete' do
+    it 'exposes a canonical chat alias over complete (0.8.0 signature — O4 temperature in Params)' do
       allow(provider).to receive(:complete).and_return('ok')
 
-      expect(provider.chat(messages: [], model: model)).to eq('ok')
+      expect(provider.chat([], model: 'test-model')).to eq('ok')
       expect(provider).to have_received(:complete).with(
-        [], tools: [], temperature: nil, model: model, params: {}, headers: {},
+        [], tools: [], model: 'test-model', params: nil, headers: {},
             schema: nil, thinking: nil, tool_prefs: nil
       )
     end
@@ -157,73 +141,86 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       seen = []
       allow(provider).to receive(:complete) { |_messages, **_opts, &block| block.call('chunk') }
 
-      provider.stream_chat(messages: [], model: model) { |chunk| seen << chunk }
+      provider.stream_chat([], model: 'test-model') { |chunk| seen << chunk }
 
       expect(seen).to eq(['chunk'])
     end
 
-    it 'converts live list_models results into model offerings' do
-      offerings = provider.discover_offerings(live: true)
-      offering = offerings.first
+    # 0.8.0 (07 C5): the legacy ModelOffering production path is deleted — the
+    # per-gem writer publishes; the base read path serves the activated
+    # inventory offerings for this instance from the registry snapshot.
+    def activate_contract_instance
+      key = Legion::Extensions::Llm::Inventory::Identity::InstanceKey.new(
+        provider_family: 'provider', instance_id: 'primary'
+      )
+      Legion::Extensions::Llm::Inventory::Registry.reset!
+      claim_and_activate(key: key, callable: Object.new, coordinator: probe_coordinator(key), model: 'test-model')
+    end
+
+    it 'serves the activated inventory offerings for the instance from the registry snapshot (07 C5)' do
+      activate_contract_instance
+      offerings = provider.discover_offerings
 
       expect(offerings.size).to eq(1)
-      expect(offering.provider_family).to eq(:provider)
-      expect(offering.provider_instance).to eq(:primary)
-      expect(offering.model).to eq('test-model')
-      expect(offering.usage_type).to eq(:inference)
-      expect(offering.capabilities).to include(:completion, :streaming, :tools)
-      expect(offering.context_window).to eq(8192)
+      expect(offerings.first.model).to eq('test-model')
+      expect(offerings.first.instance_key.instance_id).to eq('primary')
+      expect(offerings.first.instance_key.provider_family).to eq(:provider)
     end
 
-    it 'publishes every discovered model before policy filtering removes blocked models' do
-      blocked_model = Legion::Extensions::Llm::Model::Info.new(
-        id: 'blocked-model',
-        provider: :contract,
-        instance: :primary,
-        capabilities: %i[completion],
-        context_length: 4096
-      )
-      registry_publisher = instance_double(Legion::Extensions::Llm::RegistryPublisher)
-      allow(registry_publisher).to receive(:publish_models_async)
-      allow(provider_class).to receive(:registry_publisher).and_return(registry_publisher)
-      allow(provider).to receive_messages(list_models: [model, blocked_model], settings: { model_blacklist: ['blocked'] })
+    it 'filters snapshot offerings by model and instance keys' do
+      activate_contract_instance
 
-      offerings = provider.discover_offerings(live: true)
-
-      expect(offerings.map(&:model)).to eq(['test-model'])
-      expect(registry_publisher).to have_received(:publish_models_async).with([model], anything)
-      expect(registry_publisher).to have_received(:publish_models_async).with([blocked_model], anything)
+      expect(provider.discover_offerings(model: 'test-model')).not_to be_empty
+      expect(provider.discover_offerings(id: 'test-model')).not_to be_empty
+      expect(provider.discover_offerings(model: 'other-model')).to be_empty
+      expect(provider.discover_offerings(instance: 'other')).to be_empty
     end
 
-    it 'passes live discovery filters through to list_models' do
-      provider.discover_offerings(live: true, capability: :tools, instance: :primary)
-
-      expect(provider.list_model_calls).to include(
-        live: true,
-        filters: { capability: :tools, instance: :primary }
-      )
-    end
-
-    it 'filters generated offerings by capability and instance' do
-      provider.discover_offerings(live: true)
-
-      expect(provider.discover_offerings(capability: :tools, instance: :primary)).not_to be_empty
-      expect(provider.discover_offerings(capability: :embedding)).to be_empty
-      expect(provider.discover_offerings(instance: :other)).to be_empty
-    end
-
-    it 'does not perform live discovery for uncached non-live offerings reads' do
+    it 'never calls list_models — the production path moved to the per-gem writer' do
       allow(provider).to receive(:list_models).and_raise('unexpected live discovery')
 
-      expect(provider.discover_offerings).to eq([])
+      expect { provider.discover_offerings(live: true) }.not_to raise_error
       expect(provider).not_to have_received(:list_models)
     end
 
-    it 'serves non-live offerings reads from the live discovery cache' do
-      provider.discover_offerings(live: true)
-      allow(provider).to receive(:list_models).and_raise('unexpected live discovery')
+    describe 'H5 — honest read-path contract (accepted-for-compat params are documented, not silently discarded)' do
+      it 'accepts the full discover_offerings signature against the snapshot' do
+        expect { provider.discover_offerings(live: true, raise_on_unreachable: true) }.not_to raise_error
+        expect(provider.discover_offerings(raise_on_unreachable: true, model: 'test-model').size).to eq(1)
+      end
+    end
 
-      expect(provider.discover_offerings(capability: :tools, instance: :primary)).not_to be_empty
+    describe 'H3 — the funnel enforces the tool contract (one contract, one oracle)' do
+      let(:tool) { Legion::Extensions::Llm::Canonical::ToolDefinition.build(name: 'get_weather') }
+
+      before do
+        allow(provider).to receive(:sync_response).and_return('ok') # -- stream_response's model: kwarg is not exercised here
+        allow(provider).to receive(:stream_response) { |_connection, _payload, _headers, **_opts, &stream_block| stream_block&.call('c') }
+      end
+
+      it 'accepts Hash<name, Canonical::ToolDefinition> through chat and stream_chat' do
+        expect(provider.chat([], model: 'test-model', tools: { get_weather: tool })).to eq('ok')
+        expect do
+          # rubocop:disable Lint/EmptyBlock -- the streamed chunk is consumed by the stub
+          provider.stream_chat([], model: 'test-model', tools: { get_weather: tool }) { |_c| }
+          # rubocop:enable Lint/EmptyBlock
+        end.not_to raise_error
+      end
+
+      it 'rejects Hash tool values with a typed ArgumentError' do
+        expect { provider.chat([], model: 'test-model', tools: { get_weather: { name: 'get_weather' } }) }
+          .to raise_error(ArgumentError, /Canonical::ToolDefinition/)
+      end
+
+      it 'rejects a non-Hash tools container with a typed ArgumentError' do
+        expect { provider.chat([], model: 'test-model', tools: [tool]) }
+          .to raise_error(ArgumentError, /Hash<name, Canonical::ToolDefinition>/)
+      end
+
+      it 'rejects legacy tool objects with a typed ArgumentError' do
+        expect { provider.chat([], model: 'test-model', tools: { get_weather: Legion::Extensions::Llm::Tool.new }) }
+          .to raise_error(ArgumentError, /Canonical::ToolDefinition/)
+      end
     end
 
     it 'returns normalized health metadata' do
@@ -237,16 +234,17 @@ RSpec.describe Legion::Extensions::Llm::Provider do
     end
 
     it 'provides a deterministic token estimate fallback' do
-      expect(provider.count_tokens(messages: [{ content: 'hello world' }], model: model)).to be >= 1
+      messages = [Legion::Extensions::Llm::Canonical::Message.build(role: :user, content: 'hello world')]
+      expect(provider.count_tokens(messages: messages, model: 'test-model')).to be >= 1
     end
 
-    it 'summarizes hash-backed tools for debug logging' do
+    it 'summarizes canonical tools for debug logging' do
       tools = {
-        current: { name: 'current' },
-        legacy: { 'name' => 'legacy' }
+        current: Legion::Extensions::Llm::Canonical::ToolDefinition.build(name: 'current'),
+        other: Legion::Extensions::Llm::Canonical::ToolDefinition.build(name: 'other')
       }
 
-      expect(provider.send(:debug_tool_names, tools)).to eq(%w[current legacy])
+      expect(provider.send(:debug_tool_names, tools)).to eq(%w[current other])
     end
 
     it 'deep merges embedding params into the provider payload' do
@@ -375,6 +373,28 @@ RSpec.describe Legion::Extensions::Llm::Provider do
         expect(provider.model_allowed?('gpt-5')).to be true
       end
     end
+
+    context 'when the model is an object exposing #id' do
+      let(:model_info) do
+        Struct.new(:id).new('claude-sonnet-4-6')
+      end
+
+      before { provider.settings = { model_whitelist: %w[sonnet] } }
+
+      it 'matches policy against the model id, not the inspect string' do
+        expect(provider.model_allowed?(model_info)).to be true
+      end
+
+      it 'blocks object models the whitelist does not cover' do
+        other = Struct.new(:id).new('llama-3')
+        expect(provider.model_allowed?(other)).to be false
+      end
+
+      it 'never matches inspect-string artifacts (e.g. a data/name pattern)' do
+        provider.settings = { model_whitelist: %w[data] }
+        expect(provider.model_allowed?(model_info)).to be false
+      end
+    end
   end
 
   describe '#enforce_model_allowed! (dispatch compliance guard)' do
@@ -407,7 +427,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       end
 
       it 'fails closed in #complete before any provider call' do
-        expect { provider.complete([], tools: [], temperature: nil, model: 'gpt-5') }
+        expect { provider.complete([], tools: [], model: 'gpt-5') }
           .to raise_error(Legion::Extensions::Llm::ModelNotAllowedError)
       end
 
@@ -421,7 +441,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       before { provider.settings = { model_blacklist: %w[sonnet] } }
 
       it 'fails closed in #complete for a blacklisted model' do
-        expect { provider.complete([], tools: [], temperature: nil, model: 'claude-sonnet-4-6') }
+        expect { provider.complete([], tools: [], model: 'claude-sonnet-4-6') }
           .to raise_error(Legion::Extensions::Llm::ModelNotAllowedError)
       end
     end

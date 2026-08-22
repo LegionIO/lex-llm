@@ -244,13 +244,17 @@ RSpec.describe 'Inventory::WeightReconciler' do
   end
 
   it 'uses the exact provider, instance, model, instance-model, and offering dormant keys' do
-    offering_id = inventory::Identity.offering_id(instance_key: key, provider_native_key: 'gemma4')
+    # The offering-scope key is the lane's 5 tuple — operator-readable.
+    offering_lane_id = inventory::Identity.compose_lane_id(
+      tier: :local, provider_family: 'vllm', instance_id: 'helios', type: :inference, model: 'gemma4'
+    )
+    expect(offering_lane_id).to eq('local:vllm:helios:inference:gemma4')
     settings = settings_for(
       provider: {
         weight: false,
         models: { gemma4: { weight: 101 } },
         instances: { helios: { weight: 0, models: { gemma4: { weight: 102 } } } },
-        offerings: { offering_id => { weight: 103 } }
+        offerings: { offering_lane_id => { weight: 103 } }
       },
       tier: 777
     )
@@ -266,7 +270,7 @@ RSpec.describe 'Inventory::WeightReconciler' do
       [:vllm, :instance, 'helios'],
       [:vllm, :model, 'gemma4'],
       [:vllm, :instance, 'helios', :model, 'gemma4'],
-      [:vllm, :offering, offering_id]
+      [:vllm, :offering, offering_lane_id]
     )
     expect(logged.flatten).not_to include(:tier)
 

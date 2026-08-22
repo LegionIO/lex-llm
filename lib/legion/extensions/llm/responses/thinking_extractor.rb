@@ -156,6 +156,9 @@ module Legion
           end
           private_class_method :consume_open_think_segment
 
+          # The shared tag-segment matcher (10 U1): batch extraction and the
+          # streaming state machine both match tags through this one
+          # implementation.
           def next_tag_match(text, type)
             matches = THINK_TAG_PAIRS.filter_map do |open_tag, close_tag|
               tag = type == :open ? open_tag : close_tag
@@ -164,7 +167,11 @@ module Legion
             end
             matches.min_by { |match| match[:index] }
           end
-          private_class_method :next_tag_match
+
+          # All tag tokens (opens + closes) for cross-chunk boundary buffering.
+          def tag_tokens
+            THINK_TAG_PAIRS.flat_map { |open_tag, close_tag| [open_tag, close_tag] }
+          end
 
           def untagged_reasoning_preamble?(preamble)
             return false if preamble.length > UNTAGGED_PREAMBLE_MAX_LENGTH

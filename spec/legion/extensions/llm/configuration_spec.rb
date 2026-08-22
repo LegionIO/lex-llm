@@ -17,9 +17,14 @@ RSpec.describe Legion::Extensions::Llm::Configuration do
     it 'exposes a discoverable options API' do
       expect(described_class.options).to include(
         :request_timeout,
-        :default_model,
-        :default_embedding_model,
         :model_registry_file
+      )
+    end
+
+    it 'declares no model-defaulting options (H4: model choice belongs to the router)' do
+      expect(described_class.options).not_to include(
+        :default_model, :default_embedding_model, :default_moderation_model,
+        :default_image_model, :default_transcription_model
       )
     end
 
@@ -33,6 +38,30 @@ RSpec.describe Legion::Extensions::Llm::Configuration do
 
     it 'defaults cache_control_prefix_tokens to 4' do
       expect(config.cache_control_prefix_tokens).to eq(4)
+    end
+  end
+
+  describe 'L5 — log defaults come from the settings system (no ENV reads)' do
+    around do |example|
+      original_extensions = Legion::Settings.loader.settings[:extensions]
+      example.run
+    ensure
+      Legion::Settings.loader.settings[:extensions] = original_extensions
+    end
+
+    it 'defaults log_level to INFO and log_stream_debug to false when settings are unset' do
+      Legion::Settings.loader.settings[:extensions] = {}
+      expect(described_class.log_settings_defaults).to eq(level: Logger::INFO, stream_debug: false)
+    end
+
+    it 'reads log_level / log_stream_debug from extensions.llm settings' do
+      Legion::Settings.loader.settings[:extensions] = { llm: { log_level: :debug, log_stream_debug: true } }
+      expect(described_class.log_settings_defaults).to eq(level: Logger::DEBUG, stream_debug: true)
+    end
+
+    it 'raises on an unknown log_level name (configuration error, no fallback)' do
+      Legion::Settings.loader.settings[:extensions] = { llm: { log_level: :bogus } }
+      expect { described_class.log_settings_defaults }.to raise_error(NameError)
     end
   end
 

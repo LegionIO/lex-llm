@@ -5,6 +5,7 @@ Kernel.require 'set'
 require 'legion/extensions/llm/inventory/weight_schema'
 require 'legion/extensions/llm/settings_cascade'
 require 'legion/extensions/llm/inventory/identity'
+require 'legion/extensions/llm/taxonomies'
 
 module Legion
   module Extensions
@@ -37,9 +38,9 @@ module Legion
               inputs = WeightSchema.weight_inputs(
                 settings: settings,
                 instance_key: instance_key,
-                provider_native_key: draft.provider_native_key,
                 model: draft.model,
-                tier: draft.tier
+                tier: draft.tier,
+                operation_evidence: draft.operation_evidence
               )
               draft.with(weight_inputs: inputs, base_weight: WeightSchema.base_weight(inputs))
             end.freeze
@@ -209,10 +210,16 @@ module Legion
                   provider_family, :instance, instance_key.instance_id.to_s,
                   :model, draft.model.to_s
                 )
-                offering_id = Identity.offering_id(
-                  instance_key: instance_key, provider_native_key: draft.provider_native_key
-                )
-                keys << canonical_key(provider_family, :offering, offering_id.to_s)
+                draft.operation_evidence.each_value do |evidence|
+                  next unless evidence.supported?
+
+                  lane_id = Identity.compose_lane_id(
+                    tier: draft.tier, provider_family: instance_key.provider_family,
+                    instance_id: instance_key.instance_id,
+                    type: Taxonomies.lane_type_for(operation: evidence.operation), model: draft.model
+                  )
+                  keys << canonical_key(provider_family, :offering, lane_id)
+                end
               end
             end
             keys

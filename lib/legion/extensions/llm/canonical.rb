@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative 'canonical/strict'
 require_relative 'canonical/thinking'
 require_relative 'canonical/usage'
 require_relative 'canonical/params'
@@ -26,17 +27,17 @@ module Legion
       module Canonical
         CONTRACT_VERSION = '1.0.0'
 
-        # Available canonical types.
+        # Available canonical types (the frozen 04 §1 inventory).
         TYPES = %i[
-          Thinking Usage Params ContentBlock
-          ToolDefinition ToolCall Message
-          Request Response Chunk
+          Message ContentBlock ToolCall ToolDefinition ToolSchema
+          Params Thinking Thinking::Config
+          Request Response Chunk Usage
         ].freeze
 
         class << self
           # List all canonical type classes.
           def types
-            TYPES.map { |name| const_get(name) }
+            TYPES.map { |name| name.to_s.split('::').reduce(self) { |mod, part| mod.const_get(part) } }
           end
 
           # Check if a given constant name is a registered canonical type.

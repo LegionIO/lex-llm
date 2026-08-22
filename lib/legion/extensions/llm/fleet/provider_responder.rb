@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
-require 'json'
-
+require 'legion/extensions/llm/utils'
+require 'legion/extensions/llm/inventory/errors'
+require 'legion/extensions/llm/routing/provider_outcome'
 require_relative 'protocol'
 require_relative 'settings'
+require_relative 'contract_error'
+require_relative 'fleet_envelope'
 require_relative 'worker_execution'
 require 'legion/extensions/llm/inventory/registry'
 
@@ -22,60 +25,28 @@ module Legion
 
       module Fleet
         # Shared implementation for provider-owned fleet responder runners.
+        # Protocol v3 (06 W9): parse → legacy-field rejection → required fields
+        # (one Protocol::REQUIRED_FIELDS list) → explicit version →
+        # provider-family match → exact execution contract (required, P2) →
+        # WorkerExecution.call → publish FleetResponse (E3/E4) → ack. On error:
+        # publish FleetError (E6), reject per F6, re-raise.
         module ProviderResponder
           include Legion::Logging::Helper
           extend Legion::Logging::Helper
 
           class ConfigurationError < StandardError; end
 
-          REQUIRED_FIELDS = %i[
-            request_id correlation_id idempotency_key operation provider provider_instance model params reply_to
-            message_context caller trace_context signed_token timeout_seconds expires_at protocol_version
-          ].freeze
-          LEGACY_FIELDS = %i[schema_version request_type fleet_correlation_id].freeze
-
-          FleetEnvelope = Struct.new(:data, keyword_init: true) do
-            def [](key)
-              symbol_key = key.to_sym
-              return data[symbol_key] if data.key?(symbol_key)
-
-              data[key.to_s]
-            end
-
-            def key?(key)
-              data.key?(key.to_sym) || data.key?(key.to_s)
-            end
-
-            def fetch(key, default = nil)
-              key?(key) ? self[key] : default
-            end
-
-            def to_h = data
-            def protocol_version = self[:protocol_version]
-            def request_id = self[:request_id]
-            def correlation_id = self[:correlation_id]
-            def idempotency_key = self[:idempotency_key]
-            def operation = self[:operation]
-            def provider = self[:provider]
-            def provider_instance = self[:provider_instance]
-            def model = self[:model]
-            def params = self[:params] || {}
-            def reply_to = self[:reply_to]
-            def message_context = self[:message_context] || {}
-            def trace_context = self[:trace_context] || {}
-            def execution_contract = self[:execution_contract]
-            def offering_id = self[:offering_id]
-          end
-
           module_function
 
           # Public runner entry point mirrors AMQP delivery callbacks, which carry both delivery and property metadata.
-          # rubocop:disable Metrics/ParameterLists
-          def call(payload:, provider_family:, provider_class:, provider_instances:,
+          # L6: the dead provider_class/provider_instances params are deleted —
+          # v3 dispatch is exact-only and never constructs a provider; passing
+          # provider objects here was a latent second execution truth.
+          def call(payload:, provider_family:,
                    registry: ::Legion::Extensions::Llm::Inventory::Registry, delivery: nil, properties: nil)
             envelope = parse_payload(payload)
             check_envelope!(envelope, provider_family:)
-            response = dispatch_request(envelope, provider_class, provider_instances, registry)
+            response = WorkerExecution.call(envelope: envelope, registry:)
             publish_response(envelope, response)
             ack(delivery || properties)
             response
@@ -86,30 +57,30 @@ module Legion
             reject(delivery || properties, requeue: requeue_error?(e))
             raise
           end
-          # rubocop:enable Metrics/ParameterLists
 
           def enabled_for?(provider_instances)
             instances = resolve_provider_instances(provider_instances)
             instances.any? do |_instance_id, settings|
-              truthy?(dig(settings, :fleet, :respond_to_requests))
+              truthy?(Utils.deep_symbolize_keys(settings).dig(:fleet, :respond_to_requests))
             end
           end
 
+          # E1: the single wire-normalization entry. Wrong-shape payloads
+          # (neither Hash, String, nor envelope) raise — the silent {} fallback
+          # is deleted.
           def parse_payload(payload)
-            hash = case payload
-                   when FleetEnvelope
-                     payload.to_h
-                   when String
-                     parse_json(payload)
-                   else
-                     payload.respond_to?(:to_h) ? payload.to_h : {}
-                   end
-            FleetEnvelope.new(data: deep_symbolize(hash))
+            case payload
+            when FleetEnvelope then payload
+            when String then FleetEnvelope.new(data: parse_json(payload))
+            when Hash then FleetEnvelope.new(data: payload)
+            else
+              raise ContractError, "fleet payload expected Hash or String, got #{payload.class}"
+            end
           end
 
           def check_envelope!(envelope, provider_family:)
             reject_legacy_fields!(envelope)
-            REQUIRED_FIELDS.each do |field|
+            Protocol::REQUIRED_FIELDS.each do |field|
               raise ArgumentError, "#{field} is required" unless envelope.key?(field) && !envelope[field].nil?
             end
 
@@ -118,46 +89,21 @@ module Legion
             validate_execution_contract!(envelope)
           end
 
-          # Marker absence means legacy v2; an unknown nonempty marker is rejected;
-          # the exact marker additionally requires every EXACT_REQUIRED_FIELDS value.
+          # P2: exact execution only — the marker is required and must equal
+          # the exact marker; absence is rejected. The exact fields are
+          # additionally required by the marker.
           def validate_execution_contract!(envelope)
             marker = envelope.execution_contract
-            return if marker.nil?
-            raise ArgumentError, "unknown execution_contract: #{marker}" unless marker == Protocol::EXACT_EXECUTION_CONTRACT
+            raise ContractError, "execution_contract must be #{Protocol::EXACT_EXECUTION_CONTRACT}" unless
+              marker == Protocol::EXACT_EXECUTION_CONTRACT
 
             Protocol::EXACT_REQUIRED_FIELDS.each do |field|
-              raise ArgumentError, "#{field} is required for #{Protocol::EXACT_EXECUTION_CONTRACT}" unless envelope.key?(field) && !envelope[field].nil?
+              raise ContractError, "#{field} is required for #{Protocol::EXACT_EXECUTION_CONTRACT}" unless envelope.key?(field) && !envelope[field].nil?
             end
           end
 
-          def exact?(envelope)
-            envelope.execution_contract == Protocol::EXACT_EXECUTION_CONTRACT
-          end
-
-          # Exact requests dispatch through the registry and never call
-          # build_provider; legacy v2 keeps the provider-object path.
-          def dispatch_request(envelope, provider_class, provider_instances, registry)
-            if exact?(envelope)
-              WorkerExecution.call(envelope: envelope, registry: registry)
-            else
-              provider = build_provider(envelope:, provider_class:, provider_instances:)
-              WorkerExecution.call(envelope: envelope, provider: provider)
-            end
-          end
-
-          def build_provider(envelope:, provider_class:, provider_instances:)
-            instances = resolve_provider_instances(provider_instances)
-            instance_id = envelope.provider_instance.to_s
-            instance_settings = instances[instance_id.to_sym] || instances[instance_id]
-            unless instance_settings
-              raise ConfigurationError,
-                    "fleet provider instance is not configured: #{instance_id}"
-            end
-            raise ConfigurationError, "fleet responses are disabled for provider instance: #{instance_id}" unless truthy?(dig(instance_settings, :fleet, :respond_to_requests))
-
-            provider_class.new(deep_symbolize(instance_settings))
-          end
-
+          # E3: the response envelope carries the serialized Canonical::Response.
+          # E4/G5: thinking never crosses the fleet — excluded exactly once, here.
           def publish_response(envelope, response)
             transport_message_class(:FleetResponse).new(
               protocol_version: envelope.protocol_version,
@@ -171,16 +117,13 @@ module Legion
               reply_to: envelope.reply_to,
               message_context: envelope.message_context,
               trace_context: envelope.trace_context,
-              content: response_content(response),
-              tool_calls: response_field(response, :tool_calls) || [],
-              usage: response_usage(response),
-              finish_reason: response_field(response, :finish_reason),
-              metadata: response_metadata(response),
-              execution_contract: exact?(envelope) ? envelope.execution_contract : nil,
-              offering_id: exact?(envelope) ? envelope.offering_id : nil
+              response: response.to_h.except(:thinking),
+              execution_contract: envelope.execution_contract,
+              offering_id: envelope.offering_id
             ).publish
           end
 
+          # E6: the error envelope. retryable is derived per F6.
           def publish_error(envelope, error)
             transport_message_class(:FleetError).new(
               protocol_version: envelope.protocol_version,
@@ -199,8 +142,8 @@ module Legion
               error_class: error.class.name,
               retryable: retryable_error?(error),
               metadata: {},
-              execution_contract: exact?(envelope) ? envelope.execution_contract : nil,
-              offering_id: exact?(envelope) ? envelope.offering_id : nil
+              execution_contract: envelope.execution_contract,
+              offering_id: envelope.offering_id
             ).publish
           end
 
@@ -239,20 +182,19 @@ module Legion
             end
           end
 
+          # L1: Legion::JSON only (house rule) — the bare ::JSON fallback is
+          # deleted; Legion::JSON is a hard dependency of this gem.
           def parse_json(payload)
-            if defined?(::Legion::JSON)
-              ::Legion::JSON.parse(payload)
-            else
-              ::JSON.parse(payload)
-            end
+            ::Legion::JSON.parse(payload)
           end
 
           def reject_legacy_fields!(envelope)
-            LEGACY_FIELDS.each do |field|
-              raise ArgumentError, "#{field} is not supported by fleet protocol v2" if envelope.key?(field)
+            Protocol::LEGACY_FIELDS.each do |field|
+              raise ArgumentError, "#{field} is not supported by fleet protocol v3" if envelope.key?(field)
             end
           end
 
+          # P3: explicit version — no default fill.
           def validate_protocol_version!(envelope)
             return if envelope.protocol_version == Protocol::VERSION
 
@@ -267,7 +209,7 @@ module Legion
 
           def resolve_provider_instances(provider_instances)
             instances = provider_instances.respond_to?(:call) ? provider_instances.call : provider_instances
-            deep_symbolize(instances || {})
+            Utils.deep_symbolize_keys(instances || {})
           end
 
           def requeue_error?(error)
@@ -275,71 +217,31 @@ module Legion
               Settings.value(:fleet, :consumer, :requeue_transient, default: true) != false
           end
 
+          # F6: retryability is derived from the one ProviderOutcome kind table
+          # (05 O6) — transient kinds retry; contract/policy/auth/classification
+          # kinds never do. The default-true catch-all is deleted.
           def retryable_error?(error)
             return false if error.is_a?(ConfigurationError)
             return false if error.is_a?(WorkerExecution::PolicyError)
+            return false if error.is_a?(ContractError)
+            return false if error.is_a?(TokenError)
+            return false if error.is_a?(Inventory::Errors::ExactOfferingMismatchError)
 
-            true
+            ::Legion::Extensions::Llm::Routing::ProviderOutcome::RETRYABLE_KINDS.include?(
+              ::Legion::Extensions::Llm::Routing::ProviderOutcome.kind_for(error)
+            )
           end
 
           def error_code(error)
             return 'configuration_error' if error.is_a?(ConfigurationError)
             return 'policy_error' if error.is_a?(WorkerExecution::PolicyError)
+            return 'contract_error' if error.is_a?(ContractError)
 
             'provider_error'
           end
 
-          def response_content(response)
-            response_field(response, :content) || response_field(response, :result) || response.to_s
-          end
-
-          def response_usage(response)
-            usage = response_field(response, :usage) || response_field(response, :tokens)
-            return deep_symbolize(usage) if usage.respond_to?(:to_h)
-
-            {
-              input_tokens: response_field(response, :input_tokens),
-              output_tokens: response_field(response, :output_tokens),
-              thinking_tokens: response_field(response, :thinking_tokens)
-            }.compact
-          end
-
-          def response_metadata(response)
-            metadata = response_field(response, :metadata)
-            metadata.respond_to?(:to_h) ? deep_symbolize(metadata) : {}
-          end
-
-          def response_field(response, field)
-            return response[field] if response.respond_to?(:key?) && response.key?(field)
-            return response[field.to_s] if response.respond_to?(:key?) && response.key?(field.to_s)
-            return response.public_send(field) if response.respond_to?(field)
-
-            nil
-          end
-
-          def dig(hash, *keys)
-            keys.reduce(hash) do |current, key|
-              break nil unless current.respond_to?(:key?)
-
-              current[key.to_sym] || current[key.to_s]
-            end
-          end
-
           def truthy?(value)
             value == true || value.to_s == 'true'
-          end
-
-          def deep_symbolize(value)
-            case value
-            when Hash
-              value.each_with_object({}) do |(key, child), result|
-                result[key.respond_to?(:to_sym) ? key.to_sym : key] = deep_symbolize(child)
-              end
-            when Array
-              value.map { |child| deep_symbolize(child) }
-            else
-              value
-            end
           end
         end
       end

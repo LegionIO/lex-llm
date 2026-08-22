@@ -12,27 +12,6 @@ module Legion
         TIERS           = %i[direct local fleet cloud frontier].freeze
         TYPES           = %i[inference embedding image audio].freeze
 
-        # The current authoritative operation → Inventory lane-type mapping (the 4th
-        # field of the 5-tuple lane id). NON-LEGACY home: the deletion-scheduled
-        # LegacyCoordinatorAdapter consumes `lane_type_for` below until deletion;
-        # it must not retain a second mapping. moderate/count_tokens
-        # are non-generative inference operations — no moderation/count type exists in
-        # TYPES, so they map to :inference.
-        OPERATION_TO_LANE_TYPE = {
-          chat: :inference,
-          stream_chat: :inference,
-          embed: :embedding,
-          image: :image,
-          transcribe: :audio,
-          translate: :audio,
-          speak: :audio,
-          moderate: :inference,
-          count_tokens: :inference
-        }.freeze
-
-        CIRCUIT_STATES  = %i[closed half_open open].freeze
-        HEALTH_KEYS     = %i[circuit_state denied available adjustment].freeze
-
         # --- SSOT v3 runtime-contract enums (phase-1-lex-llm-additive.md section 6) ---
         OPERATIONS = %i[
           chat stream_chat embed image transcribe translate speak moderate count_tokens
@@ -87,27 +66,12 @@ module Legion
           failed_probe inconclusive_probe
         ].freeze
 
-        # Only these aliases are accepted, and only when allow_aliases: true.
-        OPERATION_ALIASES = {
-          stream: :stream_chat,
-          embedding: :embed,
-          moderation: :moderate,
-          audio_translation: :translate,
-          speech: :speak
-        }.freeze
-
         module_function
 
-        def lane_type_for(operation:)
-          canonical = normalize_operation(value: operation, allow_aliases: false)
-          OPERATION_TO_LANE_TYPE.fetch(canonical)
-        end
-
-        # Normalize an operation to one of OPERATIONS. Ingress and protocol-v2
-        # compatibility adapters pass allow_aliases: true; registry records and
-        # exact-execution envelopes pass false. Unknown, empty, or invalid UTF-8
-        # input always raises Inventory::Errors::ValidationError.
-        def normalize_operation(value:, allow_aliases: false)
+        # The one operation spelling (06 P5): canonical operations only, no
+        # aliases. Unknown, empty, or invalid UTF-8 input always raises
+        # Inventory::Errors::ValidationError.
+        def normalize_operation(value:)
           raise Inventory::Errors::ValidationError, 'operation must be a String or Symbol' unless value.is_a?(::String) || value.is_a?(::Symbol)
 
           string = value.to_s
@@ -118,7 +82,6 @@ module Legion
 
           candidate = trimmed.to_sym
           return candidate if OPERATIONS.include?(candidate)
-          return OPERATION_ALIASES[candidate] if allow_aliases && OPERATION_ALIASES.key?(candidate)
 
           raise Inventory::Errors::ValidationError, "operation is not a canonical operation (#{candidate})"
         end

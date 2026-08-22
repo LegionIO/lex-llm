@@ -31,6 +31,7 @@ module Legion
       # Base class for LLM providers.
       class Provider
         include Streaming
+        include StopReasonMapping
         include Legion::Logging::Helper
         include Legion::Cache::Helper
 
@@ -75,6 +76,7 @@ module Legion
           audio_speech_flag
           audio_generation_flag
         ].freeze
+        HEALTHY_STATES = %w[ok ready healthy running].freeze
 
         attr_reader :config, :connection
 
@@ -112,7 +114,8 @@ module Legion
           hdrs['x-legion-identity-db-principal-id'] = id[:db_principal_id].to_s if id[:db_principal_id]
           hdrs['x-legion-identity-db-identity-id']  = id[:db_identity_id].to_s if id[:db_identity_id]
           hdrs
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.identity_headers')
           {}
         end
 
@@ -132,26 +135,69 @@ module Legion
           self.class.configuration_requirements
         end
 
+        # N x N law — the dispatch boundary contract. Pipeline dispatch (direct
+        # SelectionDispatch, fleet worker rehydration) delivers
+        # Canonical::Message objects; provider callables are the canonical
+        # boundary and must reject anything else LOUDLY. No coercion, no
+        # hash tolerance, no fallback — a half-translated legacy shape here is
+        # the defect class the N x N method exists to kill.
+        def enforce_canonical_messages!(messages)
+          Array(messages).each do |message|
+            next if message.is_a?(Canonical::Message)
+
+            raise ArgumentError,
+                  "provider input must be Canonical::Message objects, got #{message.class} — " \
+                  'non-canonical message shapes must not cross the dispatch boundary'
+          end
+          messages
+        end
+
+        # N x N law — the tools half of the dispatch boundary contract (H3).
+        # Enforced HERE, once, like messages: a non-empty tools value must be
+        # Hash<name, Canonical::ToolDefinition>. Hash-tolerant renderers and
+        # legacy Lex::Llm::Tool values are the defect class this check kills —
+        # the shared ToolSchema extractor already refuses them (04 §6).
+        def enforce_canonical_tools!(tools)
+          return tools if tools.nil? || tools.empty?
+
+          unless tools.is_a?(::Hash)
+            raise ArgumentError,
+                  "provider tools must be Hash<name, Canonical::ToolDefinition>, got #{tools.class} — " \
+                  'non-canonical tool shapes must not cross the dispatch boundary'
+          end
+
+          tools.each_value do |tool|
+            next if tool.is_a?(Canonical::ToolDefinition)
+
+            raise ArgumentError,
+                  "provider tools values must be Canonical::ToolDefinition, got #{tool.class} — " \
+                  'non-canonical tool shapes must not cross the dispatch boundary'
+          end
+          tools
+        end
+
         # rubocop:disable Metrics/ParameterLists
-        def chat(messages:, model:, tools: [], temperature: nil, params: {}, headers: {}, schema: nil, thinking: nil,
-                 tool_prefs: nil)
-          complete(messages, tools:, temperature:, model:, params:, headers:, schema:, thinking:, tool_prefs:)
+        # The single completion funnel (05 O1/O2): chat/stream_chat are thin
+        # delegates. Central enforcement — canonical input is checked HERE, once,
+        # before any rendering; providers never re-implement the check (08 F2).
+        # temperature lives only in Canonical::Params (05 O4).
+        def chat(messages, model:, tools: [], params: nil, headers: {}, schema: nil, thinking: nil, tool_prefs: nil)
+          complete(messages, tools:, model:, params:, headers:, schema:, thinking:, tool_prefs:)
         end
 
-        def stream_chat(messages:, model:, tools: [], temperature: nil, params: {}, headers: {}, schema: nil,
+        def stream_chat(messages, model:, tools: [], params: nil, headers: {}, schema: nil,
                         thinking: nil, tool_prefs: nil, &)
-          complete(messages, tools:, temperature:, model:, params:, headers:, schema:, thinking:, tool_prefs:, &)
+          complete(messages, tools:, model:, params:, headers:, schema:, thinking:, tool_prefs:, &)
         end
 
-        def complete(messages, tools:, temperature:, model:, params: {}, headers: {}, schema: nil, thinking: nil,
+        def complete(messages, model:, tools: [], params: nil, headers: {}, schema: nil, thinking: nil,
                      tool_prefs: nil, &)
           enforce_model_allowed!(model)
-          normalized_temperature = maybe_normalize_temperature(temperature, model)
+          enforce_canonical_messages!(messages)
+          enforce_canonical_tools!(tools)
           log_provider_request(
             messages: messages,
             tools: tools,
-            temperature: temperature,
-            normalized_temperature: normalized_temperature,
             model: model,
             params: params,
             headers: headers,
@@ -161,86 +207,77 @@ module Legion
             streaming: block_given?
           )
 
-          payload = Utils.deep_merge(
-            render_payload(
-              messages,
-              tools: tools,
-              tool_prefs: tool_prefs,
-              temperature: normalized_temperature,
-              model: model,
-              stream: block_given?,
-              schema: schema,
-              thinking: thinking
-            ),
-            params
+          payload = render_payload(
+            messages,
+            tools: tools,
+            tool_prefs: tool_prefs,
+            model: model,
+            stream: block_given?,
+            schema: schema,
+            thinking: thinking,
+            params: params
           )
 
           if block_given?
-            stream_response @connection, payload, headers, &
+            stream_response @connection, payload, headers, model: model, &
           else
             sync_response @connection, payload, headers
           end
         end
         # rubocop:enable Metrics/ParameterLists
 
-        def list_models(live: false, **filters)
-          _ = [live, filters]
-          response = @connection.get models_url
-          parse_list_models_response response, slug, capabilities
-        end
-
+        # Read path (07 C5): serves the activated inventory LANES for this
+        # provider instance from the SSOT registry snapshot — one LaneRecord
+        # per 5-tuple, in lexicographic id order. The stored inventory has no
+        # separate offering id: an offering IS a lane, keyed by the 5 tuple.
+        # A consumer needing per-model grouping groups by (instance_key, model)
+        # over the returned lanes. The per-gem writer is the sole publication
+        # path. H5: this read path performs NO transport — it is an in-memory
+        # snapshot lookup — so `live:` and `raise_on_unreachable:` are
+        # accepted for signature compatibility and have no effect here.
+        # `filters` select from the snapshot.
         def discover_offerings(live: false, raise_on_unreachable: false, **filters)
-          return filter_cached_offerings(Array(@cached_offerings), filters) unless live
+          _live = live
+          _raise_on_unreachable = raise_on_unreachable
+          instance_key = Inventory::Identity::InstanceKey.new(
+            provider_family: slug.to_sym, instance_id: provider_instance_id
+          )
+          record = Inventory::Registry.snapshot.instance(instance_key: instance_key)
+          lanes = record ? record.lanes_by_id.values.sort_by(&:lane_id) : []
+          filter_inventory_offerings(lanes, filters)
+        end
 
-          provider_health = health(live:)
-          @cached_offerings = Array(list_models(live:, **filters)).filter_map do |model|
-            publish_discovered_model_to_registry(model, provider_health:, live:)
-            next unless model_matches_filters?(model, filters)
-            next unless model_allowed?(model.id)
+        # Read-path filter over inventory lanes: model/id/name match the lane
+        # model; instance/provider keys match the instance; unknown keys pass.
+        def filter_inventory_offerings(offerings, filters)
+          return offerings if filters.empty?
 
-            log.debug("[#{slug}] instance=#{provider_instance_id} action=model_discovered model=#{model.id} family=#{model.family}")
-            offering_from_model(model, health: provider_health)
+          offerings.select do |offering|
+            filters.all? do |key, value|
+              next true if value.nil? || (value.respond_to?(:empty?) && value.empty?)
+
+              inventory_offering_matches_filter?(offering, key, value)
+            end
           end
-          log.info("[#{slug}] instance=#{provider_instance_id} action=discover_complete model_count=#{Array(@cached_offerings).size}")
-          @cached_offerings
-        rescue Faraday::ConnectionFailed, Faraday::TimeoutError => e
-          log.warn("[#{slug}] instance=#{provider_instance_id} unreachable: #{e.message}")
-          raise if raise_on_unreachable
-
-          []
         end
 
-        def publish_discovered_model_to_registry(model, provider_health:, live:)
-          publisher = discovery_registry_publisher
-          return unless publisher.respond_to?(:publish_models_async)
-
-          publisher.publish_models_async([model], readiness: discovery_registry_readiness(provider_health, live:))
-        rescue StandardError => e
-          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.publish_discovered_model')
-        end
-
-        def discovery_registry_publisher
-          return unless self.class.respond_to?(:registry_publisher)
-
-          self.class.registry_publisher
-        rescue StandardError
-          nil
-        end
-
-        def discovery_registry_readiness(provider_health, live:)
-          {
-            provider: slug.to_sym,
-            configured: configured?,
-            ready: provider_health[:ready] == true,
-            live: live,
-            health: provider_health
-          }
+        def inventory_offering_matches_filter?(offering, key, value)
+          case key.to_sym
+          when :model, :id, :name
+            offering.model.to_s == value.to_s
+          when :instance, :instance_id, :provider_instance
+            offering.instance_key.instance_id.to_s == value.to_s
+          when :provider, :provider_family
+            offering.instance_key.provider_family.to_s == value.to_s
+          else
+            true
+          end
         end
 
         def health(live: false)
           readiness_data = readiness(live:)
           raw_health = readiness_data[:health] || readiness_data['health'] || {}
-          status = health_status(readiness_data, raw_health)
+          status = healthy?(readiness_data, raw_health) ? 'healthy' : 'unhealthy'
           latency_ms = (raw_health[:latency_ms] || raw_health['latency_ms'] if raw_health.is_a?(Hash))
           {
             provider: slug.to_sym,
@@ -264,39 +301,54 @@ module Legion
           }
         end
 
-        def embed(text:, model:, dimensions: nil, params: {}, headers: {})
+        # The one health classifier (10 §1E): a readiness/health body is healthy
+        # when ready is true, or the status/state names a healthy state. No
+        # other implicit health (fail-closed — 0.8.x law).
+        def healthy?(readiness_data, raw_health)
+          return true if readiness_data.is_a?(Hash) && (readiness_data[:ready] == true || readiness_data['ready'] == true)
+
+          status = if raw_health.is_a?(Hash)
+                     raw_health[:status] || raw_health['status'] || raw_health[:state] || raw_health['state']
+                   else
+                     raw_health
+                   end
+          self.class::HEALTHY_STATES.include?(status.to_s.downcase)
+        end
+
+        def embed(text:, model:, dimensions: nil, params: nil, headers: {})
           enforce_model_allowed!(model)
-          payload = Utils.deep_merge(render_embedding_payload(text, model:, dimensions:), params)
+          payload = render_embedding_payload(text, model:, dimensions:)
+          payload = Utils.deep_merge(payload, params.to_h) if params
           response = @connection.post(embedding_url(model:), payload) do |req|
             req.headers = headers.merge(req.headers) unless headers.empty?
           end
           parse_embedding_response(response, model:, text:)
         end
 
-        def moderate(input, model:)
+        def moderate(input:, model:)
           enforce_model_allowed!(model)
+          unless input.is_a?(::String) || (input.is_a?(::Array) && input.all?(Canonical::Message))
+            raise ArgumentError, "moderate input must be a String or Array<Canonical::Message>, got #{input.class}"
+          end
+
           payload = render_moderation_payload(input, model:)
           response = @connection.post moderation_url, payload
           parse_moderation_response(response, model:)
         end
 
-        def paint(prompt, model:, size:, with: nil, mask: nil, params: {}) # rubocop:disable Metrics/ParameterLists
+        def image(prompt:, model:, size:, with: nil, mask: nil, params: {}) # rubocop:disable Metrics/ParameterLists
           enforce_model_allowed!(model)
-          validate_paint_inputs!(with:, mask:)
+          validate_image_inputs!(with:, mask:)
           payload = render_image_payload(prompt, model:, size:, with:, mask:, params:)
           response = @connection.post images_url(with:, mask:), payload
           parse_image_response(response, model:)
         end
 
-        def image(prompt:, model:, size:, with: nil, mask: nil, params: {}) # rubocop:disable Metrics/ParameterLists
-          paint(prompt, model:, size:, with:, mask:, params:)
-        end
-
-        def count_tokens(messages:, model:, params: {})
+        def count_tokens(messages:, model:, params: nil)
           _ = [model, params]
+          enforce_canonical_messages!(messages)
           Array(messages).sum do |message|
-            content = message.respond_to?(:content) ? message.content : message[:content] || message['content']
-            estimate_text_tokens(content)
+            estimate_text_tokens(message.content)
           end
         end
 
@@ -311,7 +363,7 @@ module Legion
         # publish OperationEvidence(status: :unsupported) or :unknown; a provider
         # may publish :supported only when its Phase 2 conformance spec exercises
         # the actual callable path. Neither method reads configuration or infers a
-        # model. See phase-1-lex-llm-additive.md section 14.1.
+        # model.
         def translate(audio_file, model:, language:, **provider_options)
           _ = [audio_file, model, language, provider_options]
           raise NotImplementedError, "#{self.class} does not implement translate"
@@ -329,25 +381,13 @@ module Legion
         # Provider PRs override only when their wire semantics supply stronger
         # evidence. The fallback reason is the bounded exception class name — never
         # a response body, credential, endpoint, or exception object. It is a base
-        # method, not a REQUIRED_SIGNATURES reflection entry. See Phase 2 §4.5.2.
+        # method, not a REQUIRED_SIGNATURES reflection entry.
         def normalize_dispatch_error(error:)
-          kind = case error
-                 when OverloadedError then :overloaded
-                 when RateLimitError then :rate_limited
-                 when UnauthorizedError then :authentication
-                 when PaymentRequiredError then :billing
-                 when ForbiddenError then :authorization
-                 when ContextLengthExceededError then :context_rejected
-                 when BadRequestError then :invalid_request
-                 when ModelNotFoundError then :model_missing
-                 when ModelNotAllowedError then :policy
-                 when Faraday::TimeoutError, Timeout::Error then :timeout
-                 when Faraday::ConnectionFailed, Errno::ECONNREFUSED, Errno::ECONNRESET, SocketError then :connection_failure
-                 else :provider_error
-                 end
           reason = error.class.name
           reason = 'UnknownError' if reason.nil? || reason.empty?
-          Legion::Extensions::Llm::Routing::ProviderOutcome.new(kind: kind, reason: reason)
+          Legion::Extensions::Llm::Routing::ProviderOutcome.new(
+            kind: Legion::Extensions::Llm::Routing::ProviderOutcome.kind_for(error), reason: reason
+          )
         end
 
         def configured?
@@ -383,10 +423,6 @@ module Legion
           self.class.remote?
         end
 
-        def assume_models_exist?
-          self.class.assume_models_exist?
-        end
-
         def readiness(live: false)
           metadata = {
             provider: slug.to_sym,
@@ -403,7 +439,7 @@ module Legion
           return metadata.merge(health: { checked: false }) unless live && metadata[:endpoints][:health]
 
           response = @connection.get(metadata[:endpoints][:health])
-          metadata.merge(ready: configured? && health_ready?(response.body), health: response.body)
+          metadata.merge(ready: configured? && healthy?(nil, response.body), health: response.body)
         rescue StandardError => e
           handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.readiness')
           metadata.merge(ready: false, health: { error: e.class.name, message: e.message })
@@ -415,7 +451,8 @@ module Legion
 
             value = public_send(method_name)
             result[key] = value unless value.nil?
-          rescue ArgumentError, NotImplementedError
+          rescue ArgumentError, NotImplementedError => e
+            handle_exception(e, level: :debug, handled: true, operation: 'llm.provider.endpoint_manifest', method: method_name)
             next
           end
         end
@@ -510,7 +547,8 @@ module Legion
 
           provider_conf = ext[:llm][provider_key]
           provider_conf.is_a?(Hash) ? provider_conf[key] : nil
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.runtime_provider_setting', key:)
           nil
         end
 
@@ -520,7 +558,8 @@ module Legion
 
           llm_conf = Legion::Settings.dig(:extensions, :llm)
           llm_conf.is_a?(Hash) ? llm_conf[key] : nil
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.global_llm_setting', key:)
           nil
         end
 
@@ -545,14 +584,23 @@ module Legion
           allowed
         end
 
-        # Single source of truth for model-policy matching, usable both at runtime
-        # (instance #model_allowed?) and at instance-config build time (provider
-        # extensions choosing a default_model that does not violate the policy).
-        # Substring, case-insensitive: a whitelist permits models containing any
-        # pattern; a blacklist denies models containing any pattern; whitelist is
-        # applied before blacklist. Empty list = no restriction from that side.
+        # Single source of truth for model-policy matching, usable at runtime
+        # (instance #model_allowed?). Substring, case-insensitive: a whitelist
+        # permits models containing any pattern; a blacklist denies models
+        # containing any pattern; whitelist is applied before blacklist.
+        # Empty list = no restriction from that side.
+        # Model identity for policy matching: the canonical id string. An
+        # object that responds to #id matches by its #id — never by its
+        # inspect string; bare strings pass through unchanged.
+        def self.model_identity(model)
+          candidate = model.respond_to?(:id) ? model.id : model
+          candidate = model if candidate.nil?
+
+          candidate.to_s
+        end
+
         def self.policy_allows?(model_name, whitelist: [], blacklist: [])
-          name = model_name.to_s.downcase
+          name = model_identity(model_name).downcase
           wl = Array(whitelist).map { |p| p.to_s.downcase }
           bl = Array(blacklist).map { |p| p.to_s.downcase }
 
@@ -560,50 +608,6 @@ module Legion
           return false if bl.any? && bl.any? { |p| name.include?(p) }
 
           true
-        end
-
-        # Effective whitelist/blacklist for an instance config at build time
-        # (before provider instance exists). Same specificity cascade:
-        # 1. Per-instance  (config hash — extensions.llm.<provider>.instances.<id>.model_whitelist)
-        # 2. Provider-level (extensions.llm.<provider>.model_whitelist)
-        # 3. Global        (extensions.llm.model_whitelist)
-        def self.model_policy(config, provider_family)
-          cfg = config.is_a?(Hash) ? config : {}
-          provider_conf = CredentialSources.setting(:extensions, :llm, provider_family)
-          provider_conf = {} unless provider_conf.is_a?(Hash)
-          global_conf = (::Legion::Settings.dig(:extensions, :llm) if defined?(::Legion::Settings))
-          global_conf = {} unless global_conf.is_a?(Hash)
-
-          {
-            whitelist: resolve_policy_value(cfg, provider_conf, global_conf, :model_whitelist),
-            blacklist: resolve_policy_value(cfg, provider_conf, global_conf, :model_blacklist)
-          }
-        end
-
-        # Resolve a single policy value with the shared cascade
-        # (SettingsCascade: instance > provider, model leg skipped — no model
-        # exists at policy-build time) plus the legacy global
-        # extensions.llm.<key> leg. Empty values fall through.
-        def self.resolve_policy_value(cfg, provider_conf, global_conf, key)
-          value = SettingsCascade.resolve_value(provider_conf: provider_conf, instance_cfg: cfg, key: key)
-          return value unless value.nil?
-
-          global_conf = {} unless global_conf.is_a?(::Hash)
-          global_conf[key] || global_conf[key.to_s]
-        end
-
-        # Choose a default_model that never violates the model policy: prefer an
-        # explicitly-configured default when permitted; else a provider fallback when
-        # permitted; else nil, so routing resolves an allowed discovered model rather
-        # than forcing a policy-forbidden default. Keeps a whitelist/blacklist
-        # authoritative over any hardcoded provider default.
-        def self.policy_safe_default_model(configured:, fallback:, whitelist: [], blacklist: [])
-          return configured if configured && !configured.to_s.empty? &&
-                               policy_allows?(configured, whitelist:, blacklist:)
-          return fallback if fallback && !fallback.to_s.empty? &&
-                             policy_allows?(fallback, whitelist:, blacklist:)
-
-          nil
         end
 
         # Compliance guard: refuse to dispatch any request for a model excluded by
@@ -620,10 +624,6 @@ module Legion
         end
 
         # ── Offering defaults ─────────────────────────────────────────────
-
-        def offering_transport
-          config.respond_to?(:transport) ? config.transport : self.class.default_transport
-        end
 
         def offering_tier
           config.respond_to?(:tier) ? config.tier : self.class.default_tier
@@ -681,10 +681,7 @@ module Legion
         # ── Cache helpers with local/shared tier selection ────────────────
 
         def cache_local_instance?
-          Array(config_base_url).any? do |url|
-            host = url.to_s.downcase
-            host.include?('localhost') || host.include?('127.0.0.1') || host.include?('::1')
-          end
+          Array(config_base_url).any? { |url| Utils.localhost_url?(url) }
         end
 
         def model_cache_get(key)
@@ -726,10 +723,11 @@ module Legion
           end
         end
 
+        # M6: the instance identity is CARRIED from the owner (R6) — the
+        # single config→id derivation lives in Inventory::Identity. No local
+        # re-derivation (node names, family fallbacks) exists here.
         def provider_instance_id
-          return config.instance_id.to_sym if config.respond_to?(:instance_id) && config.instance_id
-
-          :default
+          Inventory::Identity.instance_id(config).to_sym
         end
 
         class << self
@@ -767,10 +765,6 @@ module Legion
 
           def remote?
             !local?
-          end
-
-          def assume_models_exist?
-            false
           end
 
           def resolve_model_id(model_id, config: nil) # rubocop:disable Lint/UnusedMethodArgument
@@ -815,7 +809,8 @@ module Legion
           return false unless defined?(Legion::Settings)
 
           Legion::Settings.dig(:llm, :prompt_caching, :enabled) == true
-        rescue StandardError
+        rescue StandardError => e
+          handle_exception(e, level: :warn, handled: true, operation: 'llm.provider.global_prompt_caching')
           false
         end
 
@@ -843,10 +838,10 @@ module Legion
           Digest::SHA256.hexdigest(cred.to_s)[0, 8]
         end
 
-        def validate_paint_inputs!(with:, mask:)
+        def validate_image_inputs!(with:, mask:)
           return if with.nil? && mask.nil?
 
-          raise UnsupportedAttachmentError, "#{name} does not support image references in paint"
+          raise UnsupportedAttachmentError, "#{name} does not support image references in image"
         end
 
         def extract_capability_config(source)
@@ -857,133 +852,25 @@ module Legion
 
             value = source.public_send(key)
             result[key] = value unless value.nil?
-          rescue StandardError
+          rescue StandardError => e
+            handle_exception(e, level: :debug, handled: true, operation: "#{slug}.extract_capability_config", key: key)
             next
           end
         end
 
-        def offering_from_model(model, health: {})
-          capability_sources = Array(model.capabilities).to_h do |cap|
-            [cap.to_sym, { value: true, source: :model_metadata }]
-          end
-
-          Routing::ModelOffering.new(
-            provider_family: slug.to_sym,
-            provider_instance: model.instance || provider_instance_id,
-            transport: offering_transport,
-            tier: offering_tier,
-            model: model.id,
-            canonical_model_alias: model.name,
-            model_family: model.family,
-            usage_type: offering_usage_type(model),
-            capabilities: model.capabilities,
-            capability_sources: capability_sources,
-            limits: offering_limits(model),
-            health:,
-            metadata: offering_metadata(model)
-          )
-        end
-
-        def offering_usage_type(model)
-          model.embedding? ? :embedding : :inference
-        end
-
-        def offering_limits(model)
-          {
-            context_window: model.context_length,
-            max_output_tokens: model.max_output_tokens
-          }.compact
-        end
-
-        def offering_metadata(model)
-          {
-            raw_model: model.id,
-            parameter_count: model.parameter_count,
-            parameter_size: model.parameter_size,
-            quantization: model.quantization,
-            size_bytes: model.size_bytes,
-            modalities_input: model.modalities_input,
-            modalities_output: model.modalities_output
-          }.merge(model.metadata || {}).compact
-        end
-
-        def model_matches_filters?(model, filters)
-          return true if filters.empty?
-
-          filters.all? do |key, value|
-            blank_filter_value?(value) || model_matches_filter?(model, key, value)
-          end
-        end
-
-        def blank_filter_value?(value)
-          value.nil? || (value.respond_to?(:empty?) && value.empty?)
-        end
-
-        def model_matches_filter?(model, key, value)
-          case key.to_sym
-          when :capability, :capabilities
-            Array(value).all? { |capability| model.supports?(capability) }
-          when :type, :usage_type, :purpose
-            offering_usage_type(model).to_s == value.to_s || model.type.to_s == value.to_s
-          when :model, :id, :name
-            [model.id, model.name].map(&:to_s).include?(value.to_s)
-          when :instance, :instance_id, :provider_instance
-            provider_instance_id.to_s == value.to_s || model.instance.to_s == value.to_s
-          else
-            true
-          end
-        end
-
-        def filter_cached_offerings(offerings, filters)
-          return offerings if filters.empty?
-
-          offerings.select do |offering|
-            filters.all? do |key, value|
-              blank_filter_value?(value) || offering_matches_filter?(offering, key, value)
-            end
-          end
-        end
-
-        def offering_matches_filter?(offering, key, value)
-          case key.to_sym
-          when :provider, :provider_family
-            offering.provider_family.to_s == value.to_s
-          when :capability, :capabilities
-            Array(value).all? { |capability| offering.supports?(capability) }
-          when :type, :usage_type, :purpose
-            offering.usage_type.to_s == value.to_s
-          when :model, :id, :name
-            [offering.model, offering.canonical_model_alias].compact.map(&:to_s).include?(value.to_s)
-          when :instance, :instance_id, :provider_instance
-            [offering.provider_instance, offering.instance_id].compact.map(&:to_s).include?(value.to_s)
-          else
-            true
-          end
-        end
-
-        def health_status(readiness_data, raw_health)
-          return 'healthy' if readiness_data[:ready] == true || readiness_data['ready'] == true
-
-          status = if raw_health.is_a?(Hash)
-                     raw_health[:status] || raw_health['status'] || raw_health[:state] || raw_health['state']
-                   else
-                     raw_health
-                   end
-          return 'healthy' if %w[ok ready healthy running].include?(status.to_s.downcase)
-
-          'unhealthy'
-        end
-
+        # Canonical content only (05 §2): String | ContentBlock |
+        # Array<ContentBlock> | nil — one estimator code path.
         def estimate_text_tokens(content)
           text = case content
-                 when Content
-                   [content.text, *content.attachments.map(&:to_s)].compact.join(' ')
+                 when String then content
+                 when Canonical::ContentBlock
+                   content.text.to_s
                  when Array
-                   content.map do |part|
-                     part.respond_to?(:[]) ? part[:text] || part['text'] || part.to_s : part.to_s
+                   content.filter_map do |block|
+                     block.is_a?(Canonical::ContentBlock) && block.text? ? block.text : nil
                    end.join(' ')
                  else
-                   content.to_s
+                   ''
                  end
           [(text.length / 4.0).ceil, 1].max
         end
@@ -1003,7 +890,8 @@ module Legion
           return maybe_json unless maybe_json.is_a?(String)
 
           Legion::JSON.parse(maybe_json, symbolize_names: false)
-        rescue Legion::JSON::ParseError
+        rescue Legion::JSON::ParseError => e
+          handle_exception(e, level: :debug, handled: true, operation: 'llm.provider.try_parse_json')
           maybe_json
         end
 
@@ -1014,8 +902,11 @@ module Legion
           raise ConfigurationError, "Missing configuration for #{name}: #{missing.join(', ')}"
         end
 
-        def maybe_normalize_temperature(temperature, _model)
-          temperature
+        # One home for temperature (05 O4): it lives in Canonical::Params.
+        # Provider renderers that need per-model normalization read
+        # params.temperature and call this hook from their render path.
+        def maybe_normalize_temperature(params)
+          params&.temperature
         end
 
         def log_provider_request(context)
@@ -1023,9 +914,7 @@ module Legion
             "Preparing provider completion: provider=#{slug} model=#{debug_model_id(context[:model])} " \
               "streaming=#{context[:streaming]} messages=#{Array(context[:messages]).size} " \
               "tools=#{debug_tool_names(context[:tools]).inspect} " \
-              "temperature=#{context[:temperature].inspect} " \
-              "normalized_temperature=#{context[:normalized_temperature].inspect} " \
-              "param_keys=#{debug_hash_keys(context[:params]).inspect} " \
+              "params=#{debug_value_summary(context[:params])} " \
               "header_keys=#{debug_hash_keys(context[:headers]).inspect} " \
               "schema=#{debug_value_summary(context[:schema])} " \
               "thinking=#{debug_value_summary(context[:thinking])} " \
@@ -1039,17 +928,14 @@ module Legion
           model
         end
 
+        # H3: the funnel enforces Canonical::ToolDefinition before logging,
+        # so the Hash-tolerance branch is deleted — only canonical names or
+        # a class name for anything that slips a direct private call.
         def debug_tool_names(tools)
           tool_definitions = tools.is_a?(Hash) ? tools.values : Array(tools)
 
           tool_definitions.filter_map do |tool|
-            if tool.respond_to?(:name)
-              tool.name
-            elsif tool.is_a?(Hash)
-              tool[:name] || tool['name']
-            else
-              tool.class.name
-            end
+            tool.respond_to?(:name) ? tool.name : tool.class.name
           end
         end
 
@@ -1077,15 +963,6 @@ module Legion
             health: :health_url,
             version: :version_url
           }
-        end
-
-        def health_ready?(body)
-          return body unless body.is_a?(Hash)
-
-          status = body['status'] || body[:status] || body['state'] || body[:state]
-          return true if status.nil?
-
-          %w[ok ready healthy running].include?(status.to_s.downcase)
         end
 
         def sync_response(connection, payload, additional_headers = {})

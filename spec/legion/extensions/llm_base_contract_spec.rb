@@ -5,106 +5,69 @@ require 'spec_helper'
 RSpec.describe Legion::Extensions::Llm do
   include_context 'with fake llm provider'
 
-  before do
-    stub_const(
-      'SpecSupport::EchoTool',
-      Class.new(Legion::Extensions::Llm::Tool) do
-        description 'Echo a numeric value'
-        param :value, type: :integer, desc: 'Value to echo'
-
-        def execute(value:)
-          "echo #{value}"
-        end
-      end
-    )
-  end
-
   it 'loads and discovers provider classes from the namespace' do
     provider_classes = Legion::Extensions::Llm::Models.scan_provider_classes
     expect(provider_classes).to include(fake_llm: SpecSupport::FakeLLMProvider)
-    expect(Legion::Extensions::Llm::Routing::ModelOffering).to be_a(Class)
   end
 
-  it 'lets a provider gem register options and satisfy chat through the shared API' do
-    chat = described_class.chat(model: 'fake-chat-model', provider: :fake_llm, assume_model_exists: true)
-    response = chat.ask('hello')
-
-    expect(response).to have_attributes(
-      role: :assistant,
-      content: 'fake response to hello',
-      model_id: 'fake-chat-model',
-      input_tokens: 10,
-      output_tokens: 5
-    )
-  end
-
-  it 'runs shared tool orchestration without provider-specific payload code' do
-    response = described_class.chat(model: 'fake-chat-model', provider: :fake_llm, assume_model_exists: true)
-                              .with_tool(SpecSupport::EchoTool)
-                              .ask('use the tool')
-
-    expect(response.content).to eq('tool result: echo 21')
-  end
-
-  it 'normalizes schema responses through the base chat layer' do
-    schema = {
-      name: 'answer',
-      schema: {
-        type: 'object',
-        properties: { answer: { type: 'integer' } },
-        required: ['answer']
-      }
-    }
-
-    response = described_class.chat(model: 'fake-chat-model', provider: :fake_llm, assume_model_exists: true)
-                              .with_schema(schema)
-                              .ask('structured')
-
-    expect(response.content).to eq({ 'answer' => 42 })
-  end
-
-  it 'delegates embedding, moderation, image, and transcription calls through registered providers' do
-    expect(described_class.embed('hello', model: 'fake-embed', provider: :fake_llm, assume_model_exists: true).vectors)
-      .to eq([0.5, 0.5, 0.5])
-
-    expect(described_class.moderate('safe', model: 'fake-moderation', provider: :fake_llm, assume_model_exists: true))
-      .not_to be_flagged
-
-    expect(described_class.paint('draw', model: 'fake-image', provider: :fake_llm, assume_model_exists: true).to_blob)
-      .to eq('fake-image')
-
-    expect(described_class.transcribe('audio.wav', model: 'fake-audio', provider: :fake_llm,
-                                                   assume_model_exists: true).text)
-      .to eq('fake transcript')
-  end
-
-  it 'connects model offerings to Legion fleet queue construction end to end' do
-    offering = Legion::Extensions::Llm::Routing::ModelOffering.new(
-      provider_family: :fake_llm,
-      instance_id: :worker_one,
-      transport: :rabbitmq,
-      model: 'fake-chat-model',
-      limits: { context_window: 16_384 }
-    )
-    exchange_class = Class.new
-    base_queue = Class.new do
-      attr_reader :bindings
-
-      def initialize
-        @bindings = []
-      end
-
-      def bind(exchange, routing_key:)
-        @bindings << [exchange, routing_key]
-      end
+  describe 'provider funnel contract (0.8.0)' do
+    let(:provider) do
+      SpecSupport::FakeLLMProvider.new(
+        Legion::Extensions::Llm::Configuration.new.tap do |config|
+          config.fake_llm_api_key = 'fake-key'
+        end
+      )
     end
 
-    queue_class = Legion::Extensions::Llm::Transport::FleetLane.build_queue_class(
-      queue_name: offering.lane_key,
-      exchange_class: exchange_class,
-      base_queue_class: base_queue
-    )
+    let(:user_message) do
+      Legion::Extensions::Llm::Canonical::Message.build(role: :user, content: 'hello')
+    end
 
-    expect(queue_class.new.queue_name).to eq('llm.fleet.inference.fake-chat-model.ctx16384')
+    it 'completes with canonical input and returns a Canonical::Response' do
+      response = provider.complete([user_message], model: 'fake-chat-model')
+      expect(response).to be_a(Legion::Extensions::Llm::Canonical::Response)
+      expect(response.text).to eq('fake response to hello')
+      expect(response.usage).to be_a(Legion::Extensions::Llm::Canonical::Usage)
+    end
+
+    it 'streams canonical chunks ending in exactly one done chunk (05 O5)' do
+      chunks = []
+      provider.complete([user_message], model: 'fake-chat-model') { |chunk| chunks << chunk }
+
+      expect(chunks).to all(be_a(Legion::Extensions::Llm::Canonical::Chunk))
+      expect(chunks.count(&:done?)).to eq(1)
+      expect(chunks.last).to be_done
+      expect(chunks.filter_map(&:delta).join).to eq('streamed response')
+    end
+
+    it 'rejects non-canonical messages at the boundary with a typed ArgumentError (08 F2)' do
+      expect { provider.complete([{ role: 'user', content: 'hash' }], model: 'fake-chat-model') }
+        .to raise_error(ArgumentError, /Canonical::Message/)
+      expect { provider.complete([nil], model: 'fake-chat-model') }
+        .to raise_error(ArgumentError, /Canonical::Message/)
+      expect { provider.complete(['string'], model: 'fake-chat-model') }
+        .to raise_error(ArgumentError, /Canonical::Message/)
+    end
+
+    it 'keeps the canonical conversation operations on the base' do
+      expect(provider).to respond_to(:chat)
+      expect(provider).to respond_to(:stream_chat)
+      expect(provider).to respond_to(:count_tokens)
+      expect(provider).to respond_to(:list_models)
+      expect(provider).to respond_to(:discover_offerings)
+      expect(provider).to respond_to(:health)
+      expect(provider).to respond_to(:embed)
+      expect(provider).to respond_to(:moderate)
+      expect(provider).to respond_to(:image)
+      expect(provider).to respond_to(:transcribe)
+    end
+
+    it 'serves discover_offerings from the registry snapshot (07 C5)' do
+      expect(provider.discover_offerings).to eq([])
+    end
+
+    it 'counts tokens for canonical messages' do
+      expect(provider.count_tokens(messages: [user_message], model: 'fake-chat-model')).to be_a(Integer)
+    end
   end
 end

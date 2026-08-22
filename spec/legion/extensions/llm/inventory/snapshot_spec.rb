@@ -26,8 +26,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Snapshot do
       record = snapshot.instance(instance_key: key_a)
       expect(record).to be_frozen
       expect(snapshot.instance(instance_key: instance_key(instance: 'absent'))).to be_nil
-      expect(snapshot.lane(lane_id: 'lane:v1:missing')).to be_nil
-      expect(snapshot.offering(offering_id: 'off:v1:missing')).to be_nil
+      expect(snapshot.lane(lane_id: 'local:absent:absent:inference:missing')).to be_nil
     end
 
     it 'only lists activated instances but keeps initializing claims in publication status' do
@@ -41,17 +40,24 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Snapshot do
   end
 
   describe 'ordering and iteration' do
-    it 'returns frozen lanes_for/offerings_for arrays ordered by id' do
+    it 'returns a frozen lanes_for array ordered by 5-tuple id' do
       snapshot = activate_both
       lanes = snapshot.lanes_for(instance_key: key_a)
       expect(lanes).to be_frozen
       expect(lanes.map(&:lane_id)).to eq(lanes.map(&:lane_id).sort)
+      expect(lanes.map(&:lane_id)).to all(match(/\A[a-z_]+:[a-z_0-9]+:[^:]+:[a-z_]+:.+\z/))
     end
 
-    it 'each_lane/each_offering yield in id order and return an Enumerator without a block' do
+    it 'exposes lanes only — no offering surface' do
+      snapshot = activate_both
+      expect(snapshot).not_to respond_to(:offering)
+      expect(snapshot).not_to respond_to(:offerings_for)
+      expect(snapshot).not_to respond_to(:each_offering)
+    end
+
+    it 'each_lane yields in id order and returns an Enumerator without a block' do
       snapshot = activate_both
       expect(snapshot.each_lane).to be_a(Enumerator)
-      expect(snapshot.each_offering).to be_a(Enumerator)
       expect(snapshot.each_lane.map(&:lane_id)).to eq(snapshot.each_lane.map(&:lane_id).sort)
     end
   end

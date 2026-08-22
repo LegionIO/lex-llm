@@ -3,6 +3,7 @@
 require 'concurrent'
 require 'time'
 
+require 'legion/extensions/llm/utils'
 require_relative 'protocol'
 require_relative 'settings'
 require_relative 'token_error'
@@ -21,19 +22,22 @@ module Legion
 
           module_function
 
+          # The envelope is a plain (already symbolized) Hash — the single
+          # wire-normalization entry (FleetEnvelope) happens before this
+          # boundary.
           def validate!(token:, envelope:, record_replay: true)
             raise TokenError, 'fleet token is required' if token.to_s.empty?
 
-            claims = symbolize_keys(jwt_module.verify(
-                                      token,
-                                      verification_key: signing_key,
-                                      issuer: issuer,
-                                      algorithm: algorithm,
-                                      verify_issuer: true
-                                    ))
+            claims = Utils.deep_symbolize_keys(jwt_module.verify(
+                                                 token,
+                                                 verification_key: signing_key,
+                                                 issuer: issuer,
+                                                 algorithm: algorithm,
+                                                 verify_issuer: true
+                                               ))
             validate_registered_claims!(claims)
             validate_request_expiry!(claims)
-            validate_envelope_claims!(claims, symbolize_keys(envelope || {}))
+            validate_envelope_claims!(claims, Utils.deep_symbolize_keys(envelope || {}))
             record_replay ? reserve_replay!(claims[:jti]) : ensure_not_replayed!(claims[:jti])
             claims
           rescue TokenError
@@ -96,12 +100,10 @@ module Legion
             validate_exact_execution_claims!(claims, envelope)
           end
 
-          # When the exact-offering marker is present on the envelope, both exact
-          # scalar claims must be signed into the verified JWT and match the
-          # envelope. An unsigned exact marker is never authoritative.
+          # S3: every request is exact (06 P2), so both exact scalar claims are
+          # verified UNCONDITIONALLY — the marker-absence branch is deleted. An
+          # unsigned exact marker is never authoritative.
           def validate_exact_execution_claims!(claims, envelope)
-            return unless envelope[:execution_contract] == Protocol::EXACT_EXECUTION_CONTRACT
-
             Protocol::EXACT_SIGNED_SCALAR_CLAIMS.each do |key|
               raise TokenError, "fleet token missing signed #{key}" if claims[key].to_s.empty?
               raise TokenError, "fleet token #{key} claim mismatch" unless canonical_value(claims[key]) == canonical_value(envelope[key])
@@ -215,14 +217,6 @@ module Legion
             return ::Legion::Crypt::JWT if defined?(::Legion::Crypt::JWT) && ::Legion::Crypt::JWT.respond_to?(:verify)
 
             raise TokenError, 'Legion::Crypt::JWT.verify unavailable'
-          end
-
-          def symbolize_keys(hash)
-            return {} unless hash.respond_to?(:each)
-
-            hash.each_with_object({}) do |(key, value), result|
-              result[key.respond_to?(:to_sym) ? key.to_sym : key] = value
-            end
           end
 
           def canonical_value(value)

@@ -103,7 +103,7 @@ module Legion
             raise errors::ValidationError, 'callable_handle must be a CallableHandle' unless callable_handle.is_a?(Legion::Extensions::Llm::Inventory::CallableHandle)
 
             canonical_model = identity.normalize_text(value: kwargs[:model], field: :model)
-            canonical_operation = Legion::Extensions::Llm::Taxonomies.normalize_operation(value: kwargs[:operation], allow_aliases: false)
+            canonical_operation = Legion::Extensions::Llm::Taxonomies.normalize_operation(value: kwargs[:operation])
             family = Legion::Extensions::Llm::Inventory::RecordSupport.normalize_provider_family(value: kwargs[:provider_family])
             normalized_instance = identity.normalize_text(value: kwargs[:instance_id], field: :instance_id)
             unless family == instance_key.provider_family && normalized_instance == instance_key.instance_id
@@ -158,12 +158,16 @@ module Legion
             raise Legion::Extensions::Llm::Inventory::Errors::ValidationError, 'publisher_token_id must be a ptok:v1: String'
           end
 
+          # U4: structural verification only — same semantics as
+          # RecordSupport.validated_weight_pair, never a second weight policy.
+          # 0 is a legal value (operator disable, 07 W3); base_weight must
+          # equal the product of the inputs.
           def validate_weight_inputs!(weight_inputs, base_weight)
             errors = Legion::Extensions::Llm::Inventory::Errors
             unless weight_inputs.is_a?(::Hash) && weight_inputs.keys.sort == %i[instance model_or_offering provider tier]
               raise errors::ValidationError, 'weight_inputs must have keys tier/provider/instance/model_or_offering'
             end
-            raise errors::ValidationError, 'weight_inputs values must be positive Integers' unless weight_inputs.values.all? { |value| value.is_a?(::Integer) && value.positive? }
+            raise errors::ValidationError, 'weight_inputs values must be nonnegative Integers' unless weight_inputs.values.all? { |value| value.is_a?(::Integer) && !value.negative? }
 
             product = weight_inputs.values.reduce(1, :*)
             raise errors::ValidationError, 'base_weight must equal the product of weight_inputs' unless base_weight == product

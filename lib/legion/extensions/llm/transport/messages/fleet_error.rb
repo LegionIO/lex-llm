@@ -11,7 +11,8 @@ module Legion
     module Llm
       module Transport
         module Messages
-          # Correlated protocol-v2 error envelope for fleet reply queues.
+          # Correlated protocol-v3 error envelope for fleet reply queues (E6).
+          # E5: no aliases — provider_instance only.
           class FleetError < ::Legion::Transport::Message
             include Fleet::DefaultExchangeReply
             include Fleet::EnvelopeValidation
@@ -45,7 +46,7 @@ module Legion
                 idempotency_key: @options[:idempotency_key],
                 operation: @options[:operation],
                 provider: @options[:provider],
-                provider_instance: @options[:provider_instance] || @options[:instance],
+                provider_instance: @options[:provider_instance],
                 model: @options[:model],
                 reply_to: reply_to,
                 message_context: @options[:message_context],

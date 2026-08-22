@@ -16,9 +16,11 @@ RSpec.describe Legion::Extensions::Llm::Routing::Records do
   end
   let(:callable_handle) { inventory::CallableHandle.new(handle_id: 'call:v1:x', callable: callable_class.new) }
   let(:instance_key) { identity::InstanceKey.new(provider_family: 'vllm', instance_id: 'h200') }
-  let(:offering_id) { identity.offering_id(instance_key: instance_key, provider_native_key: 'gemma4') }
   let(:lane_id) do
-    identity.lane_id(instance_key: instance_key, operation: :chat, model: 'gemma4', offering_id: offering_id)
+    identity.compose_lane_id(
+      tier: :local, provider_family: 'vllm', instance_id: 'h200',
+      type: Legion::Extensions::Llm::Taxonomies.lane_type_for(operation: :chat), model: 'gemma4'
+    )
   end
 
   describe routing::AttemptTargetKey do
@@ -76,7 +78,7 @@ RSpec.describe Legion::Extensions::Llm::Routing::Records do
   describe routing::Selection do
     def build_selection(**overrides)
       Legion::Extensions::Llm::Routing::Selection.new(
-        inventory_generation: 7, lane_id: lane_id, instance_key: instance_key, offering_id: offering_id,
+        inventory_generation: 7, lane_id: lane_id, instance_key: instance_key,
         provider_family: :vllm, instance_id: 'h200', model: 'gemma4', operation: :chat,
         callable_handle: callable_handle, publisher_token_id: 'ptok:v1:abc', capability_evidence: {},
         context_evidence: Legion::Extensions::Llm::Inventory::ValueEvidence.new(status: :unknown, source: :absent),
@@ -88,6 +90,8 @@ RSpec.describe Legion::Extensions::Llm::Routing::Records do
 
     it 'builds a valid selection and derives the attempt target key' do
       selection = build_selection
+      expect(selection.lane_id).to eq('local:vllm:h200:inference:gemma4')
+      expect(selection.members).not_to include(:offering_id)
       key = selection.attempt_target_key
       expect(key).to eq(routing::AttemptTargetKey.new(provider_family: :vllm, instance_id: 'h200', model: 'gemma4'))
     end
@@ -105,8 +109,37 @@ RSpec.describe Legion::Extensions::Llm::Routing::Records do
         .to raise_error(errors::ValidationError)
     end
 
-    it 'rejects a lane_id that does not reproduce' do
-      expect { build_selection(lane_id: "lane:v1:#{'0' * 64}") }.to raise_error(errors::ValidationError)
+    it 'rejects a lane_id that is not a 5-tuple' do
+      expect { build_selection(lane_id: 'not-a-five-tuple') }
+        .to raise_error(errors::ValidationError)
+    end
+
+    it 'rejects a lane_id whose family part disagrees with the selection' do
+      expect { build_selection(lane_id: 'local:openai:h200:inference:gemma4') }
+        .to raise_error(errors::ValidationError, /provider_family/)
+    end
+
+    it 'rejects a lane_id whose instance part disagrees with the selection' do
+      expect { build_selection(lane_id: 'local:vllm:helios1:inference:gemma4') }
+        .to raise_error(errors::ValidationError, /instance_id/)
+    end
+
+    it 'rejects a lane_id whose type part disagrees with the operation' do
+      expect { build_selection(lane_id: 'local:vllm:h200:embedding:gemma4') }
+        .to raise_error(errors::ValidationError, /type/)
+    end
+
+    it 'rejects a lane_id whose model part disagrees with the selection' do
+      expect { build_selection(lane_id: 'local:vllm:h200:inference:other-model') }
+        .to raise_error(errors::ValidationError, /model/)
+    end
+
+    it 'keeps colons inside the lane id model part' do
+      colon_model = 'llama3.2:8b-instruct'
+      id = identity.compose_lane_id(
+        tier: :local, provider_family: 'vllm', instance_id: 'h200', type: :inference, model: colon_model
+      )
+      expect(build_selection(lane_id: id, model: colon_model).lane_id).to eq(id)
     end
 
     it 'rejects a publisher_token_id without the ptok:v1: prefix' do

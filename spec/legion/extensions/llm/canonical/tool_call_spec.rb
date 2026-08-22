@@ -1,191 +1,88 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../conformance/conformance'
 
 RSpec.describe Legion::Extensions::Llm::Canonical::ToolCall do
-  describe '.build' do
-    it 'creates a tool call with required fields' do
-      tc = described_class.build(name: 'search', arguments: { query: 'test' })
+  let(:type_class) { described_class }
+  let(:auto_generated_members) { [:id] }
+  let(:type_source) do
+    {
+      id: 'call_1',
+      name: 'get_weather',
+      arguments: { location: 'San Francisco' },
+      source: 'client',
+      status: 'pending',
+      category: 'weather',
+      metadata: { origin: 'model' }
+    }
+  end
 
-      expect(tc.name).to eq('search')
-      expect(tc.arguments).to eq({ query: 'test' })
-      expect(tc.id).to start_with('call_')
-      expect(tc.arguments).to be_a(Hash)
+  it_behaves_like 'a canonical type'
+
+  describe 'H1 — .new is as strict as the factories' do
+    it 'rejects a poison source enum' do
+      expect { described_class.new(name: 'x', source: :bogus) }
+        .to raise_error(ArgumentError, /Invalid source: :bogus/)
     end
 
-    it 'generates a random id' do
-      tc1 = described_class.build(name: 'search')
-      tc2 = described_class.build(name: 'search')
-
-      expect(tc1.id).not_to eq(tc2.id)
-    end
-
-    it 'accepts all fields' do
-      tc = described_class.build(
-        id: 'call-1',
-        exchange_id: 'ex-1',
-        name: 'search',
-        arguments: { query: 'test' },
-        source: :registry,
-        status: :pending,
-        data_handling_classification: :public,
-        policy_decision: :allowed
-      )
-
-      expect(tc.id).to eq('call-1')
-      expect(tc.exchange_id).to eq('ex-1')
-      expect(tc.source).to eq(:registry)
-      expect(tc.status).to eq(:pending)
-      expect(tc.data_handling_classification).to eq(:public)
-      expect(tc.policy_decision).to eq(:allowed)
-    end
-
-    it 'defaults arguments to empty hash' do
-      tc = described_class.build(name: 'search')
-
-      expect(tc.arguments).to eq({})
+    it 'rejects JSON-string arguments (Hash only, O03a)' do
+      expect { described_class.new(name: 'x', arguments: '{"a":1}') }
+        .to raise_error(ArgumentError, /arguments expected Hash, got String/)
     end
   end
 
-  describe '.from_hash' do
-    it 'parses from hash with symbol keys' do
-      tc = described_class.from_hash(
-        id: 'call-1',
-        name: 'search',
-        arguments: { query: 'test' },
-        source: :registry
-      )
-
-      expect(tc.id).to eq('call-1')
-      expect(tc.name).to eq('search')
-      expect(tc.arguments).to eq({ query: 'test' })
-      expect(tc.source).to eq(:registry)
+  describe 'T5 — enum law (declared enums enforced in both factories)' do
+    it 'validates source against SOURCE_VALUES' do
+      expect { described_class.build(name: 'x', source: 'client') }.not_to raise_error
+      expect(described_class.build(name: 'x', source: 'client').source).to eq(:client)
+      expect { described_class.build(name: 'x', source: :bogus) }
+        .to raise_error(ArgumentError, /Invalid source: :bogus/)
+      expect { described_class.from_hash(name: 'x', source: 'nope') }
+        .to raise_error(ArgumentError, /Invalid source: :nope/)
     end
 
-    it 'normalizes string source to symbol' do
-      tc = described_class.from_hash(name: 'search', source: 'registry')
-
-      expect(tc.source).to eq(:registry)
-    end
-
-    it 'normalizes string status to symbol' do
-      tc = described_class.from_hash(name: 'search', status: 'success')
-
-      expect(tc.status).to eq(:success)
-    end
-
-    it 'parses JSON string arguments to symbol keys per Legion::JSON convention' do
-      tc = described_class.from_hash(
-        name: 'search',
-        arguments: '{"query":"test","limit":10}'
-      )
-
-      expect(tc.arguments).to eq({ query: 'test', limit: 10 })
-    end
-
-    it 'handles string keys' do
-      tc = described_class.from_hash('name' => 'search', 'arguments' => '{}')
-
-      expect(tc.name).to eq('search')
-      expect(tc.arguments).to eq({})
-    end
-
-    it 'returns nil for nil source' do
-      expect(described_class.from_hash(nil)).to be_nil
+    it 'validates status against STATUS_VALUES' do
+      expect(described_class.build(name: 'x', status: 'running').status).to eq(:running)
+      expect { described_class.build(name: 'x', status: :finished) }
+        .to raise_error(ArgumentError, /Invalid status: :finished/)
+      expect { described_class.from_hash(name: 'x', status: 'done') }
+        .to raise_error(ArgumentError, /Invalid status: :done/)
     end
   end
 
-  describe '#with_result' do
-    it 'returns a new tool call with result' do
-      tc = described_class.build(name: 'search', source: :registry)
-      result_tc = tc.with_result(result: { hits: 5 }, status: :success, duration_ms: 100)
-
-      expect(result_tc.result).to eq({ hits: 5 })
-      expect(result_tc.status).to eq(:success)
-      expect(result_tc.duration_ms).to eq(100)
-      expect(result_tc.finished_at).to be_a(Time)
+  describe 'O03a — arguments Hash only' do
+    it 'does not parse JSON-string arguments (the parse + rescue are deleted)' do
+      expect { described_class.build(name: 'x', arguments: '{"a":1}') }
+        .to raise_error(ArgumentError, /arguments expected Hash, got String/)
+      expect { described_class.from_hash(name: 'x', arguments: '{\"a\":1}') }
+        .to raise_error(ArgumentError, /arguments expected Hash, got String/)
     end
 
-    it 'sets error on error status' do
-      tc = described_class.build(name: 'search')
-      result_tc = tc.with_result(result: 'not found', status: :error)
-
-      expect(result_tc.error).to eq('not found')
-      expect(result_tc.status).to eq(:error)
+    it 'defaults nil arguments to {} (documented no-arguments default)' do
+      expect(described_class.build(name: 'x').arguments).to eq({})
+      expect(described_class.from_hash(name: 'x').arguments).to eq({})
     end
   end
 
-  describe 'predicates' do
-    it 'identifies successful calls' do
-      tc = described_class.build(name: 'search', status: :success)
-      expect(tc.success?).to be true
-      expect(tc.error?).to be false
+  describe 'with_result (canonical mutation-free update)' do
+    it 'attaches the result and normalizes error' do
+      tc = described_class.build(name: 'x', id: 'c1', status: 'running')
+      done = tc.with_result(result: 'ok', status: :success, duration_ms: 12)
+      expect(done.result).to eq('ok')
+      expect(done.status).to eq(:success)
+      expect(done.error).to be_nil
+      expect(done.success?).to be(true)
+
+      failed = tc.with_result(result: 'boom', status: :error)
+      expect(failed.error).to eq('boom')
+      expect(failed.error?).to be(true)
     end
 
-    it 'identifies error calls' do
-      tc = described_class.build(name: 'search', status: :error)
-      expect(tc.error?).to be true
-      expect(tc.success?).to be false
-    end
-  end
-
-  describe '#to_h' do
-    it 'serializes to compact hash' do
-      tc = described_class.build(name: 'search', arguments: { query: 'test' })
-      hash = tc.to_h
-
-      expect(hash).to include(id: tc.id, name: 'search', arguments: { query: 'test' })
-    end
-  end
-
-  describe '#to_audit_hash' do
-    it 'includes compliance fields' do
-      tc = described_class.build(
-        name: 'search',
-        source: :registry,
-        data_handling_classification: :public,
-        policy_decision: :allowed
-      )
-      hash = tc.to_audit_hash
-
-      expect(hash).to include(
-        name: 'search',
-        source: :registry,
-        data_handling_classification: :public,
-        policy_decision: :allowed
-      )
-    end
-  end
-
-  describe 'SOURCE_VALUES' do
-    it 'includes all expected source types' do
-      expect(described_class::SOURCE_VALUES).to eq(%i[client registry special extension mcp])
-    end
-  end
-
-  describe 'STATUS_VALUES' do
-    it 'includes all expected status types' do
-      expect(described_class::STATUS_VALUES).to eq(%i[pending running success error])
-    end
-  end
-
-  describe 'round-trip' do
-    it 'preserves values through from_hash/to_h' do
-      original = {
-        id: 'call-1',
-        name: 'search',
-        arguments: { query: 'test' },
-        source: 'registry',
-        status: 'pending'
-      }
-      tc = described_class.from_hash(original)
-      serialized = tc.to_h
-
-      expect(serialized[:id]).to eq('call-1')
-      expect(serialized[:name]).to eq('search')
-      expect(serialized[:arguments]).to eq({ query: 'test' })
-      expect(serialized[:source]).to eq(:registry)
-      expect(serialized[:status]).to eq(:pending)
+    it 'validates the result status enum' do
+      tc = described_class.build(name: 'x', id: 'c1', status: 'running')
+      expect { tc.with_result(result: 'r', status: :bogus) }
+        .to raise_error(ArgumentError, /Invalid status: :bogus/)
     end
   end
 end

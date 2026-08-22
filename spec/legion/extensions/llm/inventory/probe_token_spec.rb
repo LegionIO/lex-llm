@@ -30,13 +30,13 @@ RSpec.describe Legion::Extensions::Llm::Inventory::ProbeToken do
     let(:token) { described_class.issue(instance_key: instance_key) }
 
     describe '.issue' do
-      it 'derives pub:v1: and ptok:v1: correlation IDs and is frozen' do
+      it 'mints pub:v1: and ptok:v1: correlation IDs and is frozen' do
         expect(token.publisher_id).to start_with('pub:v1:')
         expect(token.publisher_token_id).to start_with('ptok:v1:')
         expect(token).to be_frozen
       end
 
-      it 'derives publisher_token_id from the secret domain-separated SHA-256' do
+      it 'mints a distinct token id per issue' do
         other = described_class.issue(instance_key: instance_key)
         expect(token.publisher_token_id).not_to eq(other.publisher_token_id)
       end
@@ -70,9 +70,9 @@ RSpec.describe Legion::Extensions::Llm::Inventory::ProbeToken do
         expect(token.authenticates?(Object.new)).to be(false)
       end
 
-      it 'authenticates two tokens built from the same secret' do
+      it 'authenticates two tokens built from the same secret (fencing is the secret comparison)' do
         secret = 'deadbeef' * 8
-        token_id = described_class.derive_token_id(secret)
+        token_id = "ptok:v1:#{SecureRandom.uuid}"
         a = described_class.new(instance_key: instance_key, secret: secret, publisher_id: 'pub:v1:x', publisher_token_id: token_id)
         b = described_class.new(instance_key: instance_key, secret: secret, publisher_id: 'pub:v1:y', publisher_token_id: token_id)
         expect(a.authenticates?(b)).to be(true)

@@ -1,5 +1,92 @@
 # Changelog
 
+## 0.8.0 - 2026-08-20
+
+**The SSOT v4 contract cut.** This is a complete contract line, not a patch wave:
+Canonical is the only internal language, every authoritative value is created once
+and executed exactly, and one path / one class / one method exists per function.
+The architecture law for the line ships in `RULES.md` at the repository root.
+
+### Added
+- **`RULES.md`** — the 17 architecture laws of the 0.8.x contract line, byte-for-byte
+  at the repo root (G5; mirrored to sibling repos at their next releases).
+- **Fleet protocol v3.** `Fleet::Protocol::VERSION = 3`; exact execution only
+  (marker required — absence is rejected); explicit `protocol_version` (no default
+  fill); one `Fleet::Protocol::REQUIRED_FIELDS` list consumed by both edges;
+  `Fleet::ContractError` for envelope/param/message-shape violations; retryability
+  derived from the `ProviderOutcome` kind table (contract/policy/auth kinds never
+  retry); the response envelope carries the serialized `Canonical::Response` with
+  the G5 thinking exclusion performed exactly once at the responder builder.
+- **Conformance kit.** `spec/legion/extensions/llm/conformance/` now carries the
+  full 09 oracle: T1-T7 shared examples for all 12 canonical types plus the B1-B9
+  (boundary), F1-F7 (fleet), and R1-R5 (registry) shared examples with a kit
+  self-test host.
+- **`Canonical::Thinking::Config`** — one name, a `Data` type (the top-level
+  `ThinkingConfig` constant and its alias are gone).
+- **`Canonical::Message#metadata`** — unknown keys fold into metadata on every
+  canonical type (04 L5); `cache_control` survival through the full JSON wire is
+  conformance-pinned (E01).
+- **Strict argument parser** (`Responses::ToolArguments`) — one strict tool-argument
+  parse for sync and streaming paths; invalid JSON is a contract error, never a
+  fabricated `{}`.
+
+### Changed
+- **Canonical strictification (04 L1-L10).** No nil-returning factories (typed
+  `ArgumentError` naming type, member, and offending class); no rescue-and-repair;
+  no silent drops; canonical keys only (provider-dialect aliases moved to the
+  translator edges, O03a); declared enums validated in both factories; `build` and
+  `from_hash` share one normalization path per member; uniform `to_h`/`as_json`/
+  `to_json` serialization; G20d (chunk produce-strict / consume-unknown pass-through)
+  is stated law.
+- **Provider funnel (05/08).** `complete` enforces canonical messages centrally
+  (F2); the `temperature:` kwarg is deleted (temperature lives only in
+  `Canonical::Params`, O4); positional `messages` on the callable contract; the
+  provider-object fleet dispatch topology is deleted (exact registry dispatch only);
+  the legacy offering production path is replaced by the `Registry.snapshot` read
+  path (07 C5); one `ensure_configured!` (the Connection duplicate is deleted); one
+  health classifier; `normalize_dispatch_error` reads the shared kind table on
+  `Routing::ProviderOutcome`; silent rescues now log.
+- **Streaming (02 FL13 / 10 U1-U3).** The streaming path produces
+  `Canonical::Chunk` / `Canonical::Response` through the shared `ThinkingExtractor`
+  segment core and the strict tool-argument parser, preserving the wire
+  index-first / recency-fallback tool-call correlation law.
+- **`FleetLane` queue defaults** come from the one settings home
+  (`Llm.default_settings`, `consumer_ack_timeout_ms: 90_000`); the downgraded
+  `CredentialSources` paths fail closed (O11).
+- **`Routing::Selection` weight validation** is structural only — a zero component
+  (operator disable) is accepted, matching `RecordSupport` (U4).
+
+### Removed
+- **The legacy type set:** `Llm::Message`, `Llm::Chunk`, `Llm::Tokens`,
+  `Llm::Thinking` (+ `Thinking::Config`), `Llm::ToolCall`, `Llm::Content`
+  (+ `Content::Raw`), `Llm::Attachment`, the `Responses::ChatResponse` /
+  `StreamChunk` / `EmbeddingResponse` wrapper family, and `to_internal_h`.
+- **The provider-native facade** (O12): `Llm.chat/context/embed/moderate/paint/
+  transcribe/models/providers` entry points, `Chat`, `Agent`, `Context` — zero
+  callers in any repo; capability is preserved through the provider base +
+  canonical pipeline + fleet.
+- **Legacy offering/lane surface:** `Routing::ModelOffering`, `Routing::OfferingRegistry`,
+  `Routing::LaneKey`, `Inventory::ScopedRefresher` (+ `LegacyCoordinatorAdapter` —
+  the lex-llm -> legion-llm reverse dependency is gone), the `Llm::Types` alias
+  module, `AutoRegistration#discover_instances`/`#provider_aliases`, the
+  `UnsupportedCapabilityError` compat alias, `Llm::Aliases`,
+  `Taxonomies::OPERATION_ALIASES`/`OPERATION_TO_LANE_TYPE`/`CIRCUIT_STATES`/
+  `HEALTH_KEYS`, `Message.wrap`, `Message#to_provider_hash`, `AmbiguousLegacyOfferingError`,
+  and the class-level `model_policy`/`resolve_policy_value` policy cascade.
+
+## 0.7.7 - 2026-08-19
+
+
+### Added
+- **`Canonical::Message` carries `cache_control`.** Prompt-cache breakpoints are a first-class canonical member (build/from_hash/to_h and the fleet JSON round-trip preserve it) instead of being dropped by member projection.
+
+### Changed
+- **Fleet worker rehydrates wire messages to canonical objects.** `Fleet::WorkerExecution` rebuilds `params[:messages]` into `Canonical::Message` at the wire boundary for chat, stream, and count_tokens dispatch (exact and local-provider paths), so callables receive canonical input only. Non-Hash wire entries raise `ExactOfferingMismatchError`.
+
+### Fixed
+- **Dispatch-boundary contract helper.** `Provider#enforce_canonical_messages!` is the shared loud-reject contract for provider callables: non-canonical message shapes raise `ArgumentError` instead of being coerced or tolerated. `Provider#count_tokens` enforces it and reads canonical content, removing the hash fallback.
+- **Fleet specs assert the canonical boundary.** Worker/responder spec doubles read `.content` off `Canonical::Message` (wire rehydration delivers objects, not hashes).
+
 ## 0.7.6 - 2026-08-19
 
 ### Added

@@ -47,7 +47,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Boot do
   it 'exposes every require-order constant' do
     %i[
       Errors ImmutableValue Identity Evidence CallableHandle DispatchLease ProbeToken ProbeRequest
-      ProbeCoordinator PublisherToken OfferingDraft OfferingRecord LaneRecord AvailabilityFact
+      ProbeCoordinator PublisherToken OfferingDraft LaneRecord AvailabilityFact
       ReadinessResult InstanceRecord PublicationStatus MutationResult Snapshot Registry Publisher
     ].each { |const| expect(inventory.const_defined?(const)).to be(true), "missing Inventory::#{const}" }
     %i[AttemptTargetKey QuotaDomainKey Exclusion Selection Rejection BodyModelHintDecision ProviderOutcome].each do |const|
@@ -69,9 +69,9 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Boot do
     expect(Thread.list.size).to eq(baseline)
   end
 
-  it 'retains legacy Types aliases and adds no new SSOT alias' do
-    expect(Legion::Extensions::Llm::Types.const_defined?(:ModelOffering, false)).to be(true)
-    expect(Legion::Extensions::Llm::Types.const_defined?(:InstanceKey, false)).to be(false)
+  it 'removes the legacy Types aliases (0.8.0 rip)' do
+    expect(Legion::Extensions::Llm.const_defined?(:Types, false)).to be(false)
+    expect(Legion::Extensions::Llm::Inventory.const_defined?(:InstanceKey, false)).to be(false)
   end
 
   it 'preserves the optional transport message registration (autoload or loaded)' do

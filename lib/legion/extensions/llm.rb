@@ -36,11 +36,9 @@ module Legion
       #  unqualified constant lookups resolve via Ruby scope.               #
       # ------------------------------------------------------------------ #
 
-      # --- P1 SSOT: taxonomy enums, capability normalization, inventory writer mixin ---
+      # --- P1 SSOT: taxonomy enums, capability normalization ---
       require_relative 'llm/taxonomies'
       require_relative 'llm/capabilities'
-      require_relative 'llm/inventory/scoped_refresher'
-      require_relative 'llm/inventory/capabilities'
 
       # --- Capability resolution policy (no internal deps) ---
       require_relative 'llm/capability_policy'
@@ -66,39 +64,26 @@ module Legion
       require_relative 'llm/routing/provider_outcome'
 
       # --- Base value objects (no internal deps) ---
-      require_relative 'llm/mime_type'
       require_relative 'llm/model/info'
       require_relative 'llm/model/modalities'
       require_relative 'llm/model/pricing_category'
       require_relative 'llm/model/pricing_tier'
       require_relative 'llm/model/pricing'
       require_relative 'llm/configuration'
-      require_relative 'llm/thinking'
-      require_relative 'llm/tokens'
-      require_relative 'llm/message'
-      require_relative 'llm/tool_call'
-      require_relative 'llm/content'
       require_relative 'llm/errors/unsupported_capability'
       require_relative 'llm/error'
 
-      # --- Build on message/base types ---
-      require_relative 'llm/chunk'
+      # --- Model value object (builds on model/*) ---
       require_relative 'llm/model'
-      require_relative 'llm/attachment'
 
       # --- Streaming fundamentals (must load before streaming/provider) ---
+      require_relative 'llm/responses/thinking_extractor'
+      require_relative 'llm/responses/tool_arguments'
       require_relative 'llm/stream_accumulator'
-      require_relative 'llm/responses/stream_chunk'
       require_relative 'llm/streaming'
 
-      # --- Context, Connection ---
-      require_relative 'llm/context'
+      # --- Connection ---
       require_relative 'llm/connection'
-
-      # --- Response normalizers ---
-      require_relative 'llm/responses/chat_response'
-      require_relative 'llm/responses/embedding_response'
-      require_relative 'llm/responses/thinking_extractor'
 
       # --- Provider base & allied modules ---
       require_relative 'llm/provider_contract'
@@ -111,23 +96,10 @@ module Legion
 
       # --- Routing ---
       require_relative 'llm/routing'
-      require_relative 'llm/routing/lane_key'
-      require_relative 'llm/routing/offering_registry'
       require_relative 'llm/routing/registry_event'
-      require_relative 'llm/routing/model_offering'
 
       # --- Models (scans for Provider subclasses) ---
       require_relative 'llm/models'
-
-      # --- Agent & Chat (reference Provider, Context, Chat at method-time) ---
-      require_relative 'llm/agent'
-      require_relative 'llm/chat'
-
-      # --- Domain services ---
-      require_relative 'llm/embedding'
-      require_relative 'llm/moderation'
-      require_relative 'llm/image'
-      require_relative 'llm/transcription'
 
       # --- Registry & misc support ---
       require_relative 'llm/registry_event_builder'
@@ -142,6 +114,8 @@ module Legion
       require_relative 'llm/fleet/protocol'
       require_relative 'llm/fleet/settings'
       require_relative 'llm/fleet/token_error'
+      require_relative 'llm/fleet/contract_error'
+      require_relative 'llm/fleet/fleet_envelope'
       require_relative 'llm/fleet/envelope_validation'
       require_relative 'llm/fleet/publish_safety'
       require_relative 'llm/fleet/default_exchange_reply'
@@ -175,57 +149,8 @@ module Legion
 
       Schema = ::RubyLLM::Schema unless const_defined?(:Schema, false)
 
-      # Provider-neutral value objects exposed under the Legion extension namespace.
-      module Types
-        ModelOffering = Routing::ModelOffering unless const_defined?(:ModelOffering, false)
-        OfferingRegistry = Routing::OfferingRegistry unless const_defined?(:OfferingRegistry, false)
-        RegistryEvent = Routing::RegistryEvent unless const_defined?(:RegistryEvent, false)
-      end
-
-      # Shared routing helpers exposed under the Legion extension namespace.
-      module Routing
-        LaneKey = ::Legion::Extensions::Llm::Routing::LaneKey unless const_defined?(:LaneKey, false)
-        OfferingRegistry = ::Legion::Extensions::Llm::Routing::OfferingRegistry unless const_defined?(:OfferingRegistry,
-                                                                                                      false)
-        RegistryEvent = ::Legion::Extensions::Llm::Routing::RegistryEvent unless const_defined?(:RegistryEvent, false)
-      end
-
       class << self
         def remote_invocable? = false
-
-        def context
-          context_config = config.dup
-          yield context_config if block_given?
-          Context.new(context_config)
-        end
-
-        def chat(...)
-          Chat.new(...)
-        end
-
-        def embed(...)
-          Embedding.embed(...)
-        end
-
-        def moderate(...)
-          Moderation.moderate(...)
-        end
-
-        def paint(...)
-          Image.paint(...)
-        end
-
-        def transcribe(...)
-          Transcription.transcribe(...)
-        end
-
-        def models
-          Models.instance
-        end
-
-        def providers
-          Models.scan_provider_classes.values
-        end
 
         def configure
           yield config

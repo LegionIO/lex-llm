@@ -10,7 +10,6 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
       def self.configuration_requirements = []
       def self.local? = false
       def self.remote? = true
-      def self.assume_models_exist? = false
 
       def ensure_configured! = nil
       def api_base = 'http://example.invalid'
@@ -19,10 +18,10 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
     end
   end
 
-  it 'requires canonical keyword provider methods' do
+  it 'requires the 0.8.0 provider method signatures' do
     expected = {
-      chat: [%i[keyreq messages], %i[keyreq model]],
-      stream_chat: [%i[keyreq messages], %i[keyreq model]],
+      chat: [%i[req messages], %i[keyreq model]],
+      stream_chat: [%i[req messages], %i[keyreq model]],
       embed: [%i[keyreq text], %i[keyreq model]],
       image: [%i[keyreq prompt], %i[keyreq model]],
       list_models: [%i[key live], %i[keyrest filters]],
@@ -36,13 +35,12 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
       required_parameters.each do |required_parameter|
         expect(parameters).to include(required_parameter), "#{method_name} missing #{required_parameter.inspect}"
       end
-      expect(parameters).not_to include(%i[req messages])
       expect(parameters).not_to include(%i[req text])
       expect(parameters).not_to include(%i[req prompt])
     end
   end
 
-  it 'rejects positional canonical arguments' do
+  it 'rejects non-canonical message input and positional artifact arguments' do
     provider = provider_class.new(
       request_timeout: 30,
       max_retries: 0,
@@ -51,17 +49,17 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
       retry_interval_randomness: 0
     )
 
-    expect { provider.chat([], model: 'model') }.to raise_error(ArgumentError)
-    expect { provider.stream_chat([], model: 'model') }.to raise_error(ArgumentError)
+    expect { provider.chat(['not canonical'], model: 'model') }.to raise_error(ArgumentError, /Canonical::Message/)
+    expect { provider.stream_chat([42], model: 'model') }.to raise_error(ArgumentError, /Canonical::Message/)
+    expect { provider.count_tokens(messages: ['nope'], model: 'model') }.to raise_error(ArgumentError, /Canonical::Message/)
     expect { provider.embed('text', model: 'model') }.to raise_error(ArgumentError)
     expect { provider.image('prompt', model: 'model') }.to raise_error(ArgumentError)
-    expect { provider.count_tokens([], model: 'model') }.to raise_error(ArgumentError)
   end
 
   it 'keeps REQUIRED_SIGNATURES as exactly the eight-entry reflection baseline' do
     expect(described_class::REQUIRED_SIGNATURES).to eq(
-      chat: [%i[keyreq messages], %i[keyreq model]],
-      stream_chat: [%i[keyreq messages], %i[keyreq model]],
+      chat: [%i[req messages], %i[keyreq model]],
+      stream_chat: [%i[req messages], %i[keyreq model]],
       embed: [%i[keyreq text], %i[keyreq model]],
       image: [%i[keyreq prompt], %i[keyreq model]],
       list_models: [%i[key live], %i[keyrest filters]],
