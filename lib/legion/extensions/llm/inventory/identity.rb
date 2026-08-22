@@ -1,19 +1,18 @@
 # frozen_string_literal: true
 
-require 'digest'
 require 'legion/extensions/llm/inventory/errors'
+require 'legion/extensions/llm/taxonomies'
 
 module Legion
   module Extensions
     module Llm
       module Inventory
-        # Canonical field normalization plus the `off:v1:` and `lane:v1:`
-        # length-framed SHA-256 encoders/validators. See
-        # phase-1-lex-llm-additive.md section 8.
-        #
-        # Framing is binary: decimal UTF-8 byte length, ASCII ':', then the exact
-        # UTF-8 bytes. It never uses a delimiter join, Ruby hash order, object ID,
-        # or Ruby Hash#hash. Tier is never an identity input.
+        # Canonical field normalization plus the ONE 5-tuple lane-id composer.
+        # The lane id is `tier:provider_family:instance_id:type:model`, composed
+        # here and ONLY here (G22). Every surface that needs an id calls
+        # compose_lane_id; validation is shape/parse checks against Taxonomies
+        # (R1 boundary contract — it enforces the shape the code produces).
+        # The code produces ONLY 5-tuples; nothing else is guarded against.
         module Identity
           module_function
 
@@ -42,30 +41,50 @@ module Legion
             candidate
           end
 
-          def length_frame(value:)
-            bytes = value.to_s.b
-            "#{bytes.bytesize}:".b + bytes
+          # The ONE 5-tuple composer (G22): byte-identical to the v0.6.16
+          # ScopedRefresher.compose_id. A pure join of the five identity fields —
+          # no normalization here; the fields are normalized by their owners
+          # (TIERS/TYPES symbols, InstanceKey, normalize_text) before composing.
+          def compose_lane_id(tier:, provider_family:, instance_id:, type:, model:)
+            "#{tier}:#{provider_family}:#{instance_id}:#{type}:#{model}"
           end
 
-          def offering_id(instance_key:, provider_native_key:)
-            digest = ::Digest::SHA256.hexdigest(
-              length_frame(value: instance_key.provider_family) +
-              length_frame(value: instance_key.instance_id) +
-              length_frame(value: provider_native_key)
-            )
-            "off:v1:#{digest}"
+          # Bounded parse: split(':', 5) — the 5th part keeps its colons, which
+          # is load-bearing: model names contain ':' (Ollama model:tag, Bedrock
+          # model ids). Structural only — field semantics are validate_lane_id!'s.
+          def parse_lane_id(id)
+            raise Errors::ValidationError, 'lane id must be a String or Symbol' unless text_input?(id)
+
+            parts = id.to_s.split(':', 5)
+            raise Errors::ValidationError, "lane id must have exactly 5 parts, got #{parts.length}" unless parts.length == 5
+
+            parts.freeze
           end
 
-          def lane_id(instance_key:, operation:, model:, offering_id:)
-            digest = ::Digest::SHA256.hexdigest(
-              "lane-v1\x00".b +
-              length_frame(value: instance_key.provider_family) +
-              length_frame(value: instance_key.instance_id) +
-              length_frame(value: operation) +
-              length_frame(value: model) +
-              length_frame(value: offering_id)
-            )
-            "lane:v1:#{digest}"
+          # Shape validation (R1 boundary contract): exactly 5 parts (bounded
+          # split — the model keeps its colons), part 1 in TIERS, part 4 in
+          # TYPES, parts 2/3/5 nonempty NFC. Any value that is not a 5 tuple
+          # fails the part-count check on its own — there is no special case
+          # for anything else.
+          def validate_lane_id!(value:)
+            parts = parse_lane_id(value)
+            tier, provider_family, instance_id, type, model = parts
+            raise Errors::ValidationError, "lane id tier must be a Taxonomies::TIERS value, got #{tier}" \
+              unless Taxonomies::TIERS.include?(tier.to_sym)
+            raise Errors::ValidationError, "lane id type must be a Taxonomies::TYPES value, got #{type}" \
+              unless Taxonomies::TYPES.include?(type.to_sym)
+            raise Errors::ValidationError, 'lane id provider_family must be a nonempty NFC String' \
+              unless nonempty_nfc?(provider_family)
+            raise Errors::ValidationError, 'lane id instance_id must be a nonempty NFC String' \
+              unless nonempty_nfc?(instance_id)
+            raise Errors::ValidationError, 'lane id model must be a nonempty NFC String' \
+              unless nonempty_nfc?(model)
+
+            value
+          end
+
+          def nonempty_nfc?(string)
+            !string.empty? && string.unicode_normalized?(:nfc)
           end
 
           # M6: the ONE config→instance-id derivation (R6 owner law).
@@ -81,22 +100,6 @@ module Legion
             'default'
           end
 
-          def validate_offering_id!(value:, instance_key:, provider_native_key:)
-            expected = offering_id(instance_key: instance_key, provider_native_key: provider_native_key)
-            raise Errors::ValidationError, 'offering_id does not reproduce from its identity fields' unless value == expected
-
-            value
-          end
-
-          def validate_lane_id!(value:, instance_key:, operation:, model:, offering_id:)
-            expected = lane_id(
-              instance_key: instance_key, operation: operation, model: model, offering_id: offering_id
-            )
-            raise Errors::ValidationError, 'lane_id does not reproduce from its identity fields' unless value == expected
-
-            value
-          end
-
           def text_input?(value)
             value.is_a?(::String) || value.is_a?(::Symbol)
           end
@@ -109,7 +112,7 @@ module Legion
             string.encoding == ::Encoding::UTF_8 ? string.dup : string.b.dup.force_encoding(::Encoding::UTF_8)
           end
 
-          private_class_method :text_input?, :valid_utf8?, :utf8
+          private_class_method :text_input?, :valid_utf8?, :utf8, :nonempty_nfc?
 
           # A mandatory, immutable provider_family + instance_id pair. Provider
           # family alone is never executable; two instances of the same provider

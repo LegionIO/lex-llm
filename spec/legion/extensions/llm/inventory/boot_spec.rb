@@ -47,7 +47,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Boot do
   it 'exposes every require-order constant' do
     %i[
       Errors ImmutableValue Identity Evidence CallableHandle DispatchLease ProbeToken ProbeRequest
-      ProbeCoordinator PublisherToken OfferingDraft OfferingRecord LaneRecord AvailabilityFact
+      ProbeCoordinator PublisherToken OfferingDraft LaneRecord AvailabilityFact
       ReadinessResult InstanceRecord PublicationStatus MutationResult Snapshot Registry Publisher
     ].each { |const| expect(inventory.const_defined?(const)).to be(true), "missing Inventory::#{const}" }
     %i[AttemptTargetKey QuotaDomainKey Exclusion Selection Rejection BodyModelHintDecision ProviderOutcome].each do |const|

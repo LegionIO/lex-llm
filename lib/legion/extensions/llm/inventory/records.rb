@@ -13,10 +13,10 @@ module Legion
     module Llm
       module Inventory
         # Documentation namespace anchor for the immutable inventory records
-        # defined in this file: OfferingDraft, OfferingRecord, LaneRecord,
-        # AvailabilityFact, ReadinessResult, InstanceRecord, PublicationStatus,
-        # and MutationResult. The records themselves live directly under
-        # Inventory so their canonical constant paths stay flat.
+        # defined in this file: OfferingDraft, LaneRecord, AvailabilityFact,
+        # ReadinessResult, InstanceRecord, PublicationStatus, and
+        # MutationResult. The records themselves live directly under Inventory
+        # so their canonical constant paths stay flat.
         module Records; end
 
         # Shared normalization/validation used by the immutable inventory and
@@ -197,7 +197,7 @@ module Legion
           end
 
           # Validates and returns the five scalar ValueEvidence fields shared by
-          # OfferingDraft, OfferingRecord, and LaneRecord as a member Hash.
+          # OfferingDraft and LaneRecord as a member Hash.
           def scalar_value_evidences(kwargs)
             {
               context_evidence: positive_int_value_evidence!(kwargs[:context_evidence], :context_evidence),
@@ -312,81 +312,15 @@ module Legion
           end
         end
 
-        # A registry-owned offering with canonical identity, captured callable, and
-        # the write-time weight pair copied unchanged from its draft. Only
-        # Inventory::Publisher/Registry constructs it. See section 10.2.
-        OfferingRecord = ::Data.define(
-          :offering_id, :provider_native_key, :instance_key, :model, :tier, :operation_evidence,
-          :capability_evidence, :context_evidence, :max_output_evidence, :embedding_dimensions_evidence,
-          :model_revision_evidence, :tokenizer_evidence, :quota_domains, :metadata, :callable_handle,
-          :publication_source, :weight_inputs, :base_weight
-        ) do
-          def initialize(**kwargs)
-            RecordSupport.check_unknown_kwargs!(kwargs: kwargs, members: self.class.members)
-            weight_inputs, base_weight = RecordSupport.validated_weight_pair(
-              weight_inputs: kwargs[:weight_inputs], base_weight: kwargs[:base_weight]
-            )
-            instance_key = kwargs[:instance_key]
-            callable_handle = kwargs[:callable_handle]
-            raise Errors::ValidationError, 'instance_key must be an InstanceKey' unless instance_key.is_a?(Identity::InstanceKey)
-            raise Errors::ValidationError, 'callable_handle must be a CallableHandle' unless callable_handle.is_a?(CallableHandle)
-
-            native_key = Identity.normalize_text(value: kwargs[:provider_native_key], field: :provider_native_key)
-            Identity.validate_offering_id!(value: kwargs[:offering_id], instance_key: instance_key, provider_native_key: native_key)
-
-            super(
-              offering_id: kwargs[:offering_id].dup.freeze,
-              provider_native_key: native_key,
-              instance_key: instance_key,
-              model: Identity.normalize_text(value: kwargs[:model], field: :model),
-              tier: Identity.normalize_enum(value: kwargs[:tier], field: :tier, allowed: Taxonomies::TIERS),
-              operation_evidence: RecordSupport.validate_operation_evidence!(kwargs[:operation_evidence]),
-              capability_evidence: RecordSupport.validate_capability_evidence!(kwargs[:capability_evidence]),
-              quota_domains: RecordSupport.validate_quota_domains!(kwargs[:quota_domains]),
-              metadata: RecordSupport.frozen_metadata(value: kwargs[:metadata]),
-              callable_handle: callable_handle,
-              publication_source: RecordSupport.publication_source!(value: kwargs[:publication_source]),
-              weight_inputs: weight_inputs,
-              base_weight: base_weight,
-              **RecordSupport.scalar_value_evidences(kwargs)
-            )
-          end
-
-          def supported_operations
-            operation_evidence.select { |_op, evidence| evidence.supported? }.keys.sort
-          end
-
-          def unsupported_operations
-            operation_evidence.select { |_op, evidence| evidence.unsupported? }.keys.sort
-          end
-
-          def unknown_operations
-            operation_evidence.select { |_op, evidence| evidence.unknown? }.keys.sort
-          end
-
-          def operation_status(operation:)
-            operation_evidence.fetch(Taxonomies.normalize_operation(value: operation)).status
-          end
-
-          def capability_evidence_for(capability:)
-            capability_evidence[Legion::Extensions::Llm::Capabilities.canonical(capability)]
-          end
-
-          def capability_status(capability:)
-            evidence = capability_evidence_for(capability: capability)
-            evidence.nil? ? :unknown : evidence.status
-          end
-
-          def quota_domain(operation:)
-            quota_domains[Taxonomies.normalize_operation(value: operation)]
-          end
-        end
-
-        # An executable lane derived by the registry from one supported operation
-        # of an OfferingRecord, with its write-time weight pair copied unchanged.
+        # An executable lane: the ONE stored inventory unit, keyed by the
+        # 5-tuple id `tier:provider_family:instance_id:type:model`. Derived by
+        # the registry from one supported operation of an OfferingDraft, with
+        # its write-time weight pair copied unchanged. The 5 tuple is composed
+        # at validation from the record's own fields; there is no separate
+        # offering id (D2 — in the one bucket an offering IS a lane).
         # See section 10.3.
         LaneRecord = ::Data.define(
-          :lane_id, :offering_id, :instance_key, :provider_family, :instance_id, :model, :tier, :operation,
+          :lane_id, :instance_key, :provider_family, :instance_id, :model, :tier, :operation,
           :capability_evidence, :context_evidence, :max_output_evidence, :embedding_dimensions_evidence,
           :model_revision_evidence, :tokenizer_evidence, :quota_domain, :metadata, :callable_handle,
           :publication_source, :weight_inputs, :base_weight
@@ -407,21 +341,24 @@ module Legion
               raise Errors::ValidationError, 'provider_family and instance_id must equal instance_key'
             end
 
+            canonical_tier = Identity.normalize_enum(value: kwargs[:tier], field: :tier, allowed: Taxonomies::TIERS)
             canonical_model = Identity.normalize_text(value: kwargs[:model], field: :model)
             canonical_operation = Taxonomies.normalize_operation(value: kwargs[:operation])
-            Identity.validate_lane_id!(
-              value: kwargs[:lane_id], instance_key: instance_key, operation: canonical_operation,
-              model: canonical_model, offering_id: kwargs[:offering_id]
+            Identity.validate_lane_id!(value: kwargs[:lane_id])
+            expected_lane_id = Identity.compose_lane_id(
+              tier: canonical_tier, provider_family: family, instance_id: resolved_instance,
+              type: Taxonomies.lane_type_for(operation: canonical_operation), model: canonical_model
             )
+            raise Errors::ValidationError, 'lane_id does not reproduce from its identity fields' \
+              unless kwargs[:lane_id].to_s == expected_lane_id
 
             super(
-              lane_id: kwargs[:lane_id].dup.freeze,
-              offering_id: kwargs[:offering_id].dup.freeze,
+              lane_id: kwargs[:lane_id].to_s.dup.freeze,
               instance_key: instance_key,
               provider_family: family,
               instance_id: resolved_instance,
               model: canonical_model,
-              tier: Identity.normalize_enum(value: kwargs[:tier], field: :tier, allowed: Taxonomies::TIERS),
+              tier: canonical_tier,
               operation: canonical_operation,
               capability_evidence: RecordSupport.validate_capability_evidence!(kwargs[:capability_evidence]),
               quota_domain: kwargs[:quota_domain].nil? ? nil : RecordSupport.validate_quota_domain_value!(value: kwargs[:quota_domain], field: :quota_domain),
@@ -507,10 +444,11 @@ module Legion
           end
         end
 
-        # An activated exact instance's complete published state. Its availability
-        # is available or unavailable, never initializing. See section 10.6.
+        # An activated exact instance's complete published state. Its lanes are
+        # keyed by the 5-tuple lane id; its availability is available or
+        # unavailable, never initializing. See section 10.6.
         InstanceRecord = ::Data.define(
-          :instance_key, :callable_handle, :availability, :offerings_by_id,
+          :instance_key, :callable_handle, :availability, :lanes_by_id,
           :publisher_id, :publisher_token_id, :published_sequence, :published_at
         ) do
           def initialize(**kwargs)
@@ -528,7 +466,7 @@ module Legion
               instance_key: instance_key,
               callable_handle: callable_handle,
               availability: availability,
-              offerings_by_id: validate_offerings!(kwargs[:offerings_by_id], instance_key, callable_handle),
+              lanes_by_id: validate_lanes!(kwargs[:lanes_by_id], instance_key, callable_handle),
               publisher_id: nonempty_id!(kwargs[:publisher_id], :publisher_id),
               publisher_token_id: nonempty_id!(kwargs[:publisher_token_id], :publisher_token_id),
               published_sequence: RecordSupport.nonnegative_integer(value: kwargs[:published_sequence], field: :published_sequence),
@@ -536,17 +474,15 @@ module Legion
             )
           end
 
-          def validate_offerings!(offerings_by_id, instance_key, callable_handle)
-            raise Errors::ValidationError, 'offerings_by_id must be a Hash' unless offerings_by_id.is_a?(::Hash)
+          def validate_lanes!(lanes_by_id, instance_key, callable_handle)
+            raise Errors::ValidationError, 'lanes_by_id must be a Hash' unless lanes_by_id.is_a?(::Hash)
 
-            offerings_by_id.each do |offering_id, offering|
-              raise Errors::ValidationError, "offering #{offering_id} must be an OfferingRecord" unless offering.is_a?(OfferingRecord)
-              raise Errors::ValidationError, "offering #{offering_id} key mismatch" unless offering.offering_id == offering_id
-              unless offering.instance_key == instance_key && offering.callable_handle.equal?(callable_handle)
-                raise Errors::ValidationError, "offering #{offering_id} must share the instance callable/key"
-              end
+            lanes_by_id.each do |lane_id, lane|
+              raise Errors::ValidationError, "lane #{lane_id} must be a LaneRecord" unless lane.is_a?(LaneRecord)
+              raise Errors::ValidationError, "lane #{lane_id} key mismatch" unless lane.lane_id == lane_id
+              raise Errors::ValidationError, "lane #{lane_id} must share the instance callable/key" unless lane.instance_key == instance_key && lane.callable_handle.equal?(callable_handle)
             end
-            offerings_by_id.dup.freeze
+            lanes_by_id.dup.freeze
           end
 
           def nonempty_id!(value, field)

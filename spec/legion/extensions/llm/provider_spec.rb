@@ -103,38 +103,19 @@ RSpec.describe Legion::Extensions::Llm::Provider do
   end
 
   describe 'canonical provider contract' do
-    let(:model) do
-      Legion::Extensions::Llm::Model::Info.new(
-        id: 'test-model',
-        provider: :contract,
-        instance: :primary,
-        capabilities: %i[completion streaming tools],
-        context_length: 8192,
-        metadata: { max_output_tokens: 2048 }
-      )
-    end
-
     let(:provider_class) do
-      model_info = model
       Class.new(described_class) do
         def self.name = 'Provider'
 
         define_method(:api_base) { 'https://contract.invalid' }
         define_method(:models_url) { '/v1/models' }
-        attr_reader :list_model_calls
-
-        define_method(:list_models) do |live: false, **filters|
-          @list_model_calls ||= []
-          @list_model_calls << { live: live, filters: filters }
-          [model_info]
-        end
 
         def render_payload(_messages, **)
           {}
         end
 
         def parse_completion_response(_response)
-          Legion::Extensions::Llm::Message.build(role: :assistant, content: 'ok')
+          Legion::Extensions::Llm::Canonical::Response.build(text: 'ok')
         end
       end
     end
@@ -207,20 +188,6 @@ RSpec.describe Legion::Extensions::Llm::Provider do
         expect { provider.discover_offerings(live: true, raise_on_unreachable: true) }.not_to raise_error
         expect(provider.discover_offerings(raise_on_unreachable: true, model: 'test-model').size).to eq(1)
       end
-
-      it 'applies filters to the parsed model list (list_models no longer drops them)' do
-        models = [
-          Legion::Extensions::Llm::Model::Info.new(id: 'model-a', provider: :prov, instance: :i1),
-          Legion::Extensions::Llm::Model::Info.new(id: 'model-b', provider: :prov, instance: :i2)
-        ]
-
-        expect(provider.filter_model_list(models, model: 'model-a').map(&:id)).to eq(['model-a'])
-        expect(provider.filter_model_list(models, id: 'model-b').map(&:id)).to eq(['model-b'])
-        expect(provider.filter_model_list(models, instance: 'i2').map(&:id)).to eq(['model-b'])
-        expect(provider.filter_model_list(models, provider: :other).map(&:id)).to be_empty
-        expect(provider.filter_model_list(models, {}).map(&:id)).to eq(%w[model-a model-b])
-        expect(provider.filter_model_list(models, unknown_key: 'x').map(&:id)).to eq(%w[model-a model-b])
-      end
     end
 
     describe 'H3 — the funnel enforces the tool contract (one contract, one oracle)' do
@@ -268,7 +235,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
 
     it 'provides a deterministic token estimate fallback' do
       messages = [Legion::Extensions::Llm::Canonical::Message.build(role: :user, content: 'hello world')]
-      expect(provider.count_tokens(messages: messages, model: model)).to be >= 1
+      expect(provider.count_tokens(messages: messages, model: 'test-model')).to be >= 1
     end
 
     it 'summarizes canonical tools for debug logging' do
@@ -407,9 +374,9 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       end
     end
 
-    context 'when the model is an object exposing #id (e.g. Model::Info)' do
+    context 'when the model is an object exposing #id' do
       let(:model_info) do
-        Legion::Extensions::Llm::Model::Info.new(id: 'claude-sonnet-4-6', provider: :anthropic)
+        Struct.new(:id).new('claude-sonnet-4-6')
       end
 
       before { provider.settings = { model_whitelist: %w[sonnet] } }
@@ -419,7 +386,7 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       end
 
       it 'blocks object models the whitelist does not cover' do
-        other = Legion::Extensions::Llm::Model::Info.new(id: 'llama-3', provider: :ollama)
+        other = Struct.new(:id).new('llama-3')
         expect(provider.model_allowed?(other)).to be false
       end
 

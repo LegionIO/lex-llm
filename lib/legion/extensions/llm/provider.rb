@@ -226,25 +226,16 @@ module Legion
         end
         # rubocop:enable Metrics/ParameterLists
 
-        # H5: the base read path is ALWAYS live (one HTTP fetch to
-        # models_url) — it has no non-live view, so `live:` is accepted for
-        # signature compatibility (REQUIRED_SIGNATURES) and has no effect
-        # here. `filters` are applied to the parsed list: model/id/name match
-        # the model id, instance the instance label, provider/provider_family
-        # the provider; unknown keys pass (see filter_model_list).
-        def list_models(live: false, **filters)
-          _live = live
-          models = parse_list_models_response(@connection.get(models_url), slug, capabilities)
-          filter_model_list(models, filters)
-        end
-
-        # Read path (07 C5): serves the activated inventory offerings for this
-        # provider instance from the SSOT registry snapshot. The legacy
-        # ModelOffering production path is deleted; the per-gem writer is the
-        # sole publication path. H5: this read path performs NO transport —
-        # it is an in-memory snapshot lookup — so `live:` and
-        # `raise_on_unreachable:` are accepted for signature compatibility
-        # and have no effect here. `filters` select from the snapshot.
+        # Read path (07 C5): serves the activated inventory LANES for this
+        # provider instance from the SSOT registry snapshot — one LaneRecord
+        # per 5-tuple, in lexicographic id order. The stored inventory has no
+        # separate offering id: an offering IS a lane, keyed by the 5 tuple.
+        # A consumer needing per-model grouping groups by (instance_key, model)
+        # over the returned lanes. The per-gem writer is the sole publication
+        # path. H5: this read path performs NO transport — it is an in-memory
+        # snapshot lookup — so `live:` and `raise_on_unreachable:` are
+        # accepted for signature compatibility and have no effect here.
+        # `filters` select from the snapshot.
         def discover_offerings(live: false, raise_on_unreachable: false, **filters)
           _live = live
           _raise_on_unreachable = raise_on_unreachable
@@ -252,36 +243,12 @@ module Legion
             provider_family: slug.to_sym, instance_id: provider_instance_id
           )
           record = Inventory::Registry.snapshot.instance(instance_key: instance_key)
-          offerings = record ? record.offerings_by_id.values : []
-          filter_inventory_offerings(offerings, filters)
+          lanes = record ? record.lanes_by_id.values.sort_by(&:lane_id) : []
+          filter_inventory_offerings(lanes, filters)
         end
 
-        # Read-path filter over parsed model lists (H5): the same key
-        # semantics as filter_inventory_offerings, matched against Model::Info.
-        def filter_model_list(models, filters)
-          return models if filters.empty?
-
-          models.select do |model|
-            filters.all? do |key, value|
-              next true if value.nil? || (value.respond_to?(:empty?) && value.empty?)
-
-              case key.to_sym
-              when :model, :id, :name
-                model.id.to_s == value.to_s
-              when :instance, :instance_id, :provider_instance
-                model.instance.to_s == value.to_s
-              when :provider, :provider_family
-                model.provider.to_s == value.to_s
-              else
-                true
-              end
-            end
-          end
-        end
-
-        # Read-path filter over inventory offerings: model/id/name match the
-        # offering model; instance/provider keys match the instance; unknown
-        # keys pass.
+        # Read-path filter over inventory lanes: model/id/name match the lane
+        # model; instance/provider keys match the instance; unknown keys pass.
         def filter_inventory_offerings(offerings, filters)
           return offerings if filters.empty?
 
@@ -622,8 +589,8 @@ module Legion
         # permits models containing any pattern; a blacklist denies models
         # containing any pattern; whitelist is applied before blacklist.
         # Empty list = no restriction from that side.
-        # Model identity for policy matching: the canonical id string. Model
-        # objects (e.g. Model::Info) match by their #id — never by their
+        # Model identity for policy matching: the canonical id string. An
+        # object that responds to #id matches by its #id — never by its
         # inspect string; bare strings pass through unchanged.
         def self.model_identity(model)
           candidate = model.respond_to?(:id) ? model.id : model
