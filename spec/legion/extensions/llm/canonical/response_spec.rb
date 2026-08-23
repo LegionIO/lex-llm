@@ -14,7 +14,7 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Response do
       usage: { input_tokens: 12, output_tokens: 10 },
       stop_reason: 'end_turn',
       model: 'fake-model',
-      routing: { lane_id: 'lane:v1:abc' },
+      routing: { lane_id: 'local:vllm:h200:inference:gemma4' },
       metadata: { origin: 'provider' }
     }
   end

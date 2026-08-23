@@ -64,17 +64,9 @@ module Legion
       require_relative 'llm/routing/provider_outcome'
 
       # --- Base value objects (no internal deps) ---
-      require_relative 'llm/model/info'
-      require_relative 'llm/model/modalities'
-      require_relative 'llm/model/pricing_category'
-      require_relative 'llm/model/pricing_tier'
-      require_relative 'llm/model/pricing'
       require_relative 'llm/configuration'
       require_relative 'llm/errors/unsupported_capability'
       require_relative 'llm/error'
-
-      # --- Model value object (builds on model/*) ---
-      require_relative 'llm/model'
 
       # --- Streaming fundamentals (must load before streaming/provider) ---
       require_relative 'llm/responses/thinking_extractor'
@@ -96,21 +88,14 @@ module Legion
 
       # --- Routing ---
       require_relative 'llm/routing'
-      require_relative 'llm/routing/registry_event'
 
-      # --- Models (scans for Provider subclasses) ---
-      require_relative 'llm/models'
-
-      # --- Registry & misc support ---
-      require_relative 'llm/registry_event_builder'
-      require_relative 'llm/registry_publisher'
+      # --- Misc support ---
       require_relative 'llm/auto_registration'
       require_relative 'llm/credential_sources'
       require_relative 'llm/tool'
       require_relative 'llm/utils'
-      require_relative 'llm/aliases'
 
-      # --- Fleet protocol (depends on Provider, Models) ---
+      # --- Fleet protocol (depends on Provider) ---
       require_relative 'llm/fleet/protocol'
       require_relative 'llm/fleet/settings'
       require_relative 'llm/fleet/token_error'

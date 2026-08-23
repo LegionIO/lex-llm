@@ -10,8 +10,21 @@
 #                       Canonical::Chunk, count_tokens(messages:, model:)
 #   let(:registry)    — Legion::Extensions::Llm::Inventory::Registry
 #   let(:key)         — an InstanceKey for the activated scope
-#   let(:offering_id) — an offering_id on the activated instance
+#   let(:lane_id)     — a 5-tuple lane id on the activated instance
+#                       (tier:provider_family:instance_id:type:model)
+#   let(:callable_handle) — the activated instance's CallableHandle (B6)
 #   let(:activated)   — true once the scope is activated (F/R groups)
+
+# The kit's single operation-evidence builder: one supported operation, the
+# rest unknown. Kept here so every host resolves the 5-tuple type the same way.
+module KitEvidenceSupport
+  def kit_operation_evidence(operation)
+    LLM::Taxonomies::OPERATIONS.to_h do |op|
+      status, source = op == operation ? %i[supported provider_implementation] : %i[unknown absent]
+      [op, INV::OperationEvidence.new(operation: op, status: status, source: source)]
+    end
+  end
+end
 
 LLM  = Legion::Extensions::Llm
 CAN  = LLM::Canonical
@@ -125,6 +138,8 @@ RSpec.shared_examples 'B4 — no model re-derivation (PR #45 law)' do
 end
 
 RSpec.shared_examples 'B5 — no weight recomputation (PR #47 defect class)' do
+  include KitEvidenceSupport
+
   it 'the lane keeps the write-time pair even when settings would compute a different one' do
     lane = registry.snapshot.lanes_for(instance_key: key).first
     expect(lane.base_weight).to eq(100 * 50 * 2 * 1)
@@ -135,7 +150,8 @@ RSpec.shared_examples 'B5 — no weight recomputation (PR #47 defect class)' do
     other_inputs = LLM::Inventory.const_get(:WeightSchema).weight_inputs(
       settings: { extensions: { llm: { family => { weight: 77, instances: { key.instance_id.to_sym => { weight: 77 } } } } },
                   llm: { routing: { tier_weights: { local: 100 } } } },
-      instance_key: key, provider_native_key: 'gemma4', model: 'gemma4', tier: :local
+      instance_key: key, model: lane.model, tier: :local,
+      operation_evidence: kit_operation_evidence(lane.operation)
     )
     expect(other_inputs).to eq(tier: 100, provider: 77, instance: 77, model_or_offering: 100)
     expect(registry.snapshot.lanes_for(instance_key: key).first.base_weight).to eq(10_000)
@@ -145,7 +161,7 @@ end
 RSpec.shared_examples 'B6 — zero-weight disable (U4)' do
   it 'Selection validation accepts a zero component (operator disable)' do
     selection = LLM::Routing::Selection.new(
-      inventory_generation: 7, lane_id: lane_id, instance_key: instance_key, offering_id: offering_id_arg,
+      inventory_generation: 7, lane_id: lane_id, instance_key: instance_key,
       provider_family: instance_key.provider_family, instance_id: instance_key.instance_id,
       model: 'gemma4', operation: :chat, callable_handle: callable_handle,
       publisher_token_id: 'ptok:v1:abc', capability_evidence: {},
@@ -160,7 +176,7 @@ RSpec.shared_examples 'B6 — zero-weight disable (U4)' do
   it 'Selection validation still rejects a negative component' do
     expect do
       LLM::Routing::Selection.new(
-        inventory_generation: 7, lane_id: lane_id, instance_key: instance_key, offering_id: offering_id_arg,
+        inventory_generation: 7, lane_id: lane_id, instance_key: instance_key,
         provider_family: instance_key.provider_family, instance_id: instance_key.instance_id,
         model: 'gemma4', operation: :chat, callable_handle: callable_handle,
         publisher_token_id: 'ptok:v1:abc', capability_evidence: {},
@@ -272,7 +288,10 @@ RSpec.shared_examples 'F3 — signing law (06 S3)' do
   end
 
   it 'a tampered offering_id claim is a TokenError' do
-    claims = { execution_contract: LLM::Fleet::Protocol::EXACT_EXECUTION_CONTRACT, offering_id: "off:v1:#{'0' * 64}" }
+    claims = {
+      execution_contract: LLM::Fleet::Protocol::EXACT_EXECUTION_CONTRACT,
+      offering_id: 'local:other:other:inference:other'
+    }
     expect do
       LLM::Fleet::TokenValidator.validate_exact_execution_claims!(claims, exact_envelope_data)
     end.to raise_error(LLM::Fleet::TokenError, /offering_id claim mismatch/)
@@ -319,7 +338,10 @@ RSpec.shared_examples 'F5 — response envelope (06 E3/E4)' do
                                       instance_key: thinking_key, enqueue: ->(**) { true }
                                     ))
     probe = registry.readiness_probe_started(instance_key: thinking_key, publisher_token: token)
-    thinking_offering = INV::Identity.offering_id(instance_key: thinking_key, provider_native_key: 'gemma4')
+    thinking_lane = INV::Identity.compose_lane_id(
+      tier: :local, provider_family: thinking_key.provider_family, instance_id: thinking_key.instance_id,
+      type: LLM::Taxonomies.lane_type_for(operation: :chat), model: 'gemma4'
+    )
     registry.activate_instance_snapshot(publisher_token: token, instance_key: thinking_key,
                                         offerings: [
                                           INV::OfferingDraft.new(
@@ -340,7 +362,7 @@ RSpec.shared_examples 'F5 — response envelope (06 E3/E4)' do
     end
 
     LLM::Fleet::ProviderResponder.call(
-      payload: exact_envelope_data.merge(provider_instance: 'thinking', offering_id: thinking_offering),
+      payload: exact_envelope_data.merge(provider_instance: 'thinking', offering_id: thinking_lane),
       provider_family: exact_envelope_data[:provider],
       registry: registry
     )
@@ -400,21 +422,33 @@ RSpec.shared_examples 'R1 — state machine (07 §3)' do
   end
 end
 
-RSpec.shared_examples 'R2 — identity (07 §1)' do
-  it 'reproduces offering and lane ids from their fields' do
-    offering = INV::Identity.offering_id(instance_key: key, provider_native_key: 'gemma4')
-    expect(offering).to eq(INV::Identity.offering_id(instance_key: key, provider_native_key: 'gemma4'))
-
-    lane = INV::Identity.lane_id(instance_key: key, operation: :chat, model: 'gemma4', offering_id: offering)
-    expect(lane).to eq(INV::Identity.lane_id(instance_key: key, operation: :chat, model: 'gemma4', offering_id: offering))
+RSpec.shared_examples 'R2 — identity (07 §1, 5-tuple law)' do
+  it 'composes the same 5 tuple deterministically from the same fields' do
+    lane = INV::Identity.compose_lane_id(
+      tier: :local, provider_family: key.provider_family, instance_id: key.instance_id,
+      type: LLM::Taxonomies.lane_type_for(operation: :chat), model: 'gemma4'
+    )
+    expect(lane).to eq(
+      INV::Identity.compose_lane_id(
+        tier: :local, provider_family: key.provider_family, instance_id: key.instance_id,
+        type: LLM::Taxonomies.lane_type_for(operation: :chat), model: 'gemma4'
+      )
+    )
+    expect(INV::Identity.validate_lane_id!(value: lane)).to eq(lane)
   end
 
-  it 'rejects a forged offering id' do
+  it 'round-trips a colon-containing model through the bounded parse' do
+    lane = INV::Identity.compose_lane_id(
+      tier: :local, provider_family: key.provider_family, instance_id: key.instance_id,
+      type: :inference, model: 'model:tag:0'
+    )
+    expect(INV::Identity.parse_lane_id(lane).last).to eq('model:tag:0')
+  end
+
+  it 'rejects a value that is not a 5-tuple' do
     expect do
-      INV::Identity.validate_offering_id!(
-        value: "off:v1:#{'0' * 64}", instance_key: key, provider_native_key: 'gemma4'
-      )
-    end.to raise_error(INV::Errors::ValidationError)
+      INV::Identity.validate_lane_id!(value: 'not-a-five-tuple')
+    end.to raise_error(INV::Errors::ValidationError, /5 parts/)
   end
 end
 

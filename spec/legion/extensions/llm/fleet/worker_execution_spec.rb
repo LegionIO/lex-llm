@@ -42,7 +42,7 @@ RSpec.describe Legion::Extensions::Llm::Fleet::WorkerExecution do
       protocol_version: Legion::Extensions::Llm::Fleet::Protocol::VERSION,
       execution_contract: Legion::Extensions::Llm::Fleet::Protocol::EXACT_EXECUTION_CONTRACT,
       offering_id: Legion::Extensions::Llm::Inventory::Registry.snapshot
-                                                               .offerings_for(instance_key: key).first.offering_id
+                                                               .lanes_for(instance_key: key).first.lane_id
     }
   end
 
@@ -116,7 +116,7 @@ RSpec.describe Legion::Extensions::Llm::Fleet::WorkerExecution do
     claim_and_activate(key: key2, callable: failing_callable, coordinator: probe_coordinator(key2), model: 'gemma4')
     failing_envelope = envelope.merge(provider_instance: 'h201',
                                       offering_id: Legion::Extensions::Llm::Inventory::Registry.snapshot
-                                                                                               .offerings_for(instance_key: key2).first.offering_id)
+                                                                                               .lanes_for(instance_key: key2).first.lane_id)
     allow(Legion::Extensions::Llm::Fleet::Settings).to receive(:value)
       .with(:fleet, :auth, :require_signed_token, default: true).and_return(true)
     allow(Legion::Extensions::Llm::Fleet::TokenValidator).to receive(:validate!).and_return({ jti: 'jti-2' })

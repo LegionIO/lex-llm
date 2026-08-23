@@ -14,7 +14,6 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
       def ensure_configured! = nil
       def api_base = 'http://example.invalid'
       def models_url = '/v1/models'
-      def parse_list_models_response(*) = []
     end
   end
 
@@ -24,7 +23,6 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
       stream_chat: [%i[req messages], %i[keyreq model]],
       embed: [%i[keyreq text], %i[keyreq model]],
       image: [%i[keyreq prompt], %i[keyreq model]],
-      list_models: [%i[key live], %i[keyrest filters]],
       discover_offerings: [%i[key live], %i[keyrest filters]],
       health: [%i[key live]],
       count_tokens: [%i[keyreq messages], %i[keyreq model], %i[key params]]
@@ -56,13 +54,12 @@ RSpec.describe Legion::Extensions::Llm::ProviderContract do
     expect { provider.image('prompt', model: 'model') }.to raise_error(ArgumentError)
   end
 
-  it 'keeps REQUIRED_SIGNATURES as exactly the eight-entry reflection baseline' do
+  it 'keeps REQUIRED_SIGNATURES as exactly the seven-entry reflection baseline' do
     expect(described_class::REQUIRED_SIGNATURES).to eq(
       chat: [%i[req messages], %i[keyreq model]],
       stream_chat: [%i[req messages], %i[keyreq model]],
       embed: [%i[keyreq text], %i[keyreq model]],
       image: [%i[keyreq prompt], %i[keyreq model]],
-      list_models: [%i[key live], %i[keyrest filters]],
       discover_offerings: [%i[key live], %i[key raise_on_unreachable], %i[keyrest filters]],
       health: [%i[key live]],
       count_tokens: [%i[keyreq messages], %i[keyreq model], %i[key params]]

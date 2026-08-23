@@ -184,17 +184,6 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
     expect(result).to eq(model: 'mod-1', result: { flagged: true, categories: { 'hate' => true } })
   end
 
-  it 'maps OpenAI-compatible model listings to explicit capabilities and modalities' do
-    models = provider.send(:parse_list_models_response, fake_response(models_body), :compatible,
-                           provider_class.capabilities)
-
-    expect(models.map(&:capabilities)).to eq([%i[streaming function_calling tools], %i[embeddings embedding]])
-    expect(models.map { |model| model.modalities.to_h }).to eq([
-                                                                 { input: %w[text image], output: %w[text] },
-                                                                 { input: %w[text], output: %w[embeddings] }
-                                                               ])
-  end
-
   def chat_payload
     message = canonical::Message.build(role: :user, content: 'hello')
     provider.send(
@@ -243,15 +232,6 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
 
   def embedding_body
     { 'data' => [{ 'embedding' => [0.1] }, { 'embedding' => [0.2] }], 'usage' => { 'prompt_tokens' => 2 } }
-  end
-
-  def models_body
-    {
-      'data' => [
-        { 'id' => 'chat-model', 'created' => 1 },
-        { 'id' => 'embed-model', 'created' => 2 }
-      ]
-    }
   end
 
   def fake_response(body)

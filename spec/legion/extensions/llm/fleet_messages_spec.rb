@@ -35,7 +35,7 @@ RSpec.describe 'LLM fleet message envelopes' do
       expires_at: '2026-05-06T12:00:30Z',
       protocol_version: protocol::VERSION,
       execution_contract: protocol::EXACT_EXECUTION_CONTRACT,
-      offering_id: "off:v1:#{'a' * 64}"
+      offering_id: 'local:vllm:h200:inference:gemma4'
     }
   end
 
@@ -54,7 +54,7 @@ RSpec.describe 'LLM fleet message envelopes' do
       trace_context: { trace_id: 'trace-1' },
       response: { text: 'hello', stop_reason: :end_turn, usage: { input_tokens: 1, output_tokens: 2 } },
       execution_contract: protocol::EXACT_EXECUTION_CONTRACT,
-      offering_id: "off:v1:#{'a' * 64}"
+      offering_id: 'local:vllm:h200:inference:gemma4'
     }
   end
 
@@ -116,7 +116,7 @@ RSpec.describe 'LLM fleet message envelopes' do
         expires_at: '2026-05-06T12:00:30Z',
         idempotency_key: 'idem-1',
         execution_contract: protocol::EXACT_EXECUTION_CONTRACT,
-        offering_id: "off:v1:#{'a' * 64}"
+        offering_id: 'local:vllm:h200:inference:gemma4'
       )
       expect(message.message).not_to include(:schema_version, :request_type, :fleet_correlation_id)
     end
@@ -221,7 +221,7 @@ RSpec.describe 'LLM fleet message envelopes' do
         model: 'qwen',
         response: { text: 'hello', stop_reason: :end_turn, usage: { input_tokens: 1, output_tokens: 2 } },
         execution_contract: protocol::EXACT_EXECUTION_CONTRACT,
-        offering_id: "off:v1:#{'a' * 64}"
+        offering_id: 'local:vllm:h200:inference:gemma4'
       )
       expect(message.message).not_to include(:schema_version, :content, :usage, :finish_reason, :tool_calls, :instance)
     end
@@ -349,7 +349,7 @@ RSpec.describe 'LLM fleet message envelopes' do
         message: 'provider failed',
         retryable: true,
         execution_contract: protocol::EXACT_EXECUTION_CONTRACT,
-        offering_id: "off:v1:#{'a' * 64}"
+        offering_id: 'local:vllm:h200:inference:gemma4'
       )
       expect(message.message).not_to include(:schema_version, :instance)
     end

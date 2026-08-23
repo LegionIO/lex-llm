@@ -21,8 +21,9 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
       end
     end.new
   end
+  # Claim field keeps the name offering_id (D4); value = the lane 5 tuple.
   let(:offering_id) do
-    Legion::Extensions::Llm::Inventory::Registry.snapshot.offerings_for(instance_key: key).first.offering_id
+    Legion::Extensions::Llm::Inventory::Registry.snapshot.lanes_for(instance_key: key).first.lane_id
   end
   let(:payload) { payload_for(offering_id) }
 
@@ -235,7 +236,7 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ProviderResponder do
       Legion::Extensions::Llm::Inventory::Registry.reset!
       claim_and_activate(key: key2, callable: thinking_callable, coordinator: probe_coordinator(key2), model: 'llama3')
       thinking_offering = Legion::Extensions::Llm::Inventory::Registry
-                          .snapshot.offerings_for(instance_key: key2).first.offering_id
+                          .snapshot.lanes_for(instance_key: key2).first.lane_id
 
       response_message = instance_double(Legion::Extensions::Llm::Transport::Messages::FleetResponse, publish: true)
       published_args = nil

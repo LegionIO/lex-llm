@@ -129,7 +129,7 @@ module SpecSupport
 end
 
 # Namespace module that mimics a real lex-llm-* provider extension.
-# Models.scan_provider_classes discovers providers via this pattern.
+# legion-llm's Call::Providers scanner discovers providers via this pattern.
 module Legion
   module Extensions
     module Llm

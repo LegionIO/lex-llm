@@ -67,8 +67,8 @@ module Legion
         # H4: the dormant default_model / default_*_model options are deleted —
         # a model-defaulting authority with no consumer (verified in-repo and
         # in consumer gems). Model selection belongs to the router.
-
-        option :model_registry_file, -> { File.expand_path('models.json', __dir__) }
+        # The model_registry_file option is deleted with the Models catalog
+        # (the second inventory) — the SSOT registry is the only inventory.
 
         option :request_timeout, 300
         option :max_retries, 3

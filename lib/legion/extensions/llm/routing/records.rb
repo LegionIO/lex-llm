@@ -83,9 +83,13 @@ module Legion
 
         # An immutable selected target produced by legion-llm's selector and
         # consumed by dispatch. lex-llm validates cross-field identity only; it
-        # does not compute routing or choose a lane. See section 15.4.
+        # does not compute routing or choose a lane. lane_id is the 5 tuple
+        # tier:provider_family:instance_id:type:model; the tier part is not a
+        # Selection member, so cross-field validation covers the four parts the
+        # record does carry (family, instance, type-from-operation, model).
+        # See section 15.4.
         Selection = ::Data.define(
-          :inventory_generation, :lane_id, :instance_key, :offering_id, :provider_family, :instance_id,
+          :inventory_generation, :lane_id, :instance_key, :provider_family, :instance_id,
           :model, :operation, :callable_handle, :publisher_token_id, :capability_evidence, :context_evidence,
           :weight_inputs, :base_weight, :preference_ppm, :effective_weight, :rendezvous_score
         ) do
@@ -110,20 +114,35 @@ module Legion
               raise errors::ValidationError, 'provider_family and instance_id must equal instance_key'
             end
 
-            offering_id = kwargs[:offering_id]
-            validate_offering_id_shape!(offering_id)
-            identity.validate_lane_id!(
-              value: kwargs[:lane_id], instance_key: instance_key, operation: canonical_operation,
-              model: canonical_model, offering_id: offering_id
-            )
+            identity.validate_lane_id!(value: kwargs[:lane_id])
+            validate_lane_id_fields!(kwargs[:lane_id], family, normalized_instance, canonical_operation, canonical_model)
             validate_publisher_token_id!(kwargs[:publisher_token_id])
 
             {
-              lane_id: kwargs[:lane_id].dup.freeze, instance_key: instance_key, offering_id: offering_id.dup.freeze,
+              lane_id: kwargs[:lane_id].to_s.dup.freeze, instance_key: instance_key,
               provider_family: family, instance_id: normalized_instance, model: canonical_model,
               operation: canonical_operation, callable_handle: callable_handle,
               publisher_token_id: kwargs[:publisher_token_id].dup.freeze
             }
+          end
+
+          # Cross-field check of the 5 tuple against the parts the Selection
+          # carries: provider_family (part 2), instance_id (part 3), type from
+          # the operation (part 4), and model (part 5, colons preserved by the
+          # bounded parse). Part 1 (tier) is checked against Taxonomies::TIERS
+          # by validate_lane_id!.
+          def validate_lane_id_fields!(lane_id, family, instance_id, operation, model)
+            errors = Legion::Extensions::Llm::Inventory::Errors
+            identity = Legion::Extensions::Llm::Inventory::Identity
+            parts = identity.parse_lane_id(lane_id)
+            raise errors::ValidationError, 'lane_id provider_family does not match the selection' \
+              unless parts[1] == family.to_s
+            raise errors::ValidationError, 'lane_id instance_id does not match the selection' \
+              unless parts[2] == instance_id
+            raise errors::ValidationError, 'lane_id type does not match the selection operation' \
+              unless parts[3] == Legion::Extensions::Llm::Taxonomies.lane_type_for(operation: operation).to_s
+            raise errors::ValidationError, 'lane_id model does not match the selection' \
+              unless parts[4] == model
           end
 
           def scoring_attributes(kwargs)
@@ -143,12 +162,6 @@ module Legion
 
           def attempt_target_key
             AttemptTargetKey.new(provider_family: provider_family, instance_id: instance_id, model: model)
-          end
-
-          def validate_offering_id_shape!(offering_id)
-            return if offering_id.is_a?(::String) && offering_id.match?(/\Aoff:v1:[0-9a-f]{64}\z/)
-
-            raise Legion::Extensions::Llm::Inventory::Errors::ValidationError, 'offering_id must have the off:v1: shape'
           end
 
           def validate_publisher_token_id!(publisher_token_id)

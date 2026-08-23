@@ -20,13 +20,44 @@ RSpec.describe Legion::Extensions::Llm::Taxonomies do
     expect(described_class::TIERS).to be_frozen
     expect(described_class::TYPES).to be_frozen
     expect(described_class::OPERATIONS).to be_frozen
+    expect(described_class::OPERATION_TO_LANE_TYPE).to be_frozen
   end
 
   it 'removes the legacy enums (0.8.0 rip)' do
     expect(described_class.const_defined?(:CIRCUIT_STATES, false)).to be(false)
     expect(described_class.const_defined?(:HEALTH_KEYS, false)).to be(false)
     expect(described_class.const_defined?(:OPERATION_ALIASES, false)).to be(false)
-    expect(described_class.const_defined?(:OPERATION_TO_LANE_TYPE, false)).to be(false)
+  end
+
+  describe 'OPERATION_TO_LANE_TYPE (the 5-tuple 4th part)' do
+    it 'maps every canonical operation to a documented lane type' do
+      expect(described_class::OPERATION_TO_LANE_TYPE).to eq(
+        {
+          chat: :inference,
+          stream_chat: :inference,
+          embed: :embedding,
+          image: :image,
+          transcribe: :audio,
+          translate: :audio,
+          speak: :audio,
+          moderate: :inference,
+          count_tokens: :inference
+        }
+      )
+    end
+
+    it 'covers exactly OPERATIONS with values inside TYPES' do
+      expect(described_class::OPERATION_TO_LANE_TYPE.keys.sort).to eq(described_class::OPERATIONS.sort)
+      expect(described_class::OPERATION_TO_LANE_TYPE.values.all? { |value| described_class::TYPES.include?(value) })
+        .to be(true)
+    end
+
+    it 'lane_type_for canonicalizes first and resolves the single table' do
+      expect(described_class.lane_type_for(operation: 'chat')).to eq(:inference)
+      expect(described_class.lane_type_for(operation: :embed)).to eq(:embedding)
+      expect { described_class.lane_type_for(operation: :nope) }
+        .to raise_error(Legion::Extensions::Llm::Inventory::Errors::ValidationError)
+    end
   end
 
   describe 'SSOT v3 enums' do

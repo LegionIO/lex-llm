@@ -12,6 +12,24 @@ module Legion
         TIERS           = %i[direct local fleet cloud frontier].freeze
         TYPES           = %i[inference embedding image audio].freeze
 
+        # The authoritative operation → Inventory lane-type mapping (the 4th
+        # field of the 5-tuple lane id). Single home for the mapping: the
+        # identity composer consumes `lane_type_for` below; no layer retains a
+        # second table. moderate/count_tokens are non-generative inference
+        # operations — no moderation/count type exists in TYPES, so they map to
+        # :inference.
+        OPERATION_TO_LANE_TYPE = {
+          chat: :inference,
+          stream_chat: :inference,
+          embed: :embedding,
+          image: :image,
+          transcribe: :audio,
+          translate: :audio,
+          speak: :audio,
+          moderate: :inference,
+          count_tokens: :inference
+        }.freeze
+
         # --- SSOT v3 runtime-contract enums (phase-1-lex-llm-additive.md section 6) ---
         OPERATIONS = %i[
           chat stream_chat embed image transcribe translate speak moderate count_tokens
@@ -67,6 +85,13 @@ module Legion
         ].freeze
 
         module_function
+
+        # The one operation → lane-type resolution: canonicalizes the operation,
+        # then reads the single OPERATION_TO_LANE_TYPE table. Unknown operations
+        # raise via normalize_operation.
+        def lane_type_for(operation:)
+          OPERATION_TO_LANE_TYPE.fetch(normalize_operation(value: operation))
+        end
 
         # The one operation spelling (06 P5): canonical operations only, no
         # aliases. Unknown, empty, or invalid UTF-8 input always raises

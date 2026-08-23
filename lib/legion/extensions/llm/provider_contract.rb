@@ -10,7 +10,6 @@ module Legion
           stream_chat: [%i[req messages], %i[keyreq model]],
           embed: [%i[keyreq text], %i[keyreq model]],
           image: [%i[keyreq prompt], %i[keyreq model]],
-          list_models: [%i[key live], %i[keyrest filters]],
           discover_offerings: [%i[key live], %i[key raise_on_unreachable], %i[keyrest filters]],
           health: [%i[key live]],
           count_tokens: [%i[keyreq messages], %i[keyreq model], %i[key params]]
@@ -32,10 +31,6 @@ module Legion
         # H5: the read-path contract, stated as implemented. The two base
         # read paths perform different amounts of transport and say so.
         READ_PATH_CONTRACT = <<~DOC
-          - list_models: the base read path ALWAYS performs a live HTTP fetch
-            (models_url) — it has no non-live view. `live:` is accepted for
-            signature compatibility and has no effect in the base. `filters`
-            (model/id/name/instance/provider) select from the parsed list.
           - discover_offerings: the base read path serves the SSOT registry
             snapshot for this provider instance — NO transport occurs.
             `live:` and `raise_on_unreachable:` are accepted for signature

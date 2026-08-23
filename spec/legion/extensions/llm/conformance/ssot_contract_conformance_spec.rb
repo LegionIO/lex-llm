@@ -51,12 +51,11 @@ RSpec.describe 'SSOT v4 contract conformance kit' do
       end
     end.new(Legion::Extensions::Llm.config)
   end
-  let(:offering_id) do
-    registry.snapshot.offerings_for(instance_key: key).first.offering_id
-  end
-  let(:offering_id_arg) { offering_id }
   let(:instance_key) { key }
   let(:lane_id) { registry.snapshot.lanes_for(instance_key: key).first.lane_id }
+  # The fleet claim field keeps the name offering_id (D4 protocol continuity);
+  # its value is the lane's 5 tuple.
+  let(:offering_id) { lane_id }
   let(:callable_handle) { registry.snapshot.instance(instance_key: key).callable_handle }
   let(:operation_evidence_map) { operation_evidence }
   let(:unknown_value) do
@@ -123,7 +122,7 @@ RSpec.describe 'SSOT v4 contract conformance kit' do
   it_behaves_like 'F6 — contract errors (06 §5)'
   it_behaves_like 'F7 — retryability (06 F6)'
   it_behaves_like 'R1 — state machine (07 §3)'
-  it_behaves_like 'R2 — identity (07 §1)'
+  it_behaves_like 'R2 — identity (07 §1, 5-tuple law)'
   it_behaves_like 'R3 — snapshot law (07 §5)'
   it_behaves_like 'R4 — weight law (07 §4)'
   it_behaves_like 'R5 — callable lifecycle (07 §6)'

@@ -69,8 +69,10 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
     allow(worker).to receive_messages(validate_identity!: true, validate_idempotency!: nil)
   end
 
+  # The claim field keeps the name offering_id (D4); its value is the
+  # activated inference lane's 5 tuple.
   def offering_id
-    Legion::Extensions::Llm::Inventory::Identity.offering_id(instance_key: key, provider_native_key: 'gemma4')
+    Legion::Extensions::Llm::Inventory::Registry.snapshot.lanes_for(instance_key: key).first.lane_id
   end
 
   def exact_envelope(**overrides)
@@ -104,7 +106,10 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
     end
 
     it 'rejects a mismatched offering_id, model, operation, and absent instance before invocation' do
-      expect { worker.call(envelope: exact_envelope(offering_id: "off:v1:#{'0' * 64}"), registry: inventory::Registry) }
+      foreign = Legion::Extensions::Llm::Inventory::Identity.compose_lane_id(
+        tier: :local, provider_family: 'vllm', instance_id: 'elsewhere', type: :inference, model: 'gemma4'
+      )
+      expect { worker.call(envelope: exact_envelope(offering_id: foreign), registry: inventory::Registry) }
         .to raise_error(errors::ExactOfferingMismatchError)
       expect { worker.call(envelope: exact_envelope(model: 'other'), registry: inventory::Registry) }
         .to raise_error(errors::ExactOfferingMismatchError)
@@ -175,7 +180,7 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
       expect { token_validator.validate_exact_execution_claims!(missing, envelope) }
         .to raise_error(Legion::Extensions::Llm::Fleet::TokenError)
 
-      mismatched = { execution_contract: protocol::EXACT_EXECUTION_CONTRACT, offering_id: "off:v1:#{'0' * 64}" }
+      mismatched = { execution_contract: protocol::EXACT_EXECUTION_CONTRACT, offering_id: 'local:other:other:inference:other' }
       expect { token_validator.validate_exact_execution_claims!(mismatched, envelope) }
         .to raise_error(Legion::Extensions::Llm::Fleet::TokenError)
     end

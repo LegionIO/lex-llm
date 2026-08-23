@@ -5,9 +5,12 @@ require 'spec_helper'
 RSpec.describe Legion::Extensions::Llm do
   include_context 'with fake llm provider'
 
-  it 'loads and discovers provider classes from the namespace' do
-    provider_classes = Legion::Extensions::Llm::Models.scan_provider_classes
-    expect(provider_classes).to include(fake_llm: SpecSupport::FakeLLMProvider)
+  it 'exposes the AutoRegistration discovery contract from the provider namespace' do
+    # Registration into Legion::LLM is owned by legion-llm (R12); lex-llm owns
+    # the namespace contract the scanner reads: PROVIDER_FAMILY (Symbol) plus
+    # a provider_class singleton returning the Provider subclass.
+    expect(Legion::Extensions::Llm::FakeLlmProvider.const_get(:PROVIDER_FAMILY)).to eq(:fake_llm)
+    expect(Legion::Extensions::Llm::FakeLlmProvider.provider_class).to be < Legion::Extensions::Llm::Provider
   end
 
   describe 'provider funnel contract (0.8.0)' do
@@ -53,7 +56,6 @@ RSpec.describe Legion::Extensions::Llm do
       expect(provider).to respond_to(:chat)
       expect(provider).to respond_to(:stream_chat)
       expect(provider).to respond_to(:count_tokens)
-      expect(provider).to respond_to(:list_models)
       expect(provider).to respond_to(:discover_offerings)
       expect(provider).to respond_to(:health)
       expect(provider).to respond_to(:embed)

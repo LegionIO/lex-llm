@@ -82,28 +82,22 @@ module Legion
           ERRORS = Legion::Extensions::Llm::Inventory::Errors
           IDENTITY = Legion::Extensions::Llm::Inventory::Identity
 
-          # The one dispatcher (06 W3): the exact resolution chain (W2).
+          # The one dispatcher (06 W3): the exact resolution chain (W2). The
+          # claim's offering_id value is the lane's 5 tuple (field name kept for
+          # protocol continuity, D4); the claim resolves a lane exactly. The
+          # REQUESTED operation (envelope) is what gets dispatched — the lane
+          # constrains type/model/instance, the operation is a request property.
           def dispatch!(envelope:, registry:)
             snapshot = registry.snapshot
             instance_key = IDENTITY::InstanceKey.new(
               provider_family: envelope.provider, instance_id: envelope.provider_instance
             )
             record = available_record!(snapshot, instance_key)
-            offering = record.offerings_by_id[envelope.offering_id]
-            raise ERRORS::ExactOfferingMismatchError, 'offering_id not on the activated instance' if offering.nil?
-
             operation = exact_operation(envelope)
-            model = require_matching_model!(offering, envelope)
-            require_supported!(offering, operation)
-            execute_via_lane(registry, snapshot,
-                             { record: record, offering: offering, operation: operation, model: model, envelope: envelope })
-          end
-
-          def execute_via_lane(registry, snapshot, resolution)
-            lane = matching_lane!(snapshot, resolution[:record], resolution[:offering], resolution[:operation], resolution[:model])
+            lane = exact_lane!(snapshot, record, envelope, operation)
             lease = registry.acquire(callable_handle: lane.callable_handle)
             begin
-              dispatch_operation(lease.callable, resolution[:operation], resolution[:model], exact_params(resolution[:envelope]))
+              dispatch_operation(lease.callable, operation, lane.model, exact_params(envelope))
             ensure
               lease.release
             end
@@ -116,6 +110,25 @@ module Legion
             record
           end
 
+          # The exact lane the claim names: the 5-tuple claim value must parse
+          # and validate, resolve in the snapshot, and agree with the activated
+          # instance, the envelope's operation type, and the envelope's model.
+          # The operation is a request property matched against the lane type —
+          # the lane's operation member is the representative of its type, not
+          # the identity.
+          def exact_lane!(snapshot, record, envelope, operation)
+            IDENTITY.validate_lane_id!(value: envelope.offering_id)
+            lane = snapshot.lane(lane_id: envelope.offering_id)
+            raise ERRORS::ExactOfferingMismatchError, 'lane_id not on the activated instance' if lane.nil?
+            unless lane.instance_key == record.instance_key && lane.callable_handle.equal?(record.callable_handle)
+              raise ERRORS::ExactOfferingMismatchError, 'lane does not belong to the activated instance'
+            end
+
+            require_matching_operation!(lane, operation)
+            require_matching_model!(lane, envelope)
+            lane
+          end
+
           # 06 §5: an unknown operation is a contract error at the worker.
           def exact_operation(envelope)
             Legion::Extensions::Llm::Taxonomies.normalize_operation(value: envelope.operation)
@@ -123,27 +136,18 @@ module Legion
             raise ContractError, "unsupported exact operation: #{envelope.operation}"
           end
 
-          def require_matching_model!(offering, envelope)
+          def require_matching_operation!(lane, operation)
+            lane_type = Legion::Extensions::Llm::Taxonomies.lane_type_for(operation: lane.operation)
+            return if Legion::Extensions::Llm::Taxonomies.lane_type_for(operation: operation) == lane_type
+
+            raise ERRORS::ExactOfferingMismatchError, "operation #{operation} does not match the claimed lane type"
+          end
+
+          def require_matching_model!(lane, envelope)
             model = IDENTITY.normalize_text(value: envelope.model, field: :model)
-            raise ERRORS::ExactOfferingMismatchError, 'model does not match the offering' unless offering.model == model
+            raise ERRORS::ExactOfferingMismatchError, 'model does not match the lane' unless lane.model == model
 
             model
-          end
-
-          def require_supported!(offering, operation)
-            return if offering.operation_status(operation: operation) == :supported
-
-            raise ERRORS::ExactOfferingMismatchError, "operation #{operation} is not supported by the offering"
-          end
-
-          def matching_lane!(snapshot, record, offering, operation, model)
-            lane_id = IDENTITY.lane_id(instance_key: record.instance_key, operation: operation, model: model, offering_id: offering.offering_id)
-            lane = snapshot.lane(lane_id: lane_id)
-            valid = lane && lane.offering_id == offering.offering_id && lane.instance_key == record.instance_key &&
-                    lane.model == model && lane.operation == operation && lane.callable_handle.equal?(record.callable_handle)
-            raise ERRORS::ExactOfferingMismatchError, 'no matching lane for the offering' unless valid
-
-            lane
           end
 
           # W5 params strictness: no :model key (the Selection-derived model is
