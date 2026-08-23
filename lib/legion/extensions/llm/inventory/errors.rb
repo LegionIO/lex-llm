@@ -26,7 +26,6 @@ module Legion
           class StaleCallableError < Error; end
           class CallableDisposedError < Error; end
           class ExactOfferingMismatchError < Error; end
-          class AmbiguousLegacyOfferingError < Error; end
         end
       end
     end

@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'digest'
 require 'securerandom'
 require 'legion/extensions/llm/inventory/errors'
 require 'legion/extensions/llm/inventory/identity'
@@ -12,24 +11,22 @@ module Legion
         # An opaque fenced publisher claim token. The raw secret is never
         # serialized, logged, included in a record/snapshot/exception, returned
         # separately, or compared for order. `publisher_id` and
-        # `publisher_token_id` are safe correlation/fencing values derived from
-        # the secret. See phase-1-lex-llm-additive.md section 11.1.
+        # `publisher_token_id` are safe UUID correlation values — the id law
+        # forbids digest-encoded ids on any wire/DB/log surface, so the token
+        # id is a UUID like every other lifecycle handle, NOT a derivation of
+        # the secret. Fencing is the constant-time secret comparison; the
+        # public ids correlate, they do not authenticate.
+        # See phase-1-lex-llm-additive.md section 11.1.
         class PublisherToken
-          TOKEN_ID_DOMAIN = "publisher-token-id-v1\x00"
-
           attr_reader :instance_key, :publisher_id, :publisher_token_id
 
-          def self.derive_token_id(secret)
-            "ptok:v1:#{::Digest::SHA256.hexdigest(TOKEN_ID_DOMAIN.b + secret.b)}"
-          end
-
-          # Factory used by the registry: builds a fresh secret and derives the
-          # public correlation IDs from it.
+          # Factory used by the registry: builds a fresh secret and mints the
+          # public correlation IDs.
           def self.issue(instance_key:)
             secret = ::SecureRandom.hex(32)
             new(
               instance_key: instance_key, secret: secret,
-              publisher_id: "pub:v1:#{::SecureRandom.uuid}", publisher_token_id: derive_token_id(secret)
+              publisher_id: "pub:v1:#{::SecureRandom.uuid}", publisher_token_id: "ptok:v1:#{::SecureRandom.uuid}"
             )
           end
 

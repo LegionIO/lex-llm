@@ -7,10 +7,6 @@ module Legion
       module Utils
         module_function
 
-        def hash_get(hash, key)
-          hash[key.to_sym] || hash[key.to_s]
-        end
-
         def to_safe_array(item)
           case item
           when Array
@@ -34,14 +30,36 @@ module Legion
           value.is_a?(Date) ? value : Date.parse(value.to_s)
         end
 
+        # Recursive merge with the safer dup-before-merge policy (10 U7):
+        # neither input is mutated.
         def deep_merge(original, overrides)
-          original.merge(overrides) do |_key, original_value, overrides_value|
+          deep_dup(original || {}).merge(deep_dup(overrides || {})) do |_key, original_value, overrides_value|
             if original_value.is_a?(Hash) && overrides_value.is_a?(Hash)
               deep_merge(original_value, overrides_value)
             else
               overrides_value
             end
           end
+        end
+
+        # The one host-locality detector (10 §1E): localhost/loopback by host,
+        # accepting full URLs and bare host[:port] values.
+        def localhost_url?(url)
+          require 'uri'
+          text = url.to_s.strip
+          return false if text.empty?
+
+          host =
+            begin
+              parsed = text.match?(%r{\A[a-z][a-z0-9+.-]*://}) ? URI.parse(text) : URI.parse("http://#{text}")
+              parsed.host
+            rescue URI::InvalidURIError
+              text.split(%r{[:/\s]}, 2).first
+            end
+          return false if host.nil? || host.empty?
+
+          normalized = host.delete_prefix('[').delete_suffix(']').downcase
+          %w[localhost 127.0.0.1 ::1].include?(normalized)
         end
 
         def deep_dup(value)

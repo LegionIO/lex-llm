@@ -11,21 +11,6 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Publisher do
 
   before { inventory::Registry.reset! }
 
-  # Records adapter invocations; returns a configurable outcome.
-  let(:adapter_calls) { [] }
-  let(:adapter_outcome) { [:applied] }
-  let(:adapter) do
-    calls = adapter_calls
-    outcome = adapter_outcome
-    Object.new.tap do |obj|
-      obj.define_singleton_method(:sync_snapshot) do |snapshot:, instance_key:, mutation_reason:|
-        calls << { snapshot: snapshot, instance_key: instance_key, mutation_reason: mutation_reason }
-        outcome.first
-      end
-    end
-  end
-
-  let(:publisher) { described_class.new(provider_family: :vllm, compatibility_adapter: adapter) }
   let(:plain_publisher) { described_class.new(provider_family: :vllm) }
 
   def full_activate(pub)
@@ -49,56 +34,18 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Publisher do
       expect(result.applied).to be(true)
       expect(plain_publisher.snapshot.instance(instance_key: instance_key)).to be_nil
     end
-  end
 
-  describe 'post-commit compatibility projection' do
-    it 'invokes the adapter after a successful claim and applied mutation with the committed snapshot' do
-      full_activate(publisher)
-      expect(adapter_calls.map { |c| c[:mutation_reason] }).to eq(%i[claimed activated])
-      # The adapter sees the already-committed snapshot on activation.
-      activation_call = adapter_calls.last
-      expect(activation_call[:snapshot].instance(instance_key: instance_key).availability.state).to eq(:available)
-      expect(activation_call[:instance_key]).to eq(instance_key)
+    it 'M7: exposes no legacy dual-sink seam (the compatibility adapter is deleted)' do
+      expect { described_class.new(provider_family: :vllm, compatibility_adapter: Object.new) }
+        .to raise_error(ArgumentError, /compatibility_adapter/)
+      expect(described_class.instance_method(:initialize).parameters).not_to include(%i[key compatibility_adapter])
     end
 
-    it 'does not invoke the adapter for a non-applied (stale) mutation' do
-      token = full_activate(publisher)
-      adapter_calls.clear
-      # Supersede the publisher, then a stale replace returns applied: false.
-      publisher.claim_instance(instance_id: 'h200', callable: fake_callable, probe_request_handle: probe_coordinator(instance_key))
-      adapter_calls.clear
-      result = publisher.replace_instance_snapshot(instance_id: 'h200', publisher_token: token, offerings: drafts, sequence: 9)
+    it 'replaces the same scope when a new claim supersedes the publisher' do
+      token = full_activate(plain_publisher)
+      plain_publisher.claim_instance(instance_id: 'h200', callable: fake_callable, probe_request_handle: probe_coordinator(instance_key))
+      result = plain_publisher.replace_instance_snapshot(instance_id: 'h200', publisher_token: token, offerings: drafts, sequence: 9)
       expect(result.applied).to be(false)
-      expect(adapter_calls).to be_empty
-    end
-
-    it 'never changes the local result when the adapter returns :failed' do
-      adapter_outcome[0] = :failed
-      token = publisher.claim_instance(instance_id: 'h200', callable: fake_callable, probe_request_handle: probe_coordinator(instance_key))
-      expect(token).to be_a(inventory::PublisherToken)
-    end
-
-    it 'never changes the local result when the adapter raises' do
-      failing = Object.new.tap do |obj|
-        obj.define_singleton_method(:sync_snapshot) { |**| raise 'boom' }
-      end
-      pub = described_class.new(provider_family: :vllm, compatibility_adapter: failing)
-      expect { pub.claim_instance(instance_id: 'h200', callable: fake_callable, probe_request_handle: probe_coordinator(instance_key)) }
-        .not_to raise_error
-    end
-
-    it 'invokes the adapter again on the next applied cadence mutation' do
-      token = full_activate(publisher)
-      adapter_calls.clear
-      publisher.replace_instance_snapshot(instance_id: 'h200', publisher_token: token, offerings: drafts(native: 'gemma5', model: 'gemma5'), sequence: 1)
-      expect(adapter_calls.map { |c| c[:mutation_reason] }).to eq(%i[snapshot_replaced])
-    end
-  end
-
-  describe 'without a compatibility adapter' do
-    it 'performs no projection and returns the plain registry results' do
-      result = full_activate(plain_publisher)
-      expect(result).to be_a(inventory::PublisherToken)
     end
   end
 

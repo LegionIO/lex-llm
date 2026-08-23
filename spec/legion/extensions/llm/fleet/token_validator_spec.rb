@@ -17,10 +17,15 @@ RSpec.describe Legion::Extensions::Llm::Fleet::TokenValidator do
       reply_to: 'reply.queue',
       message_context: { conversation_id: 'conv-1' },
       params: { messages: [{ role: 'user', content: 'hello' }] },
-      caller: { identity: 'user:matt' },
+      caller: { identity: 'user:primary' },
       trace_context: { trace_id: 'trace-1' },
       timeout_seconds: 30,
-      expires_at: expires_at
+      expires_at: expires_at,
+      # v3: exact claims are verified unconditionally (S3) — the envelope and
+      # the signed claims must both carry the exact marker + offering_id.
+      # The claim value is the lane's 5 tuple (D4).
+      execution_contract: Legion::Extensions::Llm::Fleet::Protocol::EXACT_EXECUTION_CONTRACT,
+      offering_id: 'local:ollama:default:inference:llama3'
     }
   end
   let(:claims) do

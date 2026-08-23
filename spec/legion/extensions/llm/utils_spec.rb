@@ -3,17 +3,36 @@
 require 'spec_helper'
 
 RSpec.describe Legion::Extensions::Llm::Utils do
-  describe '.hash_get' do
-    it 'fetches a value using a symbol when the hash key is stored as a string' do
-      hash = { 'name' => 'Legion::Extensions::Llm' }
-
-      expect(described_class.hash_get(hash, :name)).to eq('Legion::Extensions::Llm')
+  describe '.localhost_url?' do
+    it 'detects loopback hosts in URLs and bare host[:port] values' do
+      expect(described_class.localhost_url?('http://localhost:11434/v1')).to be(true)
+      expect(described_class.localhost_url?('http://127.0.0.1:11434/v1')).to be(true)
+      expect(described_class.localhost_url?('http://[::1]:11434/v1')).to be(true)
+      expect(described_class.localhost_url?('localhost:11434')).to be(true)
+      expect(described_class.localhost_url?('127.0.0.1:11434')).to be(true)
     end
 
-    it 'fetches a value using a string when the hash key is stored as a symbol' do
-      hash = { name: 'Legion::Extensions::Llm' }
+    it 'rejects non-loopback hosts and garbage' do
+      expect(described_class.localhost_url?('http://apollo:11434/v1')).to be(false)
+      expect(described_class.localhost_url?('not a url at all')).to be(false)
+      expect(described_class.localhost_url?('')).to be(false)
+    end
 
-      expect(described_class.hash_get(hash, 'name')).to eq('Legion::Extensions::Llm')
+    it 'is the one shared host-locality detector (U15)' do
+      expect(Legion::Extensions::Llm::CredentialSources.localhost?('http://localhost:11434')).to be(true)
+      expect(Legion::Extensions::Llm::CredentialSources.localhost?('http://apollo:11434')).to be(false)
+    end
+  end
+
+  describe '.deep_merge (U7 — dup-before-merge policy)' do
+    it 'merges nested hashes without mutating the inputs' do
+      left = { a: { b: 1 }, keep: 1 }
+      right = { a: { c: 2 } }
+
+      merged = described_class.deep_merge(left, right)
+
+      expect(merged).to eq(a: { b: 1, c: 2 }, keep: 1)
+      expect(left).to eq(a: { b: 1 }, keep: 1)
     end
   end
 

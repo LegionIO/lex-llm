@@ -3,81 +3,40 @@
 require 'spec_helper'
 
 RSpec.describe Legion::Extensions::Llm::Canonical::ToolSchema do
-  let(:full_schema) { { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] } }
-  let(:canonical_tool) do
+  let(:tool_definition) do
     Legion::Extensions::Llm::Canonical::ToolDefinition.build(
-      name: 'get_weather', description: 'Weather lookup', parameters: full_schema
+      name: 'get_weather',
+      description: 'Get the weather',
+      parameters: { type: 'object', properties: { location: { type: 'string' } } }
     )
   end
 
-  describe '.extract' do
-    it 'extracts from a Canonical::ToolDefinition' do
-      result = described_class.extract(canonical_tool)
-      expect(result[:type]).to eq('object')
-      expect(result[:properties]).to eq(city: { type: 'string' })
-    end
-
-    it 'extracts from a Hash with :parameters' do
-      result = described_class.extract({ parameters: full_schema })
-      expect(result[:type]).to eq('object')
-      expect(result[:properties]).to eq(city: { type: 'string' })
-    end
-
-    it 'extracts from a Hash with :input_schema' do
-      result = described_class.extract({ input_schema: full_schema })
-      expect(result[:type]).to eq('object')
-      expect(result[:properties]).to eq(city: { type: 'string' })
-    end
-
-    it 'extracts from a Hash with :params_schema' do
-      result = described_class.extract({ params_schema: full_schema })
-      expect(result[:type]).to eq('object')
-      expect(result[:properties]).to eq(city: { type: 'string' })
-    end
-
-    it 'extracts from an object responding to params_schema' do
-      tool = Struct.new(:params_schema).new(full_schema)
-      result = described_class.extract(tool)
-      expect(result[:type]).to eq('object')
-      expect(result[:properties]).to eq(city: { type: 'string' })
-    end
-
-    it 'returns empty object schema for nil' do
-      expect(described_class.extract(nil)).to eq(type: 'object', properties: {})
-    end
-
-    it 'returns empty object schema for empty hash' do
-      expect(described_class.extract({})).to eq(type: 'object', properties: {})
-    end
+  it 'extracts the normalized schema from a ToolDefinition' do
+    expect(described_class.extract(tool_definition)).to eq(
+      type: 'object', properties: { location: { type: 'string' } }
+    )
   end
 
-  describe '.tool_name' do
-    it 'gets name from Canonical::ToolDefinition' do
-      expect(described_class.tool_name(canonical_tool)).to eq('get_weather')
-    end
-
-    it 'gets name from Hash' do
-      expect(described_class.tool_name({ name: 'foo' })).to eq('foo')
-    end
+  it 'returns the tool name and description' do
+    expect(described_class.tool_name(tool_definition)).to eq('get_weather')
+    expect(described_class.tool_description(tool_definition)).to eq('Get the weather')
   end
 
-  describe '.tool_description' do
-    it 'gets description from Canonical::ToolDefinition' do
-      expect(described_class.tool_description(canonical_tool)).to eq('Weather lookup')
+  describe '04 §6 — ToolDefinition ONLY (dual-shape accessors deleted)' do
+    it 'raises on a raw Hash' do
+      expect { described_class.extract({ name: 'x' }) }
+        .to raise_error(ArgumentError, /expected Canonical::ToolDefinition, got Hash/)
+      expect { described_class.tool_name({ name: 'x' }) }
+        .to raise_error(ArgumentError, /expected Canonical::ToolDefinition, got Hash/)
+      expect { described_class.tool_description({ name: 'x' }) }
+        .to raise_error(ArgumentError, /expected Canonical::ToolDefinition, got Hash/)
     end
 
-    it 'gets description from Hash' do
-      expect(described_class.tool_description({ description: 'bar' })).to eq('bar')
-    end
-  end
-
-  describe 'ToolDefinition compatibility readers' do
-    it 'params_schema returns normalized parameters' do
-      expect(canonical_tool.params_schema).to eq(full_schema)
-    end
-
-    it 'input_schema aliases params_schema' do
-      expect(canonical_tool.input_schema).to eq(canonical_tool.params_schema)
+    it 'raises on nil and other wrong classes' do
+      expect { described_class.extract(nil) }
+        .to raise_error(ArgumentError, /expected Canonical::ToolDefinition, got NilClass/)
+      expect { described_class.tool_name('str') }
+        .to raise_error(ArgumentError, /expected Canonical::ToolDefinition, got String/)
     end
   end
 end

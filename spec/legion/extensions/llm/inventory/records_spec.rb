@@ -16,9 +16,11 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
   end
   let(:callable_handle) { inventory::CallableHandle.new(handle_id: 'call:v1:test', callable: callable_class.new) }
   let(:instance_key) { identity::InstanceKey.new(provider_family: 'vllm', instance_id: 'h200') }
-  let(:offering_id) { identity.offering_id(instance_key: instance_key, provider_native_key: 'gemma4') }
   let(:lane_id) do
-    identity.lane_id(instance_key: instance_key, operation: :chat, model: 'gemma4', offering_id: offering_id)
+    identity.compose_lane_id(
+      tier: :local, provider_family: 'vllm', instance_id: 'h200',
+      type: taxonomies.lane_type_for(operation: :chat), model: 'gemma4'
+    )
   end
 
   def value_unknown
@@ -48,18 +50,9 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
     )
   end
 
-  def build_offering_record(**overrides)
-    Legion::Extensions::Llm::Inventory::OfferingRecord.new(
-      offering_id: offering_id, provider_native_key: 'gemma4', instance_key: instance_key, model: 'gemma4',
-      tier: :local, operation_evidence: full_operation_evidence(supported: %i[chat]), capability_evidence: {},
-      quota_domains: {}, metadata: {}, callable_handle: callable_handle, publication_source: :provider_catalog,
-      **scalar_evidence_kwargs, **overrides
-    )
-  end
-
   def build_lane(**overrides)
     Legion::Extensions::Llm::Inventory::LaneRecord.new(
-      lane_id: lane_id, offering_id: offering_id, instance_key: instance_key, provider_family: :vllm,
+      lane_id: lane_id, instance_key: instance_key, provider_family: :vllm,
       instance_id: 'h200', model: 'gemma4', tier: :local, operation: :chat, capability_evidence: {},
       quota_domain: nil, metadata: {}, callable_handle: callable_handle, publication_source: :provider_catalog,
       **scalar_evidence_kwargs, **overrides
@@ -161,35 +154,9 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
     end
   end
 
-  describe inventory::OfferingRecord do
-    def build_record(**overrides)
-      build_offering_record(**overrides)
-    end
-
-    it_behaves_like 'an atomic immutable weight pair'
-
-    it 'validates offering_id reproduction and exposes operation views' do
-      record = build_offering_record
-      expect(record.supported_operations).to eq(%i[chat])
-      expect(record.operation_status(operation: :chat)).to eq(:supported)
-      expect(record.operation_status(operation: :embed)).to eq(:unknown)
-      expect(record.capability_status(capability: :vision)).to eq(:unknown)
-      expect(record.unknown_operations).to include(:embed)
-    end
-
-    it 'rejects an offering_id that does not reproduce' do
-      expect { build_offering_record(offering_id: "off:v1:#{'0' * 64}") }.to raise_error(errors::ValidationError)
-    end
-
-    it 'rejects a non-InstanceKey and a non-CallableHandle' do
-      expect { build_offering_record(instance_key: :vllm) }.to raise_error(errors::ValidationError)
-      expect { build_offering_record(callable_handle: Object.new) }.to raise_error(errors::ValidationError)
-    end
-
-    it 'returns the quota domain for an operation' do
-      record = build_offering_record(quota_domains: { chat: 'domain-a' })
-      expect(record.quota_domain(operation: :chat)).to eq('domain-a')
-      expect(record.quota_domain(operation: :embed)).to be_nil
+  describe 'OfferingRecord (deleted — D2: in the one bucket an offering IS a lane)' do
+    it 'is not defined' do
+      expect(inventory.const_defined?(:OfferingRecord, false)).to be(false)
     end
   end
 
@@ -200,16 +167,64 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
 
     it_behaves_like 'an atomic immutable weight pair'
 
-    it 'builds a valid lane whose id reproduces' do
-      expect(build_lane.lane_id).to eq(lane_id)
+    it 'builds a valid lane whose id reproduces from its fields' do
+      expect(build_lane.lane_id).to eq('local:vllm:h200:inference:gemma4')
+      expect(build_lane.lane_id).to be_frozen
+    end
+
+    it 'has no offering_id member — the 5 tuple is the single id' do
+      expect(build_lane.members).not_to include(:offering_id)
+      expect(build_lane.to_h.keys).to contain_exactly(
+        :lane_id, :instance_key, :provider_family, :instance_id, :model, :tier, :operation,
+        :capability_evidence, :context_evidence, :max_output_evidence, :embedding_dimensions_evidence,
+        :model_revision_evidence, :tokenizer_evidence, :quota_domain, :metadata, :callable_handle,
+        :publication_source, :weight_inputs, :base_weight
+      )
+    end
+
+    it 'derives the id type part from the operation (embed → embedding)' do
+      embed_id = identity.compose_lane_id(
+        tier: :local, provider_family: 'vllm', instance_id: 'h200',
+        type: taxonomies.lane_type_for(operation: :embed), model: 'gemma4'
+      )
+      lane = build_lane(lane_id: embed_id, operation: :embed)
+      expect(lane.lane_id).to eq('local:vllm:h200:embedding:gemma4')
+    end
+
+    it 'keeps colons inside the model part of the id' do
+      colon_model = 'llama3.2:8b-instruct'
+      id = identity.compose_lane_id(
+        tier: :local, provider_family: 'vllm', instance_id: 'h200',
+        type: taxonomies.lane_type_for(operation: :chat), model: colon_model
+      )
+      lane = build_lane(lane_id: id, model: colon_model)
+      expect(lane.lane_id).to eq("local:vllm:h200:inference:#{colon_model}")
+      expect(identity.parse_lane_id(lane.lane_id).last).to eq(colon_model)
     end
 
     it 'rejects provider_family/instance_id not equal to instance_key' do
       expect { build_lane(instance_id: 'helios1') }.to raise_error(errors::ValidationError)
     end
 
-    it 'rejects a lane_id that does not reproduce' do
-      expect { build_lane(lane_id: "lane:v1:#{'0' * 64}") }.to raise_error(errors::ValidationError)
+    it 'rejects a lane_id that does not reproduce from the record fields' do
+      other = identity.compose_lane_id(
+        tier: :local, provider_family: 'vllm', instance_id: 'helios1',
+        type: :inference, model: 'gemma4'
+      )
+      expect { build_lane(lane_id: other) }.to raise_error(errors::ValidationError, /does not reproduce/)
+    end
+
+    it 'rejects a lane_id whose type part disagrees with the operation' do
+      wrong_type = identity.compose_lane_id(
+        tier: :local, provider_family: 'vllm', instance_id: 'h200',
+        type: :embedding, model: 'gemma4'
+      )
+      expect { build_lane(lane_id: wrong_type) }.to raise_error(errors::ValidationError, /does not reproduce/)
+    end
+
+    it 'rejects a lane_id that is not a 5-tuple' do
+      expect { build_lane(lane_id: 'not-a-five-tuple') }
+        .to raise_error(errors::ValidationError)
     end
   end
 
@@ -269,19 +284,39 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
 
   describe inventory::InstanceRecord do
     def build_instance(**overrides)
+      lane = build_lane
       Legion::Extensions::Llm::Inventory::InstanceRecord.new(
         instance_key: instance_key, callable_handle: callable_handle,
         availability: Legion::Extensions::Llm::Inventory::AvailabilityFact.new(
           state: :available, availability_revision: 1, source: :startup_readiness, reason: 'activated', observed_at: nil
         ),
-        offerings_by_id: { offering_id => build_offering_record },
+        lanes_by_id: { lane.lane_id => lane },
         publisher_id: 'pub:v1:x', publisher_token_id: 'ptok:v1:y', published_sequence: 1, published_at: Time.now,
         **overrides
       )
     end
 
-    it 'builds an available instance with a complete offerings map' do
-      expect(build_instance.offerings_by_id).to be_frozen
+    it 'builds an available instance with a complete 5-tuple-keyed lanes map' do
+      record = build_instance
+      expect(record.lanes_by_id).to be_frozen
+      expect(record.lanes_by_id.keys).to eq(%w[local:vllm:h200:inference:gemma4])
+    end
+
+    it 'rejects a lane whose key does not equal its own id' do
+      lane = build_lane
+      expect do
+        build_instance(lanes_by_id: { 'local:vllm:h200:inference:other' => lane })
+      end.to raise_error(errors::ValidationError, /key mismatch/)
+    end
+
+    it 'rejects a lane that does not share the instance callable/key' do
+      other_key = identity::InstanceKey.new(provider_family: 'vllm', instance_id: 'helios1')
+      other_id = identity.compose_lane_id(
+        tier: :local, provider_family: 'vllm', instance_id: 'helios1', type: :inference, model: 'gemma4'
+      )
+      other_lane = build_lane(lane_id: other_id, instance_key: other_key, instance_id: 'helios1')
+      expect { build_instance(lanes_by_id: { other_id => other_lane }) }
+        .to raise_error(errors::ValidationError, %r{callable/key})
     end
 
     it 'rejects an initializing availability' do
@@ -291,8 +326,8 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Records do
       expect { build_instance(availability: initializing) }.to raise_error(errors::ValidationError)
     end
 
-    it 'accepts an explicit empty offerings map' do
-      expect(build_instance(offerings_by_id: {}).offerings_by_id).to eq({})
+    it 'accepts an explicit empty lanes map' do
+      expect(build_instance(lanes_by_id: {}).lanes_by_id).to eq({})
     end
   end
 

@@ -28,9 +28,14 @@ module SpecSupport
       true
     end
 
-    def chat(messages:, model:, **rest)
+    # L11: the fake mimics the 0.8.0 callable contract — chat returns a
+    # Canonical::Response (the raw-Hash return violated the contract the
+    # harness impersonates; conformance B2 asserts exactly this shape).
+    def chat(messages, model:, **rest)
       @inference_calls += 1
-      { content: "fake chat #{model} #{messages.size} #{rest.size}" }
+      Legion::Extensions::Llm::Canonical::Response.build(
+        text: "fake chat #{model} #{messages.size} #{rest.size}", model: model, stop_reason: :end_turn
+      )
     end
 
     # Runtime error normalization on the provider callable itself, mirroring the

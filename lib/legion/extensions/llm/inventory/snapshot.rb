@@ -11,30 +11,26 @@ module Legion
         # A structurally immutable, generation-tagged read model of the registry.
         # Lookups return the frozen record or nil and never synthesize a default.
         # `instances_by_key` contains only activated instances;
-        # `publication_status_by_key` also contains initializing claims. A caller
-        # cannot observe a later inventory-record or generation mutation through
-        # an older snapshot; the captured CallableHandle lifecycle is the single
-        # intentional exception. See phase-1-lex-llm-additive.md section 11.3.
+        # `publication_status_by_key` also contains initializing claims. Lanes
+        # are keyed by the 5-tuple lane id and iterate in lexicographic id
+        # order (readable iteration). A caller cannot observe a later
+        # inventory-record or generation mutation through an older snapshot;
+        # the captured CallableHandle lifecycle is the single intentional
+        # exception. See phase-1-lex-llm-additive.md section 11.3.
         class Snapshot
           attr_reader :generation
 
-          def initialize(generation:, instances_by_key:, offerings_by_id:, lanes_by_id:, publication_status_by_key:)
+          def initialize(generation:, instances_by_key:, lanes_by_id:, publication_status_by_key:)
             @generation = generation
             @instances_by_key = order_instances(instances_by_key).freeze
-            @offerings_by_id = offerings_by_id.dup.freeze
             @lanes_by_id = lanes_by_id.dup.freeze
             @publication_status_by_key = order_instances(publication_status_by_key).freeze
-            @ordered_offerings = @offerings_by_id.keys.sort.map { |id| @offerings_by_id[id] }.freeze
             @ordered_lanes = @lanes_by_id.keys.sort.map { |id| @lanes_by_id[id] }.freeze
             freeze
           end
 
           def instance(instance_key:)
             @instances_by_key[instance_key]
-          end
-
-          def offering(offering_id:)
-            @offerings_by_id[offering_id]
           end
 
           def lane(lane_id:)
@@ -45,10 +41,6 @@ module Legion
             @ordered_lanes.select { |lane| lane.instance_key == instance_key }.freeze
           end
 
-          def offerings_for(instance_key:)
-            @ordered_offerings.select { |offering| offering.instance_key == instance_key }.freeze
-          end
-
           def publication_status(instance_key:)
             @publication_status_by_key[instance_key]
           end
@@ -57,12 +49,6 @@ module Legion
             return to_enum(:each_lane) unless block
 
             @ordered_lanes.each(&block)
-          end
-
-          def each_offering(&block)
-            return to_enum(:each_offering) unless block
-
-            @ordered_offerings.each(&block)
           end
 
           def each_instance(&block)

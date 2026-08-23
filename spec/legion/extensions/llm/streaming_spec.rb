@@ -7,6 +7,17 @@ RSpec.describe Legion::Extensions::Llm::Streaming do
     Object.new.tap do |obj|
       obj.extend(described_class)
       obj.define_singleton_method(:build_chunk) { |data| "chunk:#{data['x']}" }
+      # Streaming only ships inside Provider in production; the U8 delegation
+      # passes self to ErrorMiddleware.parse_error, which calls parse_error.
+      obj.define_singleton_method(:parse_error) do |response|
+        body = response.body
+        error = body['error'] if body.is_a?(Hash)
+        if error.is_a?(String)
+          error
+        else
+          (error.is_a?(Hash) ? error['message'] : nil)
+        end
+      end
     end
   end
 
@@ -112,6 +123,22 @@ RSpec.describe Legion::Extensions::Llm::Streaming do
       partial_chunk = '{"error":{'
       expect { test_obj.send(:handle_failed_response, partial_chunk, buffer, non_mutable_env) }
         .to raise_error(Legion::Extensions::Llm::ServerError, /Provider error.*incomplete/)
+    end
+  end
+
+  describe 'M1 — unparseable error content fails loud (the fail-open is deleted)' do
+    it 'an unparseable error event raises a classified ServerError, never a silent nil' do
+      expect { test_obj.send(:parse_error_from_json, 'not-json{{{', env, 'Failed to parse error chunk') }
+        .to raise_error(Legion::Extensions::Llm::ServerError, /unparseable error event/)
+    end
+
+    it 'an unparseable mid-stream data frame raises a classified ServerError' do
+      expect { test_obj.send(:handle_data, 'not-json{{{', env) }
+        .to raise_error(Legion::Extensions::Llm::ServerError, /unparseable data frame/)
+    end
+
+    it 'an empty data frame is a no-op, not an error' do
+      expect { test_obj.send(:handle_data, '   ', env) }.not_to raise_error
     end
   end
 end

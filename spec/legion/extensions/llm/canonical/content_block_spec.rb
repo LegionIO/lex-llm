@@ -1,225 +1,80 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../conformance/conformance'
 
 RSpec.describe Legion::Extensions::Llm::Canonical::ContentBlock do
-  describe '.text' do
-    it 'creates a text content block' do
-      block = described_class.text('hello world')
+  let(:type_class) { described_class }
+  let(:auto_generated_members) { [] }
+  let(:type_source) do
+    { type: 'text', text: 'hello block', metadata: { origin: 'provider' } }
+  end
 
+  it_behaves_like 'a canonical type'
+
+  describe 'O03a — no type aliases' do
+    it 'does not translate output_text/input_text — untranslated dialect types raise (L4/L6)' do
+      expect { described_class.from_hash(type: 'output_text', text: 'x') }
+        .to raise_error(ArgumentError, /Invalid type: :output_text/)
+      expect { described_class.from_hash(type: 'input_text', text: 'x') }
+        .to raise_error(ArgumentError, /Invalid type: :input_text/)
+    end
+
+    it 'raises on an unknown type value (L6)' do
+      expect { described_class.build(type: :bogus) }
+        .to raise_error(ArgumentError, /Invalid type: :bogus/)
+    end
+  end
+
+  describe 'H1 — .new is as strict as the factories' do
+    it 'rejects an unknown type in .new' do
+      expect { described_class.new(type: :bogus, text: 'x') }
+        .to raise_error(ArgumentError, /Invalid type: :bogus/)
+    end
+  end
+
+  describe 'named factories (produce side)' do
+    it 'builds a text block' do
+      block = described_class.text('hi', cache_control: { type: :ephemeral })
       expect(block.type).to eq(:text)
-      expect(block.text).to eq('hello world')
+      expect(block.text).to eq('hi')
+      expect(block.cache_control).to eq(type: :ephemeral)
     end
 
-    it 'accepts cache_control' do
-      block = described_class.text('hello', cache_control: { type: 'ephemeral' })
-
-      expect(block.cache_control).to eq({ type: 'ephemeral' })
-    end
-  end
-
-  describe '.thinking' do
-    it 'creates a thinking content block' do
-      block = described_class.thinking('reasoning here')
-
-      expect(block.type).to eq(:thinking)
-      expect(block.text).to eq('reasoning here')
-    end
-  end
-
-  describe '.tool_use' do
-    it 'creates a tool_use content block' do
-      block = described_class.tool_use(id: 'toolu-1', name: 'search', input: { query: 'test' })
-
-      expect(block.type).to eq(:tool_use)
-      expect(block.id).to eq('toolu-1')
-      expect(block.name).to eq('search')
-      expect(block.input).to eq({ query: 'test' })
+    it 'builds thinking / tool_use / tool_result / image blocks' do
+      expect(described_class.thinking('hmm').thinking?).to be(true)
+      use = described_class.tool_use(id: 'tu_1', name: 'f', input: { a: 1 })
+      expect(use.tool_use?).to be(true)
+      expect(use.input).to eq(a: 1)
+      result = described_class.tool_result(tool_use_id: 'tu_1', content: 'ok', is_error: true)
+      expect(result.tool_result?).to be(true)
+      expect(result.is_error).to be(true)
+      image = described_class.image(data: 'AAA=', media_type: 'image/png')
+      expect(image.type).to eq(:image)
+      expect(image.media_type).to eq('image/png')
     end
   end
 
-  describe '.tool_result' do
-    it 'creates a tool_result content block' do
-      block = described_class.tool_result(tool_use_id: 'toolu-1', content: 'result')
-
-      expect(block.type).to eq(:tool_result)
-      expect(block.tool_use_id).to eq('toolu-1')
-      expect(block.text).to eq('result')
-      expect(block.is_error).to be false
-    end
-
-    it 'marks error results' do
-      block = described_class.tool_result(tool_use_id: 'toolu-1', content: 'error', is_error: true)
-
-      expect(block.is_error).to be true
+  describe 'F2 fix — no rescue-and-repair' do
+    it 'raises on non-Hash from_hash input instead of fabricating a text block' do
+      expect { described_class.from_hash('corrupted') }
+        .to raise_error(ArgumentError, /expected Hash, got String/)
+      expect { described_class.from_hash(nil) }
+        .to raise_error(ArgumentError, /expected Hash, got NilClass/)
     end
   end
 
-  describe '.image' do
-    it 'creates an image content block with media_type (G20a)' do
-      block = described_class.image(data: 'base64data', media_type: 'image/png')
-
-      expect(block.type).to eq(:image)
-      expect(block.data).to eq('base64data')
-      expect(block.media_type).to eq('image/png')
-      expect(block.source_type).to eq(:base64)
-    end
-
-    it 'accepts custom source_type and detail' do
-      block = described_class.image(data: 'img.png', media_type: 'image/png', source_type: :url, detail: 'high')
-
-      expect(block.source_type).to eq(:url)
-      expect(block.detail).to eq('high')
+  describe 'T4 — member survival' do
+    it 'survives build → to_h → JSON → from_hash' do
+      block = described_class.image(data: 'AAA=', media_type: 'image/png', source_type: :base64)
+      round_tripped = described_class.from_hash(Legion::JSON.load(Legion::JSON.dump(block.to_h)))
+      expect(round_tripped.data).to eq('AAA=')
+      expect(round_tripped.media_type).to eq('image/png')
     end
   end
 
-  describe '.from_hash' do
-    it 'parses a content block from hash' do
-      block = described_class.from_hash(type: 'text', text: 'hello')
-
-      expect(block.type).to eq(:text)
-      expect(block.text).to eq('hello')
-    end
-
-    it 'handles string keys' do
-      block = described_class.from_hash('type' => 'thinking', 'text' => 'reasoning')
-
-      expect(block.type).to eq(:thinking)
-      expect(block.text).to eq('reasoning')
-    end
-
-    it 'returns nil for nil source' do
-      expect(described_class.from_hash(nil)).to be_nil
-    end
-
-    it 'preserves all fields' do
-      hash = {
-        type: 'tool_use',
-        id: 'toolu-1',
-        name: 'search',
-        input: { query: 'test' },
-        cache_control: { type: 'ephemeral' }
-      }
-      block = described_class.from_hash(hash)
-
-      expect(block.type).to eq(:tool_use)
-      expect(block.id).to eq('toolu-1')
-      expect(block.name).to eq('search')
-      expect(block.input).to eq({ query: 'test' })
-      expect(block.cache_control).to eq({ type: 'ephemeral' })
-    end
-  end
-
-  describe '#to_h' do
-    it 'serializes to compact hash' do
-      block = described_class.text('hello')
-      hash = block.to_h
-
-      expect(hash).to eq(type: :text, text: 'hello')
-    end
-
-    it 'omits nil values' do
-      block = described_class.new(
-        type: :text, text: 'hello', data: nil, source_type: nil,
-        media_type: nil, detail: nil, name: nil, file_id: nil,
-        id: nil, input: nil, tool_use_id: nil, is_error: nil,
-        source: nil, start_index: nil, end_index: nil,
-        code: nil, message: nil, cache_control: nil
-      )
-      hash = block.to_h
-
-      expect(hash).to eq(type: :text, text: 'hello')
-    end
-  end
-
-  describe 'type predicates' do
-    it 'identifies text blocks' do
-      block = described_class.text('hello')
-      expect(block.text?).to be true
-      expect(block.thinking?).to be false
-      expect(block.tool_use?).to be false
-      expect(block.tool_result?).to be false
-    end
-
-    it 'identifies thinking blocks' do
-      block = described_class.thinking('reasoning')
-      expect(block.thinking?).to be true
-      expect(block.text?).to be false
-    end
-
-    it 'identifies tool_use blocks' do
-      block = described_class.tool_use(id: '1', name: 'search', input: {})
-      expect(block.tool_use?).to be true
-    end
-
-    it 'identifies tool_result blocks' do
-      block = described_class.tool_result(tool_use_id: '1', content: 'result')
-      expect(block.tool_result?).to be true
-    end
-  end
-
-  describe 'CONTENT_BLOCK_TYPES' do
-    it 'includes all expected types' do
-      expect(described_class::CONTENT_BLOCK_TYPES).to include(
-        :text, :thinking, :tool_use, :tool_result, :image, :audio, :video
-      )
-    end
-  end
-
-  describe 'Responses API type normalization (output_text/input_text)' do
-    it 'normalizes output_text to :text via from_hash' do
-      block = described_class.from_hash(type: 'output_text', text: 'The seat templates')
-
-      expect(block.type).to eq(:text)
-      expect(block.text).to eq('The seat templates')
-      expect(block.text?).to be true
-    end
-
-    it 'normalizes input_text to :text via from_hash' do
-      block = described_class.from_hash(type: 'input_text', text: 'user message')
-
-      expect(block.type).to eq(:text)
-      expect(block.text?).to be true
-    end
-
-    it 'returns text content from to_s for output_text blocks' do
-      block = described_class.from_hash(type: 'output_text', text: "The seat templates don't")
-
-      expect(block.to_s).to eq("The seat templates don't")
-    end
-
-    it 'does not leak #inspect struct into Array#to_s' do
-      blocks = [described_class.from_hash(type: 'output_text', text: 'hello')]
-
-      expect(blocks.inspect).not_to include('data Legion::Extensions')
-      expect(blocks.inspect).not_to include('source_type=nil')
-    end
-  end
-
-  describe '#to_s' do
-    it 'returns text for text blocks' do
-      expect(described_class.text('hello').to_s).to eq('hello')
-    end
-
-    it 'returns placeholder for tool_use blocks' do
-      block = described_class.tool_use(id: '1', name: 'bash', input: {})
-      expect(block.to_s).to eq('[tool_use:bash]')
-    end
-
-    it 'returns placeholder for image blocks' do
-      block = described_class.image(data: 'x', media_type: 'image/png')
-      expect(block.to_s).to eq('[image]')
-    end
-  end
-
-  describe 'round-trip' do
-    it 'preserves text block through from_hash/to_h' do
-      original = { type: 'text', text: 'hello world' }
-      block = described_class.from_hash(original)
-      serialized = block.to_h
-
-      expect(serialized[:type]).to eq(:text)
-      expect(serialized[:text]).to eq('hello world')
-    end
+  it 'text? is type == :text only (alias list deleted)' do
+    expect(described_class.text('x').text?).to be(true)
+    expect(described_class.thinking('x').text?).to be(false)
   end
 end

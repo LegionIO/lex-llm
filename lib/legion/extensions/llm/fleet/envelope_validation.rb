@@ -6,15 +6,13 @@ module Legion
   module Extensions
     module Llm
       module Fleet
-        # Shared validation helpers for strict fleet protocol v2 envelopes.
+        # Shared validation helpers for strict fleet protocol v3 envelopes.
         module EnvelopeValidation
-          LEGACY_OPTIONS = %i[schema_version request_type fleet_correlation_id].freeze
-
           private
 
           def reject_legacy_options!
-            LEGACY_OPTIONS.each do |key|
-              raise ArgumentError, "#{key} is not supported by fleet protocol v2" if @options.key?(key) || @options.key?(key.to_s)
+            Fleet::Protocol::LEGACY_FIELDS.each do |key|
+              raise ArgumentError, "#{key} is not supported by fleet protocol v3" if @options.key?(key) || @options.key?(key.to_s)
             end
           end
 
@@ -24,8 +22,11 @@ module Legion
             raise ArgumentError, "#{key} is required"
           end
 
+          # P3: explicit version — a missing protocol_version raises; there is
+          # no default fill.
           def require_protocol_version!
-            version = @options.fetch(:protocol_version, Fleet::Protocol::VERSION)
+            version = @options[:protocol_version]
+            raise ArgumentError, 'protocol_version is required' if version.nil?
             return if version == Fleet::Protocol::VERSION
 
             raise ArgumentError, "protocol_version must be #{Fleet::Protocol::VERSION}"

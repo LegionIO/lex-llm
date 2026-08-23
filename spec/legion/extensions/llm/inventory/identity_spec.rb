@@ -6,131 +6,130 @@ require 'legion/extensions/llm/inventory/identity'
 RSpec.describe Legion::Extensions::Llm::Inventory::Identity do
   let(:errors) { Legion::Extensions::Llm::Inventory::Errors }
   let(:instance_key_class) { Legion::Extensions::Llm::Inventory::Identity::InstanceKey }
+  let(:taxonomies) { Legion::Extensions::Llm::Taxonomies }
 
-  fixture_path = File.expand_path('../conformance/fixtures/ssot_identity_vectors.json', __dir__)
-  fixture = Legion::JSON.load(File.read(fixture_path))
-
-  def hex(binary)
-    binary.b.unpack1('H*')
+  def compose(tier: :local, family: 'vllm', instance: 'h200', type: :inference, model: 'gemma4')
+    described_class.compose_lane_id(
+      tier: tier, provider_family: family, instance_id: instance, type: type, model: model
+    )
   end
 
-  describe 'binding identity vectors (recomputed field by field)' do
-    fixture[:vectors].each_with_index do |vector, index|
-      context "with vector #{index}: #{vector[:provider_family]}+#{vector[:instance_id]}" do
-        let(:instance_key) do
-          instance_key_class.new(
-            provider_family: vector[:provider_family],
-            instance_id: vector[:instance_id]
-          )
-        end
-
-        it 'reproduces every framed field as lowercase hex bytes' do
-          expect(hex(described_class.length_frame(value: instance_key.provider_family)))
-            .to eq(vector[:framed_hex][:provider_family])
-          expect(hex(described_class.length_frame(value: instance_key.instance_id)))
-            .to eq(vector[:framed_hex][:instance_id])
-          expect(hex(described_class.length_frame(value: vector[:provider_native_key])))
-            .to eq(vector[:framed_hex][:provider_native_key])
-          expect(hex(described_class.length_frame(value: vector[:operation])))
-            .to eq(vector[:framed_hex][:operation])
-          expect(hex(described_class.length_frame(value: vector[:model])))
-            .to eq(vector[:framed_hex][:model])
-        end
-
-        it 'reproduces the offering hash input and offering_id' do
-          input = described_class.length_frame(value: instance_key.provider_family) +
-                  described_class.length_frame(value: instance_key.instance_id) +
-                  described_class.length_frame(value: vector[:provider_native_key])
-          expect(hex(input)).to eq(vector[:offering_hash_input_hex])
-
-          offering_id = described_class.offering_id(
-            instance_key: instance_key, provider_native_key: vector[:provider_native_key]
-          )
-          expect(offering_id).to eq(vector[:expected_offering_id])
-        end
-
-        it 'reproduces the lane hash input and lane_id' do
-          offering_id = described_class.offering_id(
-            instance_key: instance_key, provider_native_key: vector[:provider_native_key]
-          )
-          input = "lane-v1\x00".b +
-                  described_class.length_frame(value: instance_key.provider_family) +
-                  described_class.length_frame(value: instance_key.instance_id) +
-                  described_class.length_frame(value: vector[:operation]) +
-                  described_class.length_frame(value: vector[:model]) +
-                  described_class.length_frame(value: offering_id)
-          expect(hex(input)).to eq(vector[:lane_hash_input_hex])
-
-          lane_id = described_class.lane_id(
-            instance_key: instance_key,
-            operation: vector[:operation].to_sym,
-            model: vector[:model],
-            offering_id: offering_id
-          )
-          expect(lane_id).to eq(vector[:expected_lane_id])
-        end
-
-        it 'validates the reproduced offering_id and lane_id' do
-          offering_id = vector[:expected_offering_id]
-          expect(
-            described_class.validate_offering_id!(
-              value: offering_id, instance_key: instance_key, provider_native_key: vector[:provider_native_key]
-            )
-          ).to eq(offering_id)
-          expect(
-            described_class.validate_lane_id!(
-              value: vector[:expected_lane_id], instance_key: instance_key,
-              operation: vector[:operation].to_sym, model: vector[:model], offering_id: offering_id
-            )
-          ).to eq(vector[:expected_lane_id])
-        end
-      end
-    end
-  end
-
-  describe 'independence and delimiter safety' do
-    it 'produces distinct offering/lane IDs for the same model on two instance IDs' do
-      expect(fixture[:vectors][0][:expected_offering_id]).not_to eq(fixture[:vectors][1][:expected_offering_id])
-      expect(fixture[:vectors][0][:expected_lane_id]).not_to eq(fixture[:vectors][1][:expected_lane_id])
+  describe 'compose_lane_id (the ONE 5-tuple composer, G22)' do
+    it 'joins tier:provider_family:instance_id:type:model exactly' do
+      expect(compose).to eq('local:vllm:h200:inference:gemma4')
     end
 
-    it 'is tier-independent: tier is never a framing input' do
-      vector = fixture[:vectors][0]
-      instance_key = instance_key_class.new(provider_family: vector[:provider_family], instance_id: vector[:instance_id])
-      %i[local frontier].each do |_tier|
-        offering_id = described_class.offering_id(
-          instance_key: instance_key, provider_native_key: vector[:provider_native_key]
-        )
-        expect(offering_id).to eq(vector[:expected_offering_id])
-        expect(
-          described_class.lane_id(
-            instance_key: instance_key, operation: vector[:operation].to_sym,
-            model: vector[:model], offering_id: offering_id
-          )
-        ).to eq(vector[:expected_lane_id])
-      end
-    end
-
-    it 'frames punctuation inside a component without delimiter ambiguity' do
-      vector = fixture[:vectors][2]
-      instance_key = instance_key_class.new(provider_family: vector[:provider_family], instance_id: vector[:instance_id])
-      expect(instance_key.instance_id).to eq('prod:eastus')
+    it 'is byte-identical to the v0.6.16 ScopedRefresher.compose_id shape' do
+      lane_fields = { tier: 'frontier', provider_family: 'openai', instance_id: 'prod', type: 'embedding', model: 'text-embed-3' }
+      expected = "#{lane_fields[:tier]}:#{lane_fields[:provider_family]}:#{lane_fields[:instance_id]}:#{lane_fields[:type]}:#{lane_fields[:model]}"
       expect(
-        described_class.offering_id(instance_key: instance_key, provider_native_key: vector[:provider_native_key])
-      ).to eq(vector[:expected_offering_id])
+        described_class.compose_lane_id(
+          tier: lane_fields[:tier], provider_family: lane_fields[:provider_family],
+          instance_id: lane_fields[:instance_id], type: lane_fields[:type], model: lane_fields[:model]
+        )
+      ).to eq(expected)
+    end
+
+    it 'preserves colons inside the model part (Ollama model:tag, Bedrock ids)' do
+      id = compose(family: 'ollama', instance: 'apollo', model: 'llama3.2:8b-instruct')
+      expect(id).to eq('local:ollama:apollo:inference:llama3.2:8b-instruct')
+
+      bedrock = compose(family: 'bedrock', instance: 'us-east-1', type: :inference, model: 'anthropic.claude-opus-4-7:0')
+      expect(bedrock).to eq('local:bedrock:us-east-1:inference:anthropic.claude-opus-4-7:0')
+    end
+
+    it 'round-trips through parse_lane_id for every type and tier' do
+      taxonomies::TYPES.each do |type|
+        taxonomies::TIERS.each do |tier|
+          id = compose(tier: tier, type: type, model: 'model:tag:v1')
+          expect(described_class.parse_lane_id(id)).to eq(
+            [tier.to_s, 'vllm', 'h200', type.to_s, 'model:tag:v1']
+          )
+          expect(described_class.validate_lane_id!(value: id)).to eq(id)
+        end
+      end
     end
   end
 
-  describe '.length_frame' do
-    it 'is decimal byte length + ASCII colon + exact UTF-8 bytes, in binary' do
-      frame = described_class.length_frame(value: 'gemma4')
-      expect(frame.encoding).to eq(Encoding::BINARY)
-      expect(frame).to eq('6:gemma4'.b)
+  describe 'parse_lane_id (bounded split — the 5th part keeps its colons)' do
+    it 'returns exactly five parts with the model keeping its colons' do
+      expect(described_class.parse_lane_id('local:vllm:h200:inference:a:b:c')).to eq(
+        %w[local vllm h200 inference a:b:c]
+      )
     end
 
-    it 'counts UTF-8 bytes, not characters' do
-      composed = [0x00e9].pack('U*') # single codepoint => two UTF-8 bytes
-      expect(described_class.length_frame(value: composed)).to eq('2:'.b + composed.b)
+    it 'accepts a Symbol input' do
+      expect(described_class.parse_lane_id(:'local:vllm:h200:inference:gemma4')).to eq(
+        %w[local vllm h200 inference gemma4]
+      )
+    end
+
+    it 'rejects fewer than five parts' do
+      expect { described_class.parse_lane_id('local:vllm:h200:inference') }
+        .to raise_error(errors::ValidationError, /exactly 5 parts, got 4/)
+    end
+
+    it 'never returns more than five parts (colons do not split further)' do
+      expect(described_class.parse_lane_id('local:vllm:h200:inference:x:y').length).to eq(5)
+    end
+
+    it 'rejects non-text input' do
+      expect { described_class.parse_lane_id(123) }.to raise_error(errors::ValidationError)
+    end
+  end
+
+  describe 'validate_lane_id!' do
+    it 'accepts a well-formed 5 tuple and returns it unchanged' do
+      expect(described_class.validate_lane_id!(value: 'cloud:gemini:default:audio:speech-2')).to eq('cloud:gemini:default:audio:speech-2')
+    end
+
+    it 'rejects any non-5-tuple value on the plain shape check alone' do
+      expect { described_class.validate_lane_id!(value: 'weird:identity') }
+        .to raise_error(errors::ValidationError, /exactly 5 parts, got 2/)
+      expect { described_class.validate_lane_id!(value: 'a:b:c:d') }
+        .to raise_error(errors::ValidationError, /exactly 5 parts, got 4/)
+    end
+
+    it 'rejects a tier outside Taxonomies::TIERS' do
+      expect { described_class.validate_lane_id!(value: 'bogus:vllm:h200:inference:gemma4') }
+        .to raise_error(errors::ValidationError, /tier/)
+    end
+
+    it 'rejects a type outside Taxonomies::TYPES' do
+      expect { described_class.validate_lane_id!(value: 'local:vllm:h200:moderation:gemma4') }
+        .to raise_error(errors::ValidationError, /type/)
+    end
+
+    it 'rejects an empty provider_family or instance_id' do
+      expect { described_class.validate_lane_id!(value: 'local::h200:inference:gemma4') }
+        .to raise_error(errors::ValidationError, /provider_family/)
+      expect { described_class.validate_lane_id!(value: 'local:vllm::inference:gemma4') }
+        .to raise_error(errors::ValidationError, /instance_id/)
+    end
+
+    it 'rejects an empty model' do
+      expect { described_class.validate_lane_id!(value: 'local:vllm:h200:inference:') }
+        .to raise_error(errors::ValidationError, /model/)
+    end
+
+    it 'rejects a non-NFC provider_family, instance_id, or model' do
+      decomposed = [0x0065, 0x0301].pack('U*') # e + combining acute; not NFC
+      expect { described_class.validate_lane_id!(value: "local:#{decomposed}vllm:h200:inference:gemma4") }
+        .to raise_error(errors::ValidationError, /provider_family/)
+      expect { described_class.validate_lane_id!(value: "local:vllm:#{decomposed}h200:inference:gemma4") }
+        .to raise_error(errors::ValidationError, /instance_id/)
+      expect { described_class.validate_lane_id!(value: "local:vllm:h200:inference:#{decomposed}emma4") }
+        .to raise_error(errors::ValidationError, /model/)
+    end
+  end
+
+  describe 'independence' do
+    it 'produces distinct ids for the same model on two instance ids' do
+      expect(compose(instance: 'h200')).not_to eq(compose(instance: 'helios1'))
+    end
+
+    it 'is tier-SENSITIVE: the tier is the first id part (unlike the deleted digest)' do
+      expect(compose(tier: :local)).not_to eq(compose(tier: :frontier))
     end
   end
 
@@ -250,8 +249,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Identity do
           provider_family: :vllm, instance_id: 'apollo', physical_id: '10.0.0.9:9000'
         )
         expect(bare).to eq(with_physical)
-        expect(bare.hash).to eq(with_physical.hash)
-        expect(with_physical).to eq(other_physical)
+        expect(bare.hash).to eq(other_physical.hash)
         expect({ bare => :found }[with_physical]).to eq(:found)
       end
 
@@ -268,20 +266,39 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Identity do
       end
 
       it 'still distinguishes distinct config names on the same physical endpoint' do
-        apollo = instance_key_class.new(provider_family: :ollama, instance_id: 'apollo', physical_id: 'localhost:11434')
-        apollo_embed = instance_key_class.new(provider_family: :ollama, instance_id: 'apollo-embed', physical_id: 'localhost:11434')
+        apollo = instance_key_class.new(provider_family: 'ollama', instance_id: 'apollo', physical_id: 'localhost:11434')
+        apollo_embed = instance_key_class.new(provider_family: 'ollama', instance_id: 'apollo-embed', physical_id: 'localhost:11434')
         expect(apollo).not_to eq(apollo_embed)
       end
     end
   end
 
+  describe 'M6 — the single config→instance-id derivation (owner law)' do
+    it 'derives the operator config name from a provider config' do
+      config = Struct.new(:instance_id).new('h200')
+      expect(described_class.instance_id(config)).to eq('h200')
+    end
+
+    it 'uses the ordinary "default" label (not a reserved value) when no instance name is configured' do
+      expect(described_class.instance_id(Struct.new(:instance_id).new(nil))).to eq('default')
+      expect(described_class.instance_id({})).to eq('default')
+      expect(described_class.instance_id(nil)).to eq('default')
+    end
+  end
+
   describe 'public surface' do
-    it 'exposes exactly the seven documented module methods' do
+    it 'exposes exactly the documented module methods — no digest machinery' do
       expected = %i[
-        normalize_text normalize_enum length_frame offering_id lane_id
-        validate_offering_id! validate_lane_id!
+        normalize_text normalize_enum compose_lane_id parse_lane_id
+        validate_lane_id! instance_id
       ].sort
       expect(described_class.singleton_methods(false).sort).to eq(expected)
+    end
+
+    it 'defines no digest encoder or legacy validator' do
+      %i[length_frame offering_id lane_id validate_offering_id!].each do |gone|
+        expect(described_class.singleton_methods(false)).not_to include(gone)
+      end
     end
   end
 end

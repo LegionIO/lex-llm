@@ -9,6 +9,7 @@ require 'legion/extensions/llm/inventory/callable_handle'
 require 'legion/extensions/llm/inventory/probe_token'
 require 'legion/extensions/llm/inventory/records'
 require 'legion/extensions/llm/inventory/snapshot'
+require 'legion/extensions/llm/taxonomies'
 
 module Legion
   module Extensions
@@ -21,7 +22,7 @@ module Legion
           # Private per-instance state. Never leaves registry.rb.
           ScopeState = ::Data.define(
             :instance_key, :publisher_token, :callable, :callable_handle, :probe_request_handle,
-            :publication_status, :last_sequence, :availability, :offerings, :lanes,
+            :publication_status, :last_sequence, :availability, :lanes,
             :availability_revision, :unavailable_revision, :published_at
           )
 
@@ -196,7 +197,7 @@ module Legion
                 @scopes[instance_key] = ScopeState.new(
                   instance_key: instance_key, publisher_token: token, callable: callable, callable_handle: handle,
                   probe_request_handle: probe_request_handle, publication_status: status,
-                  last_sequence: -1, availability: nil, offerings: {}, lanes: {},
+                  last_sequence: -1, availability: nil, lanes: {},
                   availability_revision: prior&.availability_revision || 0,
                   unavailable_revision: prior&.unavailable_revision, published_at: nil
                 )
@@ -218,7 +219,7 @@ module Legion
               status = complete_status(scope, sequence, probe_token, now, :success)
               new_scope = scope.with(
                 publication_status: status, last_sequence: sequence, availability: availability,
-                offerings: prepared[1], lanes: prepared[2], availability_revision: new_rev,
+                lanes: prepared[1], availability_revision: new_rev,
                 unavailable_revision: nil, published_at: now
               )
               @scopes[instance_key] = new_scope
@@ -237,7 +238,7 @@ module Legion
 
             def apply_replacement(scope, instance_key, prepared, sequence)
               status = scope.publication_status.with(published_sequence: sequence)
-              new_scope = scope.with(offerings: prepared[1], lanes: prepared[2], last_sequence: sequence, publication_status: status)
+              new_scope = scope.with(lanes: prepared[1], last_sequence: sequence, publication_status: status)
               @scopes[instance_key] = new_scope
               bump_and_snapshot!
               applied(:snapshot_replaced, new_scope)
@@ -428,7 +429,6 @@ module Legion
 
             def build_snapshot_locked
               instances = {}
-              offerings = {}
               lanes = {}
               statuses = {}
               @scopes.each_pair do |key, scope|
@@ -436,11 +436,10 @@ module Legion
                 next if scope.availability.nil?
 
                 instances[key] = instance_record_for(scope)
-                offerings.merge!(scope.offerings)
                 lanes.merge!(scope.lanes)
               end
               Snapshot.new(
-                generation: @generation, instances_by_key: instances, offerings_by_id: offerings,
+                generation: @generation, instances_by_key: instances,
                 lanes_by_id: lanes, publication_status_by_key: statuses
               )
             end
@@ -448,7 +447,7 @@ module Legion
             def instance_record_for(scope)
               InstanceRecord.new(
                 instance_key: scope.instance_key, callable_handle: scope.callable_handle, availability: scope.availability,
-                offerings_by_id: scope.offerings, publisher_id: scope.publisher_token.publisher_id,
+                lanes_by_id: scope.lanes, publisher_id: scope.publisher_token.publisher_id,
                 publisher_token_id: scope.publisher_token.publisher_token_id, published_sequence: scope.last_sequence,
                 published_at: scope.published_at
               )
@@ -460,69 +459,76 @@ module Legion
               scope = @scopes[instance_key]
               return nil if scope.nil?
 
-              offerings_by_id, lanes_by_id = build_records(instance_key, scope.callable_handle, drafts)
-              [scope.callable_handle, offerings_by_id, lanes_by_id]
+              [scope.callable_handle, build_records(instance_key, scope.callable_handle, drafts)]
             end
 
             def prepared_matches?(prepared, scope)
               !prepared.nil? && prepared[0].equal?(scope.callable_handle)
             end
 
+            # The stored inventory is lanes ONLY, keyed by the 5 tuple
+            # tier:provider_family:instance_id:type:model. The 4th part is the
+            # COARSE type, not the fine operation: the operations a draft
+            # supports collapse to one lane per distinct type (chat +
+            # stream_chat + count_tokens are ONE inference lane — the v0.15.2
+            # model, where the operation is a request property matched against
+            # the lane type, not a lane identity part). The LaneRecord's
+            # operation member is the first supported operation of the lane's
+            # type in canonical order — the representative, not the identity.
+            # A duplicate (operation, model) published under a conflicting
+            # tier, or a second draft claiming an already-published 5 tuple,
+            # raises — never a silent merge (D1).
             def build_records(instance_key, handle, drafts)
-              offerings_by_id = {}
+              lanes = {}
               native_keys = {}
+              op_model_tiers = {}
               drafts.each do |draft|
-                offering_id = Identity.offering_id(instance_key: instance_key, provider_native_key: draft.provider_native_key)
                 raise Errors::ValidationError, 'duplicate provider_native_key' if native_keys.key?(draft.provider_native_key)
-                raise Errors::ValidationError, 'duplicate offering_id' if offerings_by_id.key?(offering_id)
 
                 native_keys[draft.provider_native_key] = true
-                offerings_by_id[offering_id] = build_offering_record(instance_key, handle, offering_id, draft)
+                draft.operation_evidence.each_value do |evidence|
+                  next unless evidence.supported?
+
+                  op_model = [evidence.operation, draft.model]
+                  raise Errors::ValidationError, 'duplicate (operation, model) published under a conflicting tier' if op_model_tiers.key?(op_model) && op_model_tiers[op_model] != draft.tier
+
+                  op_model_tiers[op_model] = draft.tier
+                end
+
+                # One lane per distinct type the draft supports.
+                draft.operation_evidence.each_value
+                     .select(&:supported?)
+                     .group_by { |evidence| Taxonomies.lane_type_for(operation: evidence.operation) }
+                     .each do |type, evidences|
+                  representative = evidences.min_by { |evidence| Taxonomies::OPERATIONS.index(evidence.operation) }
+                  lane_id = Identity.compose_lane_id(
+                    tier: draft.tier, provider_family: instance_key.provider_family,
+                    instance_id: instance_key.instance_id, type: type, model: draft.model
+                  )
+                  raise Errors::ValidationError, 'duplicate lane_id' if lanes.key?(lane_id)
+
+                  lanes[lane_id] = build_lane_record(instance_key, handle, draft, type, representative.operation)
+                end
               end
-              [offerings_by_id.freeze, build_lanes(instance_key, handle, offerings_by_id).freeze]
+              lanes.freeze
             end
 
-            def build_offering_record(instance_key, handle, offering_id, draft)
-              OfferingRecord.new(
-                offering_id: offering_id, provider_native_key: draft.provider_native_key, instance_key: instance_key,
-                model: draft.model, tier: draft.tier, operation_evidence: draft.operation_evidence,
+            def build_lane_record(instance_key, handle, draft, type, operation)
+              LaneRecord.new(
+                lane_id: Identity.compose_lane_id(
+                  tier: draft.tier, provider_family: instance_key.provider_family,
+                  instance_id: instance_key.instance_id, type: type, model: draft.model
+                ),
+                instance_key: instance_key,
+                provider_family: instance_key.provider_family, instance_id: instance_key.instance_id,
+                model: draft.model, tier: draft.tier, operation: operation,
                 capability_evidence: draft.capability_evidence, context_evidence: draft.context_evidence,
                 max_output_evidence: draft.max_output_evidence,
                 embedding_dimensions_evidence: draft.embedding_dimensions_evidence,
                 model_revision_evidence: draft.model_revision_evidence, tokenizer_evidence: draft.tokenizer_evidence,
-                quota_domains: draft.quota_domains, metadata: draft.metadata, callable_handle: handle,
-                publication_source: draft.publication_source,
+                quota_domain: draft.quota_domains[operation], metadata: draft.metadata,
+                callable_handle: handle, publication_source: draft.publication_source,
                 weight_inputs: draft.weight_inputs, base_weight: draft.base_weight
-              )
-            end
-
-            def build_lanes(instance_key, handle, offerings_by_id)
-              lanes = {}
-              offerings_by_id.each_value do |offering|
-                offering.supported_operations.each do |operation|
-                  lane_id = Identity.lane_id(
-                    instance_key: instance_key, operation: operation, model: offering.model, offering_id: offering.offering_id
-                  )
-                  raise Errors::ValidationError, 'duplicate lane_id' if lanes.key?(lane_id)
-
-                  lanes[lane_id] = build_lane_record(instance_key, handle, offering, operation, lane_id)
-                end
-              end
-              lanes
-            end
-
-            def build_lane_record(instance_key, handle, offering, operation, lane_id)
-              LaneRecord.new(
-                lane_id: lane_id, offering_id: offering.offering_id, instance_key: instance_key,
-                provider_family: instance_key.provider_family, instance_id: instance_key.instance_id,
-                model: offering.model, tier: offering.tier, operation: operation,
-                capability_evidence: offering.capability_evidence, context_evidence: offering.context_evidence,
-                max_output_evidence: offering.max_output_evidence,
-                embedding_dimensions_evidence: offering.embedding_dimensions_evidence,
-                model_revision_evidence: offering.model_revision_evidence, tokenizer_evidence: offering.tokenizer_evidence,
-                quota_domain: offering.quota_domain(operation: operation), metadata: offering.metadata,
-                callable_handle: handle, publication_source: offering.publication_source,
-                weight_inputs: offering.weight_inputs, base_weight: offering.base_weight
               )
             end
 

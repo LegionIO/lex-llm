@@ -13,7 +13,7 @@ module Legion
           include Legion::Logging::Helper
 
           def basic(&)
-            logger = faraday_logger
+            logger = faraday_logger_for(Legion::Extensions::Llm.config, log)
             Faraday.new do |f|
               f.response :logger,
                          logger,
@@ -25,22 +25,20 @@ module Legion
               yield f if block_given?
             end
           end
+        end
 
-          private
+        # One Faraday logger resolution (10 U9): the configured logger when
+        # present, else the caller's fallback log.
+        def self.faraday_logger_for(config_source, fallback_log)
+          return config_source.logger if config_source.respond_to?(:logger) && config_source.logger
 
-          def faraday_logger
-            config = Legion::Extensions::Llm.config
-            return config.logger if config.respond_to?(:logger) && config.logger
-
-            log
-          end
+          fallback_log
         end
 
         def initialize(provider, config)
           @provider = provider
           @config = config
 
-          ensure_configured!
           @connection ||= Faraday.new(provider.api_base) do |faraday|
             faraday.ssl.verify = false
             setup_timeout(faraday)
@@ -83,7 +81,7 @@ module Legion
         end
 
         def setup_logging(faraday)
-          logger = faraday_logger
+          logger = self.class.faraday_logger_for(config, log)
           # Enable request body logging when the logger is at DEBUG level,
           # or when explicitly enabled via fleet request_payload setting.
           request_payload = Legion::Extensions::Llm.default_settings.dig(:fleet, :request, :logger, :request_payload)
@@ -98,12 +96,6 @@ module Legion
             logger.filter(logging_regexp('[A-Za-z0-9+/=]{100,}'), '[BASE64 DATA]')
             logger.filter(logging_regexp('[-\\d.e,\\s]{100,}'), '[EMBEDDINGS ARRAY]')
           end
-        end
-
-        def faraday_logger
-          return config.logger if config.respond_to?(:logger) && config.logger
-
-          log
         end
 
         def debug_logger?(logger)
@@ -163,20 +155,6 @@ module Legion
             Legion::Extensions::Llm::ServiceUnavailableError,
             Legion::Extensions::Llm::OverloadedError
           ]
-        end
-
-        def ensure_configured!
-          return if @provider.configured?
-
-          missing = @provider.configuration_requirements.reject { |req| @config.send(req) }
-          config_block = <<~RUBY
-            Legion::Extensions::Llm.configure do |config|
-              #{missing.map { |key| "config.#{key} = ENV['#{key.to_s.upcase}']" }.join("\n  ")}
-            end
-          RUBY
-
-          raise ConfigurationError,
-                "#{@provider.name} provider is not configured. Add this to your initialization:\n\n#{config_block}"
         end
       end
     end

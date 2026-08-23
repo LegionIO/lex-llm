@@ -17,7 +17,7 @@ RSpec.describe Legion::Extensions::Llm::Transport::FleetLane do
         'x-message-ttl' => 120_000,
         'x-max-length' => 100,
         'x-delivery-limit' => 3,
-        'x-consumer-timeout' => 300_000
+        'x-consumer-timeout' => 90_000
       )
     end
 

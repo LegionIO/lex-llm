@@ -1,221 +1,85 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../conformance/conformance'
 
 RSpec.describe Legion::Extensions::Llm::Canonical::ToolDefinition do
-  describe '.build' do
-    it 'creates a tool definition with name and description' do
-      tool = described_class.build(name: 'search', description: 'Search the web')
-
-      expect(tool.name).to eq('search')
-      expect(tool.description).to eq('Search the web')
-      expect(tool.parameters).to eq(type: 'object', properties: {})
-      expect(tool.source).to eq({ type: :builtin })
-    end
-
-    it 'accepts parameters and source' do
-      tool = described_class.build(
-        name: 'search',
-        description: 'Search',
-        parameters: { type: 'object', properties: { query: { type: 'string' } } },
-        source: { type: :registry }
-      )
-
-      expect(tool.parameters).to eq({ type: 'object', properties: { query: { type: 'string' } } })
-      expect(tool.source).to eq({ type: :registry })
-    end
-
-    it 'sanitizes tool names' do
-      tool = described_class.build(name: 'My.Tool.Name!', description: 'test')
-
-      expect(tool.name).to eq('My_Tool_Name')
-    end
-
-    it 'truncates long tool names' do
-      long_name = 'a' * 100
-      tool = described_class.build(name: long_name)
-
-      expect(tool.name.length).to eq(64)
-    end
-
-    it 'provides fallback name for empty input' do
-      tool = described_class.build(name: '')
-
-      expect(tool.name).to eq('tool')
-    end
-
-    it 'converts nil description to empty string' do
-      tool = described_class.build(name: 'search')
-
-      expect(tool.description).to eq('')
-    end
+  let(:type_class) { described_class }
+  let(:auto_generated_members) { [] }
+  let(:type_source) do
+    {
+      name: 'get_weather',
+      description: 'Get the weather',
+      parameters: { type: 'object', properties: { location: { type: 'string' } } },
+      source: { type: :registry, tool_class: 'WeatherTool' },
+      metadata: { origin: 'client' }
+    }
   end
 
-  describe '.from_hash' do
-    it 'parses from hash with symbol keys' do
-      tool = described_class.from_hash({ name: 'search', description: 'Search', parameters: { type: 'object' } })
+  it_behaves_like 'a canonical type'
 
-      expect(tool.name).to eq('search')
-      expect(tool.description).to eq('Search')
-      expect(tool.parameters).to eq({ type: 'object' })
-    end
-
-    it 'parses from hash with string keys' do
-      tool = described_class.from_hash({ 'name' => 'search', 'description' => 'Search' })
-
-      expect(tool.name).to eq('search')
-      expect(tool.description).to eq('Search')
-    end
-
-    it 'accepts input_schema as alias for parameters' do
-      tool = described_class.from_hash({ name: 'search', input_schema: { type: 'object' } })
-
-      expect(tool.parameters).to eq({ type: 'object' })
-    end
-
-    it 'accepts source parameter' do
-      tool = described_class.from_hash({ name: 'search', source: { type: :extension } })
-
-      expect(tool.source).to eq({ type: :extension })
-    end
-
-    it 'overrides source with keyword arg' do
-      tool = described_class.from_hash(
-        { name: 'search', source: { type: :builtin } },
-        source: { type: :override }
-      )
-
-      expect(tool.source).to eq({ type: :override })
-    end
-  end
-
-  describe '.from_registry_entry' do
-    it 'creates from registry entry with tool_class' do
-      entry = {
-        name: 'ruby',
-        description: 'Run Ruby code',
-        input_schema: { type: 'object' },
-        tool_class: 'RubyTool',
-        extension: 'legion-code',
-        runner: 'RubyRunner',
-        function: :execute
-      }
-      tool = described_class.from_registry_entry(entry)
-
-      expect(tool.name).to eq('ruby')
-      expect(tool.description).to eq('Run Ruby code')
-      expect(tool.parameters).to eq({ type: 'object' })
-      expect(tool.source[:type]).to eq(:registry)
-      expect(tool.source[:extension]).to eq('legion-code')
-    end
-
-    it 'creates from registry entry without tool_class' do
-      entry = {
-        name: 'custom',
-        description: 'Custom tool',
-        parameters: { type: 'object', properties: { name: { type: 'string' } } },
-        extension: 'custom-ext'
-      }
-      tool = described_class.from_registry_entry(entry)
-
-      expect(tool.source[:type]).to eq(:extension)
-    end
-  end
-
-  describe '.sanitize_tool_name' do
-    it 'replaces dots with underscores' do
-      expect(described_class.sanitize_tool_name('my.tool')).to eq('my_tool')
-    end
-
-    it 'removes special characters' do
-      expect(described_class.sanitize_tool_name('my-tool!@#')).to eq('my-tool')
-    end
-
-    it 'preserves alphanumeric, underscores, and hyphens' do
-      expect(described_class.sanitize_tool_name('my-tool_123')).to eq('my-tool_123')
-    end
-  end
-
-  describe '#to_h' do
-    it 'serializes to hash with name, description, parameters' do
-      tool = described_class.build(
-        name: 'search',
-        description: 'Search the web',
-        parameters: { type: 'object' }
-      )
-      hash = tool.to_h
-
-      expect(hash).to eq(
-        name: 'search',
-        description: 'Search the web',
-        parameters: { type: 'object' }
-      )
-    end
-
-    it 'omits nil values' do
-      tool = described_class.new('search', '', nil, nil)
-      hash = tool.to_h
-
-      expect(hash).to eq(name: 'search')
-    end
-  end
-
-  describe '.normalize_parameters' do
-    it 'injects type: object when a schema has properties but no type' do
-      schema = { properties: { task: { type: 'string' } }, required: ['task'] }
-      result = described_class.normalize_parameters(schema)
-      expect(result[:type]).to eq('object')
-      expect(result[:properties]).to eq(task: { type: 'string' })
-      expect(result[:required]).to eq(['task'])
-    end
-
-    it 'passes schemas with an explicit type through unchanged' do
-      schema = { type: 'object', properties: { a: { type: 'string' } } }
-      expect(described_class.normalize_parameters(schema)).to eq(schema)
-    end
-
-    it 'wraps a bare property map under type:object/properties' do
-      expect(described_class.normalize_parameters(location: { type: 'string' }))
-        .to eq(type: 'object', properties: { location: { type: 'string' } })
-    end
-
-    it 'returns an empty object schema for nil/empty' do
-      expect(described_class.normalize_parameters(nil)).to eq(type: 'object', properties: {})
-      expect(described_class.normalize_parameters({})).to eq(type: 'object', properties: {})
-    end
-
-    it 'symbolizes top-level string keys' do
-      result = described_class.normalize_parameters('properties' => { 'a' => { 'type' => 'string' } })
-      expect(result[:type]).to eq('object')
-      expect(result).to have_key(:properties)
-    end
-
-    it 'leaves composite schemas (oneOf etc.) without forcing type' do
-      schema = { oneOf: [{ type: 'string' }, { type: 'integer' }] }
-      expect(described_class.normalize_parameters(schema)).to eq(schema)
-    end
-
-    it 'normalizes parameters at construction via .build' do
-      td = described_class.build(name: 'multi_agent_v1',
-                                 parameters: { properties: { task: { type: 'string' } } })
-      expect(td.parameters[:type]).to eq('object')
-    end
-
-    it 'normalizes nil parameters to empty object schema via .build' do
-      td = described_class.build(name: 'bare_tool')
+  describe 'O03a — no input_schema alias' do
+    it 'does not translate input_schema (it folds into metadata)' do
+      td = described_class.from_hash(name: 'x', input_schema: { type: 'object', properties: {} })
       expect(td.parameters).to eq(type: 'object', properties: {})
+      expect(td.metadata).to eq(input_schema: { type: 'object', properties: {} })
     end
   end
 
-  describe 'round-trip' do
-    it 'preserves values through from_hash/to_h' do
-      original = { name: 'search', description: 'Search', parameters: { type: 'object' } }
-      tool = described_class.from_hash(original)
-      serialized = tool.to_h
-
-      expect(serialized[:name]).to eq('search')
-      expect(serialized[:description]).to eq('Search')
-      expect(serialized[:parameters]).to eq({ type: 'object' })
+  describe 'L3 — no coercion of non-Hash input' do
+    it 'raises on non-Hash from_hash input (the {} fabrication is deleted)' do
+      expect { described_class.from_hash(nil) }
+        .to raise_error(ArgumentError, /expected Hash, got NilClass/)
+      expect { described_class.from_hash('raw') }
+        .to raise_error(ArgumentError, /expected Hash, got String/)
     end
+  end
+
+  describe 'schema normalization (frozen inference rules)' do
+    it 'defaults missing/empty parameters to an empty object schema' do
+      expect(described_class.build(name: 'x').parameters).to eq(type: 'object', properties: {})
+    end
+
+    it 'wraps bare property maps in an object schema' do
+      td = described_class.build(name: 'x', parameters: { a: { type: 'string' } })
+      expect(td.parameters).to eq(type: 'object', properties: { a: { type: 'string' } })
+    end
+
+    it 'keeps explicit type and composite schemas as-is' do
+      expect(described_class.build(name: 'x', parameters: { type: 'string' }).parameters)
+        .to eq(type: 'string')
+      expect(described_class.build(name: 'x', parameters: { oneOf: [] }).parameters)
+        .to eq(oneOf: [])
+    end
+  end
+
+  describe 'M5 — the name is authoritative (no rewrite, no fabrication)' do
+    it 'preserves the client/registry name verbatim (dialect rules live at the provider edge)' do
+      expect(described_class.build(name: 'get.weather').name).to eq('get.weather')
+      expect(described_class.build(name: 'a' * 80).name).to eq('a' * 80)
+      expect(described_class).not_to respond_to(:sanitize_tool_name)
+    end
+
+    it 'raises on a missing or empty name (the "tool" fabrication is deleted)' do
+      expect { described_class.build(name: nil) }
+        .to raise_error(ArgumentError, /name must be a non-empty String/)
+      expect { described_class.build(name: '') }
+        .to raise_error(ArgumentError, /name must be a non-empty String/)
+      expect { described_class.from_hash({}) }
+        .to raise_error(ArgumentError, /name must be a non-empty String/)
+    end
+
+    it 'does not fabricate a source (explicit or absent, never laundered to builtin)' do
+      expect(described_class.build(name: 'x').source).to be_nil
+      expect(described_class.build(name: 'x', source: { type: :client }).source).to eq(type: :client)
+      expect { described_class.build(name: 'x', source: 'client') }
+        .to raise_error(ArgumentError, /source expected Hash/)
+    end
+  end
+
+  it 'builds from keyword args with defaults (empty description, absent source)' do
+    td = described_class.build(name: 'x')
+    expect(td.description).to eq('')
+    expect(td.source).to be_nil
   end
 end

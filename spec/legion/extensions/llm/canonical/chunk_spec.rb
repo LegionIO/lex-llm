@@ -1,285 +1,99 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require_relative '../conformance/conformance'
 
 RSpec.describe Legion::Extensions::Llm::Canonical::Chunk do
-  describe '.text_delta' do
-    it 'creates a text delta chunk' do
-      chunk = described_class.text_delta(delta: 'hello', request_id: 'req-1')
+  let(:type_class) { described_class }
+  let(:auto_generated_members) { [:timestamp] }
+  let(:type_source) do
+    {
+      request_id: 'req_1',
+      conversation_id: 'conv_1',
+      exchange_id: 'exch_1',
+      index: 3,
+      type: 'text_delta',
+      delta: 'hello',
+      metadata: { origin: 'provider' }
+    }
+  end
 
-      expect(chunk.type).to eq(:text_delta)
-      expect(chunk.delta).to eq('hello')
-      expect(chunk.request_id).to eq('req-1')
-      expect(chunk.index).to eq(0)
-      expect(chunk.timestamp).to be_a(Time)
+  it_behaves_like 'a canonical type'
+
+  describe 'G20d — produce side strict, consume side lenient' do
+    it 'produces valid CHUNK_TYPES via the named factories' do
+      expect(described_class.text_delta(delta: 'x', request_id: 'r').type).to eq(:text_delta)
+      expect(described_class.thinking_delta(delta: 'x', request_id: 'r').type).to eq(:thinking_delta)
+      expect(described_class.tool_call_delta(tool_call: { id: 'i' }, request_id: 'r').type).to eq(:tool_call_delta)
+      expect(described_class.usage_chunk(usage: Legion::Extensions::Llm::Canonical::Usage.build(input_tokens: 1),
+                                         request_id: 'r').type).to eq(:usage)
+      expect(described_class.done(request_id: 'r').type).to eq(:done)
+      expect(described_class.error_chunk(error: 'boom', request_id: 'r').type).to eq(:error)
     end
 
-    it 'accepts block_index and item_id' do
-      chunk = described_class.text_delta(
-        delta: 'hello',
-        request_id: 'req-1',
-        block_index: 0,
-        item_id: 'item-1'
-      )
+    it 'the generic produce path validates type against CHUNK_TYPES' do
+      expect { described_class.build(type: :bogus, request_id: 'r') }
+        .to raise_error(ArgumentError, /Invalid type: :bogus/)
+      expect(described_class.build(type: 'usage', request_id: 'r').type).to eq(:usage)
+    end
 
-      expect(chunk.block_index).to eq(0)
-      expect(chunk.item_id).to eq('item-1')
+    it 'consume passes unknown types through unchanged (ignore-unknown on consume)' do
+      chunk = described_class.from_hash(type: 'weird_custom_type', delta: 'x')
+      expect(chunk.type).to eq(:weird_custom_type)
+    end
+
+    it 'H1: .new validates member shapes (type is String|Symbol, never a Hash)' do
+      expect { described_class.new(type: { not: :a_type }, request_id: 'r') }
+        .to raise_error(ArgumentError, /type expected String or Symbol, got Hash/)
+      expect(described_class.new(type: 'text_delta', request_id: 'r').type).to eq(:text_delta)
     end
   end
 
-  describe '.thinking_delta' do
-    it 'creates a thinking delta chunk' do
-      chunk = described_class.thinking_delta(
-        delta: 'reasoning',
-        request_id: 'req-1',
-        signature: 'sig-partial'
-      )
-
-      expect(chunk.type).to eq(:thinking_delta)
-      expect(chunk.delta).to eq('reasoning')
-      expect(chunk.signature).to eq('sig-partial')
+  describe 'O03a — no finish_reason alias' do
+    it 'does not translate finish_reason (it folds into metadata)' do
+      chunk = described_class.from_hash(type: 'done', stop_reason: nil, finish_reason: 'stop')
+      expect(chunk.stop_reason).to be_nil
+      expect(chunk.metadata).to eq(finish_reason: 'stop')
     end
   end
 
-  describe '.tool_call_delta' do
-    it 'creates a tool call delta chunk' do
-      tool_call = Legion::Extensions::Llm::Canonical::ToolCall.build(name: 'search')
-      chunk = described_class.tool_call_delta(tool_call: tool_call, request_id: 'req-1')
-
-      expect(chunk.type).to eq(:tool_call_delta)
-      expect(chunk.tool_call).to eq(tool_call)
-    end
-  end
-
-  describe '.usage_chunk' do
-    it 'creates a usage chunk' do
-      usage = Legion::Extensions::Llm::Canonical::Usage.new(
-        input_tokens: 100, output_tokens: 50,
-        cache_read_tokens: nil, cache_write_tokens: nil,
-        thinking_tokens: nil, units: {}
-      )
-      chunk = described_class.usage_chunk(usage: usage, request_id: 'req-1')
-
-      expect(chunk.type).to eq(:usage)
-      expect(chunk.usage).to eq(usage)
-    end
-  end
-
-  describe '.done' do
-    it 'creates a done chunk' do
-      chunk = described_class.done(request_id: 'req-1', stop_reason: :end_turn)
-
-      expect(chunk.type).to eq(:done)
-      expect(chunk.stop_reason).to eq(:end_turn)
-    end
-
-    it 'includes usage when provided' do
-      usage = Legion::Extensions::Llm::Canonical::Usage.new(
-        input_tokens: 100, output_tokens: 50,
-        cache_read_tokens: nil, cache_write_tokens: nil,
-        thinking_tokens: nil, units: {}
-      )
-      chunk = described_class.done(request_id: 'req-1', usage: usage, stop_reason: :end_turn)
-
-      expect(chunk.usage).to eq(usage)
-    end
-  end
-
-  describe '.error_chunk' do
-    it 'creates an error chunk' do
-      chunk = described_class.error_chunk(error: 'timeout', request_id: 'req-1')
-
-      expect(chunk.type).to eq(:error)
-      expect(chunk.stop_reason).to eq(:error)
-      expect(chunk.metadata[:error]).to eq('timeout')
-    end
-
-    it 'merges additional metadata' do
-      chunk = described_class.error_chunk(
-        error: 'timeout',
-        request_id: 'req-1',
-        metadata: { provider: 'anthropic' }
-      )
-
-      expect(chunk.metadata[:error]).to eq('timeout')
-      expect(chunk.metadata[:provider]).to eq('anthropic')
-    end
-  end
-
-  describe '.from_hash' do
-    it 'parses from hash with symbol keys' do
+  describe 'nested member normalization (L2)' do
+    it 'normalizes Hash usage and tool_call fragments' do
       chunk = described_class.from_hash(
-        type: :text_delta,
-        delta: 'hello',
-        request_id: 'req-1'
+        type: 'usage',
+        usage: { input_tokens: 5 },
+        tool_call: { id: 'i1', name: 'f', arguments: '{"a"', index: 0 }
       )
-
-      expect(chunk.type).to eq(:text_delta)
-      expect(chunk.delta).to eq('hello')
-      expect(chunk.request_id).to eq('req-1')
-    end
-
-    it 'normalizes type string to symbol' do
-      chunk = described_class.from_hash(type: 'text_delta', delta: 'hello', request_id: 'req-1')
-
-      expect(chunk.type).to eq(:text_delta)
-    end
-
-    it 'parses nested tool_call' do
-      chunk = described_class.from_hash(
-        type: :tool_call_delta,
-        request_id: 'req-1',
-        tool_call: { name: 'search', arguments: { query: 'test' } }
-      )
-
-      expect(chunk.tool_call).to be_a(Legion::Extensions::Llm::Canonical::ToolCall)
-      expect(chunk.tool_call.name).to eq('search')
-    end
-
-    it 'parses nested usage' do
-      chunk = described_class.from_hash(
-        type: :usage,
-        request_id: 'req-1',
-        usage: { input_tokens: 100, output_tokens: 50 }
-      )
-
       expect(chunk.usage).to be_a(Legion::Extensions::Llm::Canonical::Usage)
+      expect(chunk.usage.input_tokens).to eq(5)
+      expect(chunk.tool_call).to eq(id: 'i1', name: 'f', arguments: '{"a"', index: 0)
     end
 
-    it 'normalizes stop_reason' do
-      chunk = described_class.from_hash(
-        type: :done,
-        request_id: 'req-1',
-        stop_reason: 'end_turn'
-      )
-
-      expect(chunk.stop_reason).to eq(:end_turn)
-    end
-
-    it 'accepts finish_reason as alias' do
-      chunk = described_class.from_hash(
-        type: :done,
-        request_id: 'req-1',
-        finish_reason: 'tool_use'
-      )
-
-      expect(chunk.stop_reason).to eq(:tool_use)
-    end
-
-    it 'returns nil for nil source' do
-      expect(described_class.from_hash(nil)).to be_nil
-    end
-
-    it 'handles string keys' do
-      chunk = described_class.from_hash(
-        'type' => 'text_delta',
-        'delta' => 'hello',
-        'request_id' => 'req-1'
-      )
-
-      expect(chunk.type).to eq(:text_delta)
-      expect(chunk.delta).to eq('hello')
+    it 'raises on wrong-class nested members' do
+      expect { described_class.from_hash(type: 'usage', usage: 'nope') }
+        .to raise_error(ArgumentError, /usage expected Hash, got String/)
+      expect { described_class.build(tool_call: 42, type: :tool_call_delta, request_id: 'r') }
+        .to raise_error(ArgumentError, /tool_call expected Hash \| .+ToolCall, got Integer/)
     end
   end
 
-  describe '#to_h' do
-    it 'serializes to compact hash' do
-      chunk = described_class.text_delta(delta: 'hello', request_id: 'req-1')
-      hash = chunk.to_h
-
-      expect(hash).to include(type: :text_delta, delta: 'hello', request_id: 'req-1')
-    end
-
-    it 'serializes nested objects' do
-      tool_call = Legion::Extensions::Llm::Canonical::ToolCall.build(name: 'search')
-      chunk = described_class.tool_call_delta(tool_call: tool_call, request_id: 'req-1')
-      hash = chunk.to_h
-
-      expect(hash[:tool_call]).to be_a(Hash)
-      expect(hash[:tool_call][:name]).to eq('search')
+  describe 'T4 — signature and usage survive the wire' do
+    it 'survives build → to_h → JSON → from_hash' do
+      chunk = described_class.thinking_delta(delta: 'hmm', request_id: 'r', signature: 'sig-9')
+      wire = Legion::JSON.load(Legion::JSON.dump(chunk.to_h))
+      round_tripped = described_class.from_hash(wire)
+      expect(round_tripped.signature).to eq('sig-9')
+      expect(round_tripped.delta).to eq('hmm')
+      expect(round_tripped.type).to eq(:thinking_delta)
     end
   end
 
-  describe 'type predicates' do
-    it 'identifies text_delta chunks' do
-      chunk = described_class.text_delta(delta: 'hello', request_id: 'req-1')
-      expect(chunk.text_delta?).to be true
-      expect(chunk.content?).to be true
-    end
-
-    it 'identifies thinking_delta chunks' do
-      chunk = described_class.thinking_delta(delta: 'reasoning', request_id: 'req-1')
-      expect(chunk.thinking_delta?).to be true
-      expect(chunk.content?).to be true
-    end
-
-    it 'identifies tool_call_delta chunks' do
-      tc = Legion::Extensions::Llm::Canonical::ToolCall.build(name: 'search')
-      chunk = described_class.tool_call_delta(tool_call: tc, request_id: 'req-1')
-      expect(chunk.tool_call_delta?).to be true
-      expect(chunk.content?).to be false
-    end
-
-    it 'identifies usage chunks' do
-      usage = Legion::Extensions::Llm::Canonical::Usage.new(
-        input_tokens: 100, output_tokens: 50,
-        cache_read_tokens: nil, cache_write_tokens: nil,
-        thinking_tokens: nil, units: {}
-      )
-      chunk = described_class.usage_chunk(usage: usage, request_id: 'req-1')
-      expect(chunk.usage?).to be true
-    end
-
-    it 'identifies done chunks' do
-      chunk = described_class.done(request_id: 'req-1')
-      expect(chunk.done?).to be true
-    end
-
-    it 'identifies error chunks' do
-      chunk = described_class.error_chunk(error: 'timeout', request_id: 'req-1')
-      expect(chunk.error?).to be true
-    end
-  end
-
-  describe 'CHUNK_TYPES' do
-    it 'includes all expected chunk types' do
-      expect(described_class::CHUNK_TYPES).to eq(
-        %i[text_delta thinking_delta tool_call_delta usage done error]
-      )
-    end
-  end
-
-  describe 'round-trip' do
-    it 'preserves text_delta through from_hash/to_h' do
-      original = {
-        type: 'text_delta',
-        delta: 'hello',
-        request_id: 'req-1',
-        block_index: 0,
-        item_id: 'item-1'
-      }
-      chunk = described_class.from_hash(original)
-      serialized = chunk.to_h
-
-      expect(serialized[:type]).to eq(:text_delta)
-      expect(serialized[:delta]).to eq('hello')
-      expect(serialized[:block_index]).to eq(0)
-      expect(serialized[:item_id]).to eq('item-1')
-    end
-
-    it 'preserves done chunk through from_hash/to_h' do
-      original = {
-        type: 'done',
-        request_id: 'req-1',
-        stop_reason: 'end_turn',
-        usage: { input_tokens: 100, output_tokens: 50 }
-      }
-      chunk = described_class.from_hash(original)
-      serialized = chunk.to_h
-
-      expect(serialized[:type]).to eq(:done)
-      expect(serialized[:stop_reason]).to eq(:end_turn)
-      expect(serialized[:usage]).to include(input_tokens: 100, output_tokens: 50)
-    end
+  it 'auto-stamps timestamp when absent and exposes the predicates' do
+    chunk = described_class.text_delta(delta: 'x', request_id: 'r')
+    expect(chunk.timestamp).to be_a(Time)
+    expect(chunk.text_delta?).to be(true)
+    expect(chunk.content?).to be(true)
+    expect(described_class.done(request_id: 'r').done?).to be(true)
+    expect(described_class.error_chunk(error: 'e', request_id: 'r').metadata[:error]).to eq('e')
   end
 end

@@ -4,33 +4,43 @@ module Legion
   module Extensions
     module Llm
       # Handles streaming responses from AI providers.
+      # The provider's build_chunk yields Canonical::Chunk objects; the caller's
+      # block receives Canonical::Chunk objects and the sequence ends in exactly
+      # one done chunk (or an error chunk followed by the raise, 05 O5).
+      # FaradayHandlers / SSE parsing / error paths are unchanged plumbing; the
+      # status→error mapping delegates to the ONE mapper (ErrorMiddleware, 10 U8).
       module Streaming
         include Legion::Logging::Helper
         extend Legion::Logging::Helper
 
         module_function
 
-        def stream_response(connection, payload, additional_headers = {}, &block)
+        def stream_response(connection, payload, additional_headers = {}, model: nil, &block)
           accumulator = StreamAccumulator.new
 
-          response = connection.post stream_url, payload do |req|
-            req.headers = additional_headers.merge(req.headers) unless additional_headers.empty?
-            on_chunk = build_stream_callback(accumulator, block)
-            log.debug { "Stream callback prepared: #{on_chunk.inspect}" } if Legion::Extensions::Llm.config.log_stream_debug
-            if faraday_1?
-              req.options[:on_data] = handle_stream(&on_chunk)
-            else
-              req.options.on_data = handle_stream(&on_chunk)
+          begin
+            connection.post stream_url, payload do |req|
+              req.headers = additional_headers.merge(req.headers) unless additional_headers.empty?
+              on_chunk = build_stream_callback(accumulator, block)
+              log.debug { "Stream callback prepared: #{on_chunk.inspect}" } if Legion::Extensions::Llm.config.log_stream_debug
+              if faraday_1?
+                req.options[:on_data] = handle_stream(&on_chunk)
+              else
+                req.options.on_data = handle_stream(&on_chunk)
+              end
             end
+          rescue StandardError => e
+            block&.call(Canonical::Chunk.error_chunk(error: e, request_id: nil))
+            raise
           end
 
           # Release any text held by the untagged-preamble heuristic so short
           # responses still stream at least one delta to the caller.
-          final_chunk = accumulator.flush_pending_chunk
-          block&.call(final_chunk) if final_chunk
+          accumulator.flush_pending_chunk.each { |chunk| block&.call(chunk) }
 
-          message = accumulator.to_message(response)
-          log.debug { "Stream completed: #{message.content}" }
+          message = accumulator.to_response(model:)
+          log.debug { "Stream completed: #{message.text}" }
+          block&.call(Canonical::Chunk.done(request_id: nil, usage: message.usage, stop_reason: message.stop_reason))
           message
         end
 
@@ -38,9 +48,7 @@ module Legion
           proc do |chunk|
             next unless chunk
 
-            accumulator.add chunk
-            filtered = accumulator.filtered_chunk(chunk)
-            block.call(filtered) if filtered
+            accumulator.add(chunk).each { |emitted| block&.call(emitted) }
           end
         end
 
@@ -151,27 +159,13 @@ module Legion
           raise_streaming_status_error(status, msg)
         end
 
+        # 10 U8: the streaming path delegates to the ONE status→error mapper
+        # (ErrorMiddleware.parse_error) — the inlined case table is deleted.
+        # The provider's parse_error extracts the message from the synthesized
+        # body.
         def raise_streaming_status_error(status, message)
           response = Struct.new(:body, :status).new({ 'error' => { 'message' => message } }, status)
-          case status
-          when 400
-            raise Legion::Extensions::Llm::BadRequestError.new(response, message)
-          when 401
-            raise Legion::Extensions::Llm::UnauthorizedError.new(response, message)
-          when 403
-            raise Legion::Extensions::Llm::ForbiddenError.new(response, message)
-          when 429
-            raise Legion::Extensions::Llm::RateLimitError.new(response, message)
-          when 500
-            raise Legion::Extensions::Llm::ServerError.new(response, message)
-          when 502..504
-            raise Legion::Extensions::Llm::ServiceUnavailableError.new(response, message)
-          when 529
-            raise Legion::Extensions::Llm::OverloadedError.new(response, message)
-          else
-            provider = respond_to?(:parse_error) ? self : nil
-            Legion::Extensions::Llm::ErrorMiddleware.parse_error(provider: provider, response: response)
-          end
+          ErrorMiddleware.parse_error(provider: respond_to?(:parse_error) ? self : nil, response:)
         end
 
         def handle_sse(chunk, parser, env, &)
@@ -186,12 +180,19 @@ module Legion
         end
 
         def handle_data(data, env)
+          # An empty data frame carries nothing — it is not a parse failure.
+          return if data.to_s.strip.empty?
+
           parsed = Legion::JSON.parse(data, symbolize_names: false)
           return parsed unless parsed.is_a?(Hash) && parsed.key?('error')
 
           handle_parsed_error(parsed, env)
         rescue Legion::JSON::ParseError => e
+          # M1: an unparseable mid-stream data frame is still a provider
+          # error — a classified failure through the one mapper, never a
+          # silent drop (the stream must not complete "successfully").
           handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.handle_data')
+          raise_unparseable_streaming_error(env, data, 'data frame')
         end
 
         def handle_error_event(data, env)
@@ -216,7 +217,21 @@ module Legion
           parsed_data = Legion::JSON.parse(data, symbolize_names: false)
           handle_parsed_error(parsed_data, env)
         rescue Legion::JSON::ParseError => e
+          # M1: an error event that cannot be parsed is STILL an error event
+          # — a classified failure, never a silent nil (the pre-M1 fail-open
+          # completed the stream "successfully" on the provider's explicit
+          # error signal).
           handle_exception(e, level: :warn, handled: true, operation: 'llm.streaming.parse_error_from_json')
+          raise_unparseable_streaming_error(env, data, 'error event')
+        end
+
+        # One classified failure for unparseable stream error content — the
+        # same 500 classification the PARSEABLE in-band error path uses
+        # (parse_streaming_error): an in-band provider error event is a
+        # failure regardless of the stream's HTTP status. The raw payload is
+        # bounded (200 chars) — never the full body.
+        def raise_unparseable_streaming_error(_env, data, kind)
+          raise_streaming_status_error(500, "Provider error: unparseable #{kind} (#{data.to_s[0, 200].inspect})")
         end
 
         def build_stream_error_response(parsed_data, env, status)

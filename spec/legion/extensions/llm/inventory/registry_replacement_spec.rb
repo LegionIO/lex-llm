@@ -23,8 +23,9 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Registry do
     )
     expect(result.applied).to be(true)
     expect(result.reason).to eq(:snapshot_replaced)
-    offerings = described_class.snapshot.offerings_for(instance_key: key)
-    expect(offerings.map(&:provider_native_key)).to eq(['gemma5'])
+    lanes = described_class.snapshot.lanes_for(instance_key: key)
+    expect(lanes.map(&:model)).to eq(['gemma5'])
+    expect(lanes.map(&:lane_id)).to eq(%w[local:vllm:h200:inference:gemma5])
   end
 
   it 'preserves the exact availability fact across replacement' do
@@ -45,7 +46,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Registry do
   it 'treats an empty array as an authoritative complete empty snapshot' do
     token
     described_class.replace_instance_snapshot(publisher_token: token, instance_key: key, offerings: [], sequence: 1)
-    expect(described_class.snapshot.offerings_for(instance_key: key)).to be_empty
+    expect(described_class.snapshot.lanes_for(instance_key: key)).to be_empty
     expect(described_class.snapshot.instance(instance_key: key).availability.state).to eq(:available)
   end
 
@@ -56,7 +57,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Registry do
     expect { described_class.replace_instance_snapshot(publisher_token: token, instance_key: key, offerings: duplicate, sequence: 1) }
       .to raise_error(errors::ValidationError)
     expect(described_class.snapshot.generation).to eq(generation)
-    expect(described_class.snapshot.offerings_for(instance_key: key).size).to eq(1)
+    expect(described_class.snapshot.lanes_for(instance_key: key).size).to eq(1)
   end
 
   it 'returns a stale publisher result for a superseded token' do

@@ -19,15 +19,10 @@ RSpec.describe Legion::Extensions::Llm::AutoRegistration do
     mod
   end
 
-  describe '#discover_instances' do
-    it 'returns an empty hash by default' do
-      expect(provider_module.discover_instances).to eq({})
-    end
-  end
-
-  describe '#provider_aliases' do
-    it 'returns an empty alias list by default' do
-      expect(provider_module.provider_aliases).to eq([])
+  describe '0.8.0 rip — legacy defaults deleted' do
+    it 'provides no discover_instances or provider_aliases defaults' do
+      expect(provider_module).not_to respond_to(:discover_instances)
+      expect(provider_module).not_to respond_to(:provider_aliases)
     end
   end
 

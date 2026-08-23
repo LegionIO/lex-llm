@@ -51,7 +51,7 @@ module Legion
         # canonicalizes into capability `streaming`.
         OperationEvidence = ::Data.define(:operation, :status, :source, :observed_at, :metadata) do
           def initialize(operation:, status:, source:, observed_at: nil, metadata: {})
-            canonical_operation = Taxonomies.normalize_operation(value: operation, allow_aliases: false)
+            canonical_operation = Taxonomies.normalize_operation(value: operation)
             Evidence.validate_evidence_status(status: status, allowed: Taxonomies::OPERATION_EVIDENCE_STATES)
             Evidence.validate_evidence_source(source: source)
             Evidence.enforce_unknown_only_source!(status: status, source: source)

@@ -3,11 +3,11 @@
 require 'legion/extensions/llm'
 
 RSpec.describe Legion::Extensions::Llm do
-  it 'exposes the Legion-native extension namespace for autoloading' do
-    expect(described_class::Types::ModelOffering).to equal(Legion::Extensions::Llm::Routing::ModelOffering)
-    expect(described_class::Types::OfferingRegistry).to equal(Legion::Extensions::Llm::Routing::OfferingRegistry)
-    expect(described_class::Routing::LaneKey).to equal(Legion::Extensions::Llm::Routing::LaneKey)
-    expect(described_class::Routing::OfferingRegistry).to equal(Legion::Extensions::Llm::Routing::OfferingRegistry)
+  it 'exposes no legacy dual-constant paths after the 0.8.0 rip' do
+    expect(described_class.const_defined?(:Types, false)).to be(false)
+    expect(Legion::Extensions::Llm::Routing.const_defined?(:ModelOffering, false)).to be(false)
+    expect(Legion::Extensions::Llm::Routing.const_defined?(:OfferingRegistry, false)).to be(false)
+    expect(Legion::Extensions::Llm::Routing.const_defined?(:LaneKey, false)).to be(false)
   end
 
   it 'provides complete default fleet settings' do

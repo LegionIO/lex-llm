@@ -78,7 +78,7 @@ RSpec.shared_examples 'an SSOT v3 provider adapter' do
     lane_a = snapshot.lanes_for(instance_key: a[:key]).first
     lane_b = snapshot.lanes_for(instance_key: b[:key]).first
     expect(lane_a.lane_id).not_to eq(lane_b.lane_id)
-    expect(lane_a.offering_id).not_to eq(lane_b.offering_id)
+    expect(lane_a.lane_id).to match(/\A[a-z_]+:[a-z_]+:[^:]+:[a-z_]+:.+\z/)
   end
 
   it 'exposes no selector-visible model or callable before startup readiness' do
@@ -107,22 +107,23 @@ RSpec.shared_examples 'an SSOT v3 provider adapter' do
   it 'supports complete refresh, complete empty, and failed-refresh retention' do
     context = bring_up(configs[0])
     context[:publisher].replace_instance_snapshot(instance_id: context[:key].instance_id, publisher_token: context[:token], offerings: context[:drafts], sequence: 1)
-    expect(registry.snapshot.offerings_for(instance_key: context[:key]).size).to eq(1)
+    expect(registry.snapshot.lanes_for(instance_key: context[:key]).size).to eq(1)
     context[:publisher].replace_instance_snapshot(instance_id: context[:key].instance_id, publisher_token: context[:token], offerings: [], sequence: 2)
-    expect(registry.snapshot.offerings_for(instance_key: context[:key])).to be_empty
+    expect(registry.snapshot.lanes_for(instance_key: context[:key])).to be_empty
     expect do
       context[:publisher].replace_instance_snapshot(instance_id: context[:key].instance_id, publisher_token: context[:token], offerings: [], sequence: 2)
     end.to raise_error(Legion::Extensions::Llm::Inventory::Errors::StaleSequenceError)
   end
 
-  it 'preserves offering and lane identity across a tier-only republication' do
+  it 'reflects a tier change in the lane id (tier is the 5 tuple first part)' do
     context = bring_up(configs[0], tier: :local)
-    before_offering = registry.snapshot.offerings_for(instance_key: context[:key]).first.offering_id
     before_lane = registry.snapshot.lanes_for(instance_key: context[:key]).first.lane_id
+    expect(before_lane).to start_with('local:')
     frontier_drafts = ssot_harness.build_offering_drafts(instance_config: configs[0], callable: context[:callable], tier: :frontier)
     context[:publisher].replace_instance_snapshot(instance_id: context[:key].instance_id, publisher_token: context[:token], offerings: frontier_drafts, sequence: 1)
-    expect(registry.snapshot.offerings_for(instance_key: context[:key]).first.offering_id).to eq(before_offering)
-    expect(registry.snapshot.lanes_for(instance_key: context[:key]).first.lane_id).to eq(before_lane)
+    after_lane = registry.snapshot.lanes_for(instance_key: context[:key]).first.lane_id
+    expect(after_lane).to start_with('frontier:')
+    expect(after_lane).not_to eq(before_lane)
   end
 
   it 'refuses recovery from a stale probe started before the failure' do
@@ -154,11 +155,11 @@ RSpec.shared_examples 'an SSOT v3 provider adapter' do
   it 'executes an exact fleet request against only the captured callable' do
     allow(Legion::Extensions::Llm::Fleet::WorkerExecution).to receive_messages(validate_identity!: true, validate_idempotency!: nil)
     context = bring_up(configs[0])
-    offering = registry.snapshot.offerings_for(instance_key: context[:key]).first
+    lane = registry.snapshot.lanes_for(instance_key: context[:key]).first
     envelope = {
       execution_contract: Legion::Extensions::Llm::Fleet::Protocol::EXACT_EXECUTION_CONTRACT,
-      offering_id: offering.offering_id, provider: ssot_harness.provider_family.to_s,
-      provider_instance: context[:key].instance_id, model: offering.model, operation: 'chat', params: { messages: [] }
+      offering_id: lane.lane_id, provider: ssot_harness.provider_family.to_s,
+      provider_instance: context[:key].instance_id, model: lane.model, operation: 'chat', params: { messages: [] }
     }
     Legion::Extensions::Llm::Fleet::WorkerExecution.call(envelope: envelope, registry: registry)
     expect(ssot_harness.inference_call_count(callable: context[:callable])).to eq(1)

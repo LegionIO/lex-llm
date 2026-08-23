@@ -4,20 +4,18 @@ module Legion
   module Extensions
     module Llm
       module Transport
-        # Shared RabbitMQ live-work lane defaults for provider fleet workers.
+        # Shared RabbitMQ live-work lane construction for provider fleet
+        # workers. The queue defaults live in ONE home — Llm.default_settings
+        # (10 U10: no inline literal defaults).
         module FleetLane
-          DEFAULTS = {
-            queue_expires_ms: 60_000,
-            message_ttl_ms: 120_000,
-            queue_max_length: 100,
-            delivery_limit: 3,
-            consumer_ack_timeout_ms: 300_000
-          }.freeze
-
           module_function
 
+          def queue_defaults
+            Legion::Extensions::Llm.default_settings.dig(:fleet, :consumer) || {}
+          end
+
           def queue_options(settings = {})
-            config = DEFAULTS.merge((settings || {}).compact.transform_keys(&:to_sym))
+            config = queue_defaults.merge((settings || {}).compact.transform_keys(&:to_sym))
             {
               durable: true,
               auto_delete: false,

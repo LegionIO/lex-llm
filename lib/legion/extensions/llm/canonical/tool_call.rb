@@ -6,35 +6,36 @@ require 'securerandom'
 module Legion
   module Extensions
     module Llm
+      # -- required for Data.define block scope
       module Canonical
-        # rubocop:disable Lint/ConstantDefinitionInBlock -- required for Data.define block scope
         # Canonical tool call with source enum and compliance fields.
         # Ports field vocabulary from Legion::LLM::Types::ToolCall.
         # Source enum per R7: :client | :registry | :special | :extension | :mcp
         # Compliance fields per R8: data_handling_classification, policy_decision
+        # arguments is a Hash only (O03a): JSON-string arguments are a provider
+        # wire spelling parsed at the provider translator edge (10 U2).
         ToolCall = ::Data.define(
           :id, :exchange_id, :name, :arguments, :source,
           :status, :duration_ms, :result, :error,
           :started_at, :finished_at, :category,
-          :data_handling_classification, :policy_decision
+          :data_handling_classification, :policy_decision, :metadata
         ) do
-          SOURCE_VALUES = %i[client registry special extension mcp].freeze
-          STATUS_VALUES = %i[pending running success error].freeze
-
           # Build from keyword args (primary constructor).
+          # arguments: nil means "no arguments" and normalizes to {} (documented
+          # default, not tolerance).
           def self.build(
             name:, id: nil, exchange_id: nil, arguments: nil, source: nil,
             status: nil, duration_ms: nil, result: nil, error: nil,
             started_at: nil, finished_at: nil, category: nil,
-            data_handling_classification: nil, policy_decision: nil
+            data_handling_classification: nil, policy_decision: nil, metadata: {}
           )
             new(
               id: id || "call_#{SecureRandom.hex(12)}",
               exchange_id: exchange_id,
-              name: name,
-              arguments: arguments || {},
-              source: source,
-              status: status,
+              name: Strict.expect_type!(name, [::String], self::BUILD_SITE, :name),
+              arguments: arguments.nil? ? {} : Strict.expect_type!(arguments, [::Hash], self::BUILD_SITE, :arguments),
+              source: normalize_enum!(source, self::SOURCE_VALUES, self::BUILD_SITE, :source),
+              status: normalize_enum!(status, self::STATUS_VALUES, self::BUILD_SITE, :status),
               duration_ms: duration_ms,
               result: result,
               error: error,
@@ -42,38 +43,30 @@ module Legion
               finished_at: finished_at,
               category: category,
               data_handling_classification: data_handling_classification,
-              policy_decision: policy_decision
+              policy_decision: policy_decision,
+              metadata: Strict.metadata!(metadata, self::BUILD_SITE)
             )
           end
 
           # Build from a Hash (raw provider response or deserialized wire payload).
-          def self.from_hash(hash)
-            return nil if hash.nil?
-
-            h = hash.transform_keys(&:to_sym)
-
-            # Normalize source to symbol
-            source_raw = h[:source]
-            h[:source] = source_raw&.to_sym if source_raw.is_a?(String)
-
-            # Normalize status to symbol
-            status_raw = h[:status]
-            h[:status] = status_raw&.to_sym if status_raw.is_a?(String)
-
-            # Parse arguments if they're a JSON string
-            args = h[:arguments]
-            if args.is_a?(String) && !args.empty?
-              begin
-                h[:arguments] = Legion::JSON.load(args)
-              rescue Legion::JSON::ParseError => e
-                Legion::Logging.debug("[lex-llm][canonical][tool_call] arguments not parseable as JSON, leaving as string: #{e.message}")
-              end
-            end
-
-            build(**h)
+          def self.from_hash(source)
+            Strict.require_hash!(source, self::FROM_HASH_SITE)
+            hash = Strict.symbolize_keys(source)
+            metadata = Strict.fold_unknowns!(self, self::FROM_HASH_SITE, hash)
+            build(**hash, metadata:)
           end
 
-          # Return a new ToolCall with execution result attached.
+          # L6: declared enums validated at construction, in both factories.
+          def self.normalize_enum!(value, allowed, site, member)
+            return nil if value.nil?
+
+            value_sym = value.is_a?(::String) ? value.to_sym : value
+            Strict.enum!(value_sym, allowed, site, member)
+          end
+
+          # Return a new ToolCall with execution result attached. The strict
+          # constructor re-validates every carried member (status enum
+          # included) — the escape-hatch .new of the pre-H1 world is gone.
           def with_result(result:, status:, duration_ms: nil, finished_at: nil)
             self.class.new(
               id: id,
@@ -89,7 +82,8 @@ module Legion
               finished_at: finished_at || ::Time.now,
               category: category,
               data_handling_classification: data_handling_classification,
-              policy_decision: policy_decision
+              policy_decision: policy_decision,
+              metadata: metadata
             )
           end
 
@@ -116,27 +110,24 @@ module Legion
             to_h.to_json(*)
           end
 
-          # Subset for audit/ledger emission.
-          def to_audit_hash
-            {
-              id: id,
-              name: name,
-              arguments: arguments,
-              status: status,
-              duration_ms: duration_ms,
-              error: error,
-              exchange_id: exchange_id,
-              source: source,
-              category: category,
-              data_handling_classification: data_handling_classification,
-              policy_decision: policy_decision
-            }.compact
+          # H1: the single strict constructor — .new runs the same member
+          # contract as the factories; the factories fill their defaults and
+          # delegate here.
+          Strict.install_strict_new!(self) do |values, site|
+            values[:name] = Strict.expect_type!(values[:name], [::String], site, :name)
+            values[:arguments] = values[:arguments].nil? ? {} : Strict.expect_type!(values[:arguments], [::Hash], site, :arguments)
+            values[:source] = normalize_enum!(values[:source], self::SOURCE_VALUES, site, :source)
+            values[:status] = normalize_enum!(values[:status], self::STATUS_VALUES, site, :status)
+            values[:metadata] = Strict.metadata!(values[:metadata], site)
+            values
           end
         end
 
         ToolCall::SOURCE_VALUES = %i[client registry special extension mcp].freeze
         ToolCall::STATUS_VALUES = %i[pending running success error].freeze
-        # rubocop:enable Lint/ConstantDefinitionInBlock
+        ToolCall::BUILD_SITE = 'Canonical::ToolCall.build'
+        ToolCall::FROM_HASH_SITE = 'Canonical::ToolCall.from_hash'
+        ToolCall::NEW_SITE = 'Canonical::ToolCall.new'
       end
     end
   end

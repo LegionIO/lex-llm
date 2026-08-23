@@ -47,7 +47,32 @@ module Legion
             raise Legion::Extensions::Llm::Inventory::Errors::ValidationError,
                   'retry_after must be nil or a finite nonnegative Numeric'
           end
+
+          # The ONE error→kind base table (05 O6 / 08 E1). Providers override
+          # #normalize_dispatch_error only when their wire semantics supply
+          # stronger evidence; the table itself is frozen here and is also the
+          # source of fleet retryability (06 F6).
+          def self.kind_for(error)
+            case error
+            when OverloadedError then :overloaded
+            when RateLimitError then :rate_limited
+            when UnauthorizedError then :authentication
+            when PaymentRequiredError then :billing
+            when ForbiddenError then :authorization
+            when ContextLengthExceededError then :context_rejected
+            when BadRequestError then :invalid_request
+            when ModelNotFoundError then :model_missing
+            when ModelNotAllowedError then :policy
+            when Faraday::TimeoutError, Timeout::Error then :timeout
+            when Faraday::ConnectionFailed, Errno::ECONNREFUSED, Errno::ECONNRESET, SocketError then :connection_failure
+            else :provider_error
+            end
+          end
         end
+
+        # 06 F6: the transient kinds that may be retried at the fleet edge.
+        # Classification/contract/auth/policy kinds never retry.
+        ProviderOutcome::RETRYABLE_KINDS = %i[overloaded rate_limited timeout connection_failure provider_error].freeze
       end
     end
   end

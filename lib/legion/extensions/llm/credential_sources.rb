@@ -58,8 +58,12 @@ module Legion
           env_hash[key.to_sym] || env_hash[key.to_s]
         end
 
+        # The codex auth file is an optional source: absent means "no codex
+        # credential" (probe semantics); present-but-unreadable raises from
+        # read_json (O11 fail-closed).
         def codex_token
           return nil unless credential_source_probing_enabled?
+          return nil unless File.exist?(CODEX_AUTH)
 
           data = read_json(CODEX_AUTH)
           mode = data[:auth_mode] || data['auth_mode']
@@ -74,6 +78,7 @@ module Legion
 
         def codex_openai_key
           return nil unless credential_source_probing_enabled?
+          return nil unless File.exist?(CODEX_AUTH)
 
           data = read_json(CODEX_AUTH)
           val = data[:OPENAI_API_KEY] || data['OPENAI_API_KEY']
@@ -198,19 +203,12 @@ module Legion
           credential_fingerprint(val)
         end
 
-        # Returns true when the URL points to localhost / 127.0.0.1 / ::1.
+        # Returns true when the URL points to localhost / 127.0.0.1 / ::1
+        # (the one shared host-locality detector — Utils.localhost_url?).
         def localhost?(url)
           return false if url.nil?
 
-          uri = URI.parse(url.to_s)
-          host = uri.host
-          return false if host.nil?
-
-          normalized = host.delete_prefix('[').delete_suffix(']')
-          %w[localhost 127.0.0.1 ::1].include?(normalized)
-        rescue URI::InvalidURIError => e
-          handle_exception(e, level: :warn, handled: true, operation: 'llm.credential_sources.localhost')
-          false
+          Utils.localhost_url?(url)
         end
 
         module_function :env, :credential_source_probing_enabled?,
@@ -224,69 +222,54 @@ module Legion
         # --- private helpers -----------------------------------------------
 
         # Merge user-level (~/.claude/settings.json) and project-level
-        # (.claude/settings.json) Claude configs.  Project overrides user.
+        # (.claude/settings.json) Claude configs.  Both files are optional
+        # sources: absent means "no config from that level".  Project overrides
+        # user.
         def merge_claude_configs
-          user = read_json(CLAUDE_SETTINGS)
-          project = read_json(CLAUDE_PROJECT)
-          deep_merge(user, project)
+          user = File.exist?(CLAUDE_SETTINGS) ? read_json(CLAUDE_SETTINGS) : {}
+          project = File.exist?(CLAUDE_PROJECT) ? read_json(CLAUDE_PROJECT) : {}
+          Utils.deep_merge(user, project)
         end
 
-        # Read and parse a JSON file.  Returns an empty hash on any error.
+        # Read and parse a JSON file.  O11 fail-closed: a missing, empty, or
+        # unreadable/unparseable credential file raises — it is a
+        # configuration error, never a fabricated empty credential.
         def read_json(path)
-          return {} unless File.exist?(path)
+          raise ConfigurationError, "credential file is missing: #{path}" unless File.exist?(path)
 
           raw = File.read(path)
-          return {} if raw.strip.empty?
+          raise ConfigurationError, "credential file is empty: #{path}" if raw.strip.empty?
 
-          if defined?(::Legion::JSON)
-            ::Legion::JSON.parse(raw, symbolize_names: true)
-          else
-            ::JSON.parse(raw, symbolize_names: true)
-          end
-        rescue StandardError => e
-          handle_exception(e, level: :warn, handled: true, operation: 'llm.credential_sources.read_json',
-                              path:)
-          {}
+          # L1: Legion::JSON only (house rule) — the bare ::JSON fallback is
+          # deleted; Legion::JSON is a hard dependency of this gem.
+          ::Legion::JSON.parse(raw, symbolize_names: true)
         end
 
         # JWT expiry check.  Decodes the base64 payload segment and checks
-        # that exp > now.  Returns true on any parse error (benefit of the
-        # doubt).
+        # that exp > now.  O11 fail-closed: unreadable or invalid token data
+        # is INVALID (the old benefit-of-the-doubt true is deleted). A
+        # parseable token with no exp claim has nothing to violate.
         def token_valid?(token)
-          return true if token.nil?
-
           require 'base64'
-          require 'json'
 
           parts = token.to_s.split('.')
-          return true unless parts.length >= 2
+          return false if parts.length < 2
 
-          payload = ::JSON.parse(Base64.urlsafe_decode64(parts[1]))
+          # L1: Legion::JSON only (string keys — the JWT payload is read by
+          # string key).
+          payload = ::Legion::JSON.parse(Base64.urlsafe_decode64(parts[1]), symbolize_names: false)
           exp = payload['exp']
           return true if exp.nil?
 
           exp.to_i > Time.now.to_i
         rescue StandardError => e
           handle_exception(e, level: :warn, handled: true, operation: 'llm.credential_sources.token_valid')
-          true
+          false
         end
 
-        # Simple recursive hash merge (project values override user values).
-        def deep_merge(base, override)
-          base.merge(override) do |_key, old_val, new_val|
-            if old_val.is_a?(Hash) && new_val.is_a?(Hash)
-              deep_merge(old_val, new_val)
-            else
-              new_val
-            end
-          end
-        end
+        module_function :merge_claude_configs, :read_json, :token_valid?
 
-        module_function :merge_claude_configs, :read_json,
-                        :token_valid?, :deep_merge
-
-        private_class_method :merge_claude_configs, :read_json,
-                             :token_valid?, :deep_merge
+        private_class_method :merge_claude_configs, :read_json, :token_valid?
       end
     end
   end

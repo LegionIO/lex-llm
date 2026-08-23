@@ -21,7 +21,6 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Registry do
       snapshot = described_class.snapshot
       expect(snapshot.generation).to eq(0)
       expect(snapshot.each_lane.to_a).to be_empty
-      expect(snapshot.each_offering.to_a).to be_empty
       expect(snapshot.instance(instance_key: key)).to be_nil
     end
   end
@@ -63,33 +62,67 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Registry do
         .to raise_error(errors::InvalidTransitionError)
     end
 
-    it 'atomically publishes callable, offerings, lanes, and available on activation' do
+    it 'atomically publishes callable, lanes, and available on activation' do
       claim_and_activate(key: key, callable: callable, coordinator: coordinator)
       snapshot = described_class.snapshot
       record = snapshot.instance(instance_key: key)
       expect(record).not_to be_nil
       expect(record.availability.state).to eq(:available)
       expect(snapshot.lanes_for(instance_key: key).size).to eq(1)
-      expect(snapshot.offerings_for(instance_key: key).size).to eq(1)
       expect(snapshot.publication_status(instance_key: key).state).to eq(:complete)
     end
 
-    it 'copies the draft weight pair unchanged onto offering and lane records' do
-      weights = { tier: 150, provider: 100, instance: 115, model_or_offering: 100 }
+    it 'stores the lane keyed by the 5 tuple and exposes it through the record' do
+      claim_and_activate(key: key, callable: callable, coordinator: coordinator)
+      snapshot = described_class.snapshot
+      lane = snapshot.lanes_for(instance_key: key).first
+      expect(lane.lane_id).to eq('local:vllm:h200:inference:gemma4')
+      expect(snapshot.lane(lane_id: lane.lane_id)).to be(lane)
+      expect(snapshot.instance(instance_key: key).lanes_by_id.keys).to eq([lane.lane_id])
+    end
+
+    it 'derives one lane per supported operation of each draft' do
       claim_and_activate(
-        key: key, callable: callable, coordinator: coordinator,
-        weight_inputs: weights, base_weight: 172_500_000
+        key: key, callable: callable, coordinator: coordinator, supported: %i[chat embed]
       )
       snapshot = described_class.snapshot
-      offering = snapshot.offerings_for(instance_key: key).first
-      lane = snapshot.lanes_for(instance_key: key).first
+      expect(snapshot.lanes_for(instance_key: key).map(&:lane_id).sort).to eq(
+        %w[local:vllm:h200:embedding:gemma4 local:vllm:h200:inference:gemma4]
+      )
+    end
 
-      expect(offering.weight_inputs).to eq(weights)
-      expect(offering.base_weight).to eq(172_500_000)
-      expect(lane.weight_inputs).to eq(weights)
-      expect(lane.base_weight).to eq(172_500_000)
-      expect(offering.weight_inputs).to be_frozen
-      expect(lane.weight_inputs).to be_frozen
+    it 'raises on a duplicate (operation, model) published under a conflicting tier (D1)' do
+      key2 = instance_key(instance: 'tier-collision')
+      coordinator2 = probe_coordinator(key2)
+      token = described_class.claim_instance(instance_key: key2, callable: callable, probe_request_handle: coordinator2)
+      probe = described_class.readiness_probe_started(instance_key: key2, publisher_token: token)
+      expect do
+        described_class.activate_instance_snapshot(
+          publisher_token: token, instance_key: key2,
+          offerings: [
+            *drafts(model: 'm1', native: 'm1-a', supported: %i[chat], tier: :local),
+            *drafts(model: 'm1', native: 'm1-b', supported: %i[chat], tier: :frontier)
+          ],
+          sequence: 0, probe_token: probe
+        )
+      end.to raise_error(inventory::Errors::ValidationError, /conflicting tier/)
+    end
+
+    it 'raises on a duplicate 5 tuple from two native keys of the same model' do
+      key3 = instance_key(instance: 'dup-tuple')
+      coordinator3 = probe_coordinator(key3)
+      token = described_class.claim_instance(instance_key: key3, callable: callable, probe_request_handle: coordinator3)
+      probe = described_class.readiness_probe_started(instance_key: key3, publisher_token: token)
+      expect do
+        described_class.activate_instance_snapshot(
+          publisher_token: token, instance_key: key3,
+          offerings: [
+            *drafts(model: 'm1', native: 'm1-a', supported: %i[chat], tier: :local),
+            *drafts(model: 'm1', native: 'm1-b', supported: %i[chat], tier: :local)
+          ],
+          sequence: 0, probe_token: probe
+        )
+      end.to raise_error(inventory::Errors::ValidationError, /duplicate lane_id/)
     end
 
     it 'accepts an explicit complete empty activation as complete, not initializing' do
@@ -101,7 +134,7 @@ RSpec.describe Legion::Extensions::Llm::Inventory::Registry do
       expect(result.applied).to be(true)
       snapshot = described_class.snapshot
       expect(snapshot.publication_status(instance_key: key).state).to eq(:complete)
-      expect(snapshot.instance(instance_key: key).offerings_by_id).to eq({})
+      expect(snapshot.instance(instance_key: key).lanes_by_id).to eq({})
     end
 
     it 'consumes the probe token so it cannot be reused' do
