@@ -11,19 +11,19 @@ module Legion
         # Per G18: all standard/useful params are first-class, mapped per provider by translators.
         # Canonical keys only (O03a): provider spellings are translated at the edges.
         Params = ::Data.define(
-          :max_tokens, :max_thinking_tokens, :temperature, :top_p, :top_k,
+          :max_tokens, :temperature, :top_p, :top_k,
           :stop_sequences, :seed, :frequency_penalty, :presence_penalty,
           :response_format, :metadata
         ) do
           # rubocop:disable Metrics/ParameterLists -- factory methods have many params
           # Build from keyword args (primary constructor).
           def self.build(
-            max_tokens: nil, max_thinking_tokens: nil, temperature: nil, top_p: nil, top_k: nil,
+            max_tokens: nil, temperature: nil, top_p: nil, top_k: nil,
             stop_sequences: nil, seed: nil, frequency_penalty: nil, presence_penalty: nil,
             response_format: nil, metadata: {}
           )
             new(
-              max_tokens:, max_thinking_tokens:, temperature:, top_p:, top_k:,
+              max_tokens:, temperature:, top_p:, top_k:,
               stop_sequences:, seed:, frequency_penalty:, presence_penalty:,
               response_format:, metadata: Strict.metadata!(metadata, self::BUILD_SITE)
             )
@@ -39,7 +39,6 @@ module Legion
             metadata = Strict.fold_unknowns!(self, self::FROM_HASH_SITE, hash)
             build(
               max_tokens: hash[:max_tokens],
-              max_thinking_tokens: hash[:max_thinking_tokens],
               temperature: hash[:temperature],
               top_p: hash[:top_p],
               top_k: hash[:top_k],
@@ -73,7 +72,6 @@ module Legion
           # wire. The factories fill their defaults and delegate here.
           Strict.install_strict_new!(self) do |values, site|
             values[:max_tokens] = Strict.expect_type!(values[:max_tokens], [::Integer], site, :max_tokens)
-            values[:max_thinking_tokens] = Strict.expect_type!(values[:max_thinking_tokens], [::Integer], site, :max_thinking_tokens)
             values[:temperature] = Strict.expect_type!(values[:temperature], [::Numeric], site, :temperature)
             values[:top_p] = Strict.expect_type!(values[:top_p], [::Numeric], site, :top_p)
             values[:top_k] = Strict.expect_type!(values[:top_k], [::Integer], site, :top_k)

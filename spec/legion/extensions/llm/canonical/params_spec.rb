@@ -9,7 +9,6 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Params do
   let(:type_source) do
     {
       max_tokens: 1024,
-      max_thinking_tokens: 512,
       temperature: 0.7,
       top_p: 0.9,
       top_k: 40,
@@ -28,7 +27,6 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Params do
     it 'does not translate provider spellings (they fold into metadata)' do
       params = described_class.from_hash(max_output_tokens: 999, num_predict: 888, stop: ['x'])
       expect(params.max_tokens).to be_nil
-      expect(params.max_thinking_tokens).to be_nil
       expect(params.stop_sequences).to be_nil
       expect(params.metadata).to eq(max_output_tokens: 999, num_predict: 888, stop: ['x'])
     end

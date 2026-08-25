@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.3 - 2026-08-25
+
+### Removed
+- **Removed `Canonical::Params#max_thinking_tokens`.** Thinking budget now lives solely
+  on `Thinking::Config#budget`. The redundant dual-home on Params is deleted from the
+  `Data.define` member list, `.build`, `.from_hash`, and the strict `.new` validation
+  block. Any wire payload carrying `max_thinking_tokens` in params will now fold into
+  `metadata` as an unknown key (04 L5).
+
 ## 0.8.2 - 2026-08-25
 
 ### Changed
