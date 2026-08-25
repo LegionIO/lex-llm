@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.8.2 - 2026-08-25
+
+### Changed
+- **Expand `Thinking::Config` to the common superset shape.** The canonical struct
+  is now `Data.define(:enabled, :effort, :budget, :summary, :metadata)`:
+  - `enabled` — explicit Boolean (true/false). Default true when a Config is built;
+    nil request.thinking means "client said nothing"; `enabled: false` means explicit
+    OFF. Validated strictly (non-boolean raises).
+  - `effort` — closed 6-level enum: `none`, `low`, `medium`, `high`, `xhigh`, `max`
+    (downcased strings). Unknown values raise at construction.
+  - `budget` — positive Integer or nil. Zero and negatives rejected at construction
+    (off rides `enabled: false`; dynamic rides `enabled: true` + no axis).
+  - `summary` — closed enum `{nil, :auto, :none, :concise, :detailed}` for
+    thought-visibility; independent of the effort/budget axes.
+  - `metadata` — unchanged passthrough Hash.
+  - `EFFORT_BUDGET` extended to the full ladder:
+    `{'low'=>1024,'medium'=>8192,'high'=>16384,'xhigh'=>24576,'max'=>32768}`.
+    `none` resolves to nil budget. `resolved_budget` and `resolved_effort` only FILL
+    an axis the client didn't supply — never overwrite a supplied one.
+  - `enabled?` returns the `enabled` member directly.
+
 ## 0.8.1 - 2026-08-25
 
 ### Changed

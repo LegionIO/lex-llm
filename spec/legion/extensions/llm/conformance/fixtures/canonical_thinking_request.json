@@ -8,6 +8,7 @@
     }
   ],
   "thinking": {
+    "enabled": true,
     "effort": "high",
     "budget": 4096
   },

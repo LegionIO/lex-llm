@@ -21,7 +21,7 @@
       }
     },
     "params": { "max_tokens": 1024, "temperature": 0.5 },
-    "thinking": { "effort": "low", "budget": 1024 },
+    "thinking": { "enabled": true, "effort": "low", "budget": 1024 },
     "stream": false,
     "conversation_id": "conv_fleet_rt_001",
     "caller": { "type": "anthropic_messages", "client_id": "test_client" },
