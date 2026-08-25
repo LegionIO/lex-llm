@@ -201,9 +201,8 @@ RSpec.describe Legion::Extensions::Llm::Provider do
       it 'accepts Hash<name, Canonical::ToolDefinition> through chat and stream_chat' do
         expect(provider.chat([], model: 'test-model', tools: { get_weather: tool })).to eq('ok')
         expect do
-          # rubocop:disable Lint/EmptyBlock -- the streamed chunk is consumed by the stub
+          # rubocop:disable-next Lint/EmptyBlock -- the streamed chunk is consumed by the stub
           provider.stream_chat([], model: 'test-model', tools: { get_weather: tool }) { |_c| }
-          # rubocop:enable Lint/EmptyBlock
         end.not_to raise_error
       end
 

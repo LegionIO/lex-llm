@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-# rubocop:disable RSpec/DescribeClass
+# rubocop:disable-next RSpec/DescribeClass
 RSpec.describe 'LLM fleet message envelopes' do
   let(:protocol) { Legion::Extensions::Llm::Fleet::Protocol }
   let(:channel_class) do
@@ -408,4 +408,3 @@ RSpec.describe 'LLM fleet message envelopes' do
     end
   end
 end
-# rubocop:enable RSpec/DescribeClass
