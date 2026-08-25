@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.4 - 2026-08-25
+
+### Changed
+- **OpenAI-compatible transposer routes thinking through the canonical bridge.**
+  `Provider::OpenAICompatible#openai_reasoning_effort` now returns `nil` (omitting
+  `reasoning_effort`) when thinking is absent or `enabled: false`, and uses
+  `Thinking::Config#resolved_effort` instead of the raw `effort` — so a budget-only
+  request derives an effort instead of being silently dropped. Added spec coverage.
+
 ## 0.8.3 - 2026-08-25
 
 ### Removed

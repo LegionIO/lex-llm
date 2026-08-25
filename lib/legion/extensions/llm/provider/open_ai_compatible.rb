@@ -154,10 +154,16 @@ module Legion
             { type: 'json_schema', json_schema: schema_hash }
           end
 
+          # Transpose canonical thinking -> OpenAI `reasoning_effort` (edge, O03a).
+          # Omit the key when there is no thinking or it is explicitly disabled
+          # (a reasoning model then uses its own default). resolved_effort fills
+          # the effort axis from budget when the client supplied only a budget,
+          # so a budget-only request is never silently dropped.
           def openai_reasoning_effort(thinking)
             return nil unless thinking.is_a?(Canonical::Thinking::Config)
+            return nil unless thinking.enabled
 
-            thinking.effort
+            thinking.resolved_effort
           end
 
           # One response-parse boundary (08 R2): returns Canonical::Response.

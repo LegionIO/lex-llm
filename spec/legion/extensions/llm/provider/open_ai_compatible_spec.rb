@@ -49,6 +49,29 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
     expect(payload[:messages]).to eq([{ role: 'assistant', content: "internal\n</thinking>\n\nHello" }])
   end
 
+  describe 'reasoning_effort transposition (canonical Thinking::Config -> OpenAI wire)' do
+    def payload_for(thinking)
+      provider.send(:render_payload, [], tools: {}, model: model_id, stream: false,
+                                         schema: nil, thinking: thinking, tool_prefs: nil, params: nil)
+    end
+
+    it 'passes an explicit effort through' do
+      expect(payload_for(canonical::Thinking::Config.build(effort: 'high'))[:reasoning_effort]).to eq('high')
+    end
+
+    it 'derives effort from a budget-only config so it is never dropped' do
+      expect(payload_for(canonical::Thinking::Config.build(budget: 8192))[:reasoning_effort]).to eq('medium')
+    end
+
+    it 'omits reasoning_effort when thinking is explicitly disabled' do
+      expect(payload_for(canonical::Thinking::Config.build(enabled: false))).not_to have_key(:reasoning_effort)
+    end
+
+    it 'omits reasoning_effort when there is no thinking' do
+      expect(payload_for(nil)).not_to have_key(:reasoning_effort)
+    end
+  end
+
   it 'renders content block arrays in the OpenAI wire shape' do
     message = canonical::Message.build(
       role: :user,
