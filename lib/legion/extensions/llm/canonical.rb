@@ -2,6 +2,7 @@
 
 require_relative 'canonical/strict'
 require_relative 'canonical/thinking'
+require_relative 'canonical/thinking_config'
 require_relative 'canonical/usage'
 require_relative 'canonical/params'
 require_relative 'canonical/content_block'

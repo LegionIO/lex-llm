@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1 - 2026-08-25
+
+### Changed
+- **Extract `Thinking::Config` to its own file.** `Canonical::Thinking::Config` (the
+  `Data.define` type and its constants) now lives in `canonical/thinking_config.rb`
+  instead of being nested inside `canonical/thinking.rb`. Spec coverage split into a
+  matching `thinking_config_spec.rb`. Pure refactor — no behavior changes.
+
 ## 0.8.0 - 2026-08-20
 
 **The SSOT v4 contract cut.** This is a complete contract line, not a patch wave:

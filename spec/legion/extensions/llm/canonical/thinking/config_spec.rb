@@ -1,0 +1,72 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+require_relative '../../conformance/conformance'
+
+RSpec.describe Legion::Extensions::Llm::Canonical::Thinking::Config do
+  subject(:config_class) { described_class }
+
+  let(:type_class) { described_class }
+  let(:auto_generated_members) { [] }
+  let(:type_source) do
+    { effort: 'high', budget: 4096, metadata: { source: 'client' } }
+  end
+
+  it_behaves_like 'a canonical type'
+
+  it 'converts from a plain class to a Data with one name (04 §8)' do
+    expect(config_class).to be_a(Class)
+    expect(config_class.new(effort: 'low', budget: nil, metadata: {})).to be_a(config_class)
+  end
+
+  it 'normalizes symbol effort to String' do
+    config = config_class.build(effort: :low)
+    expect(config.effort).to eq('low')
+  end
+
+  it 'raises on a wrong-class effort' do
+    expect { config_class.build(effort: 3) }
+      .to raise_error(ArgumentError, /effort expected String, got Integer/)
+  end
+
+  describe 'H1/M4 — effort is a closed enum, validated in every constructor' do
+    it 'rejects an unrecognized effort in build, from_hash, and .new' do
+      expect { config_class.build(effort: 'banana') }
+        .to raise_error(ArgumentError, /Invalid effort: "banana"/)
+      expect { config_class.from_hash(effort: 'banana') }
+        .to raise_error(ArgumentError, /Invalid effort: "banana"/)
+      expect { config_class.new(effort: 'banana') }
+        .to raise_error(ArgumentError, /Invalid effort: "banana"/)
+    end
+
+    it 'accepts the enum case-insensitively (symbol or string)' do
+      expect(config_class.build(effort: :HIGH).effort).to eq('high')
+      expect(config_class.new(effort: 'Medium').effort).to eq('medium')
+    end
+
+    it 'resolved_budget derives from the validated effort (no silent medium fallback)' do
+      expect(config_class.new(effort: 'low').resolved_budget).to eq(1024)
+      expect(config_class.build(budget: 123).resolved_budget).to eq(123)
+      expect(config_class.build.resolved_budget).to be_nil
+    end
+  end
+
+  it 'keeps the effort<->budget SSOT conversions' do
+    expect(config_class.build(effort: 'low').resolved_budget).to eq(1024)
+    expect(config_class.build(effort: 'medium').resolved_budget).to eq(8192)
+    expect(config_class.build(effort: 'high').resolved_budget).to eq(16_384)
+    expect(config_class.build(budget: 512).resolved_effort).to eq('low')
+    expect(config_class.build(budget: 8192).resolved_effort).to eq('medium')
+    expect(config_class.build(budget: 16_384).resolved_effort).to eq('high')
+  end
+
+  it 'is enabled only when an axis is set' do
+    expect(config_class.build(effort: 'low').enabled?).to be(true)
+    expect(config_class.build(budget: 1).enabled?).to be(true)
+    expect(config_class.build.enabled?).to be(false)
+  end
+
+  it 'to_h is faithful to what was set (no fabricated axis)' do
+    expect(config_class.build(effort: 'low').to_h).to eq(effort: 'low', metadata: {})
+  end
+end
