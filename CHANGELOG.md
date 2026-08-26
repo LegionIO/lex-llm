@@ -8,6 +8,11 @@
   `reasoning_effort`) when thinking is absent or `enabled: false`, and uses
   `Thinking::Config#resolved_effort` instead of the raw `effort` — so a budget-only
   request derives an effort instead of being silently dropped. Added spec coverage.
+- **`Responses::ToolArguments.parse!` accepts every legitimate wire form (10 U2).**
+  An already-decoded `Hash` passes through unchanged (it is the canonical Hash); a
+  `null`/empty/whitespace-only string and a JSON `null` resolve to `{}` (the documented
+  no-arguments default, not tolerance). Genuinely corrupt arguments — a non-object JSON
+  value or invalid JSON — still raise; they are never fabricated into `{}`.
 
 ## 0.8.3 - 2026-08-25
 
