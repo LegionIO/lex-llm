@@ -9,7 +9,7 @@ require_relative 'ssot_contract_examples'
 # Kit self-test: the B/F/R shared examples run against a real Provider-derived
 # callable, the real Registry, and the real fleet responder/worker — proving
 # the examples provider gems will load are executable and meaningful.
-# rubocop:disable RSpec/DescribeClass, RSpec/MultipleMemoizedHelpers -- kit host
+# rubocop:disable-next RSpec/DescribeClass, RSpec/MultipleMemoizedHelpers -- kit host
 RSpec.describe 'SSOT v4 contract conformance kit' do
   include SsotRegistryHelpers
 
@@ -34,7 +34,7 @@ RSpec.describe 'SSOT v4 contract conformance kit' do
         Legion::Extensions::Llm::Canonical::Response.build(text: 'ok', model: model, stop_reason: :end_turn)
       end
 
-      # rubocop:disable Lint/UnusedMethodArgument -- model: mirrors the 0.8.0 callable contract
+      # rubocop:disable-next Lint/UnusedMethodArgument -- model: mirrors the 0.8.0 callable contract
       def stream_chat(messages, model: nil, tools: nil, **_contract, &block)
         enforce_canonical_messages!(messages)
         enforce_canonical_tools!(tools)
@@ -43,7 +43,6 @@ RSpec.describe 'SSOT v4 contract conformance kit' do
                                                                    usage: Legion::Extensions::Llm::Canonical::Usage.build(input_tokens: 1)))
         nil
       end
-      # rubocop:enable Lint/UnusedMethodArgument
 
       def count_tokens(messages:, **_contract)
         enforce_canonical_messages!(messages)
@@ -127,4 +126,3 @@ RSpec.describe 'SSOT v4 contract conformance kit' do
   it_behaves_like 'R4 — weight law (07 §4)'
   it_behaves_like 'R5 — callable lifecycle (07 §6)'
 end
-# rubocop:enable RSpec/DescribeClass, RSpec/MultipleMemoizedHelpers

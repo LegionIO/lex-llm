@@ -10,7 +10,7 @@
 #
 # Usage:
 #   it_behaves_like 'a canonical client translator', MyClientTranslatorClass
-# rubocop:disable Lint/NonLocalExitFromIterator -- return guard is idiomatic in shared_example blocks
+# rubocop:disable-next Lint/NonLocalExitFromIterator -- return guard is idiomatic in shared_example blocks
 RSpec.shared_examples 'a canonical client translator' do |translator_class|
   let(:translator) { translator_class.new }
   let(:canonical) { Legion::Extensions::Llm::Canonical }
@@ -429,4 +429,3 @@ RSpec.shared_examples 'a canonical client translator' do |translator_class|
     end
   end
 end
-# rubocop:enable Lint/NonLocalExitFromIterator

@@ -44,10 +44,9 @@ RSpec.shared_examples 'B1 — central canonical enforcement (08 F2)' do
     end
 
     it "stream_chat rejects #{label} with a typed ArgumentError" do
-      # rubocop:disable Lint/EmptyBlock -- the block never runs: enforcement raises first
+      # rubocop:disable-next Lint/EmptyBlock -- the block never runs: enforcement raises first
       expect { callable.stream_chat(bad_messages, model: 'm') { |_c| } }
         .to raise_error(ArgumentError, /Canonical::Message/)
-      # rubocop:enable Lint/EmptyBlock
     end
 
     it "count_tokens rejects #{label} with a typed ArgumentError" do
@@ -121,9 +120,8 @@ RSpec.shared_examples 'B3 — operation preservation (PR #189 defect class)' do
       block&.call(CAN::Chunk.done(request_id: nil))
     end
 
-    # rubocop:disable Lint/EmptyBlock -- the block is the assertion target
+    # rubocop:disable-next Lint/EmptyBlock -- the block is the assertion target
     callable.stream_chat([CAN::Message.build(role: :user, content: 'hi')], model: 'm') { |_c| }
-    # rubocop:enable Lint/EmptyBlock
 
     expect(stream_invocations).to eq(1)
     expect(chat_invocations).to eq(0)

@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-# rubocop:disable RSpec/DescribeClass
+# rubocop:disable-next RSpec/DescribeClass
 RSpec.describe 'lex-llm.gemspec' do
   subject(:gemspec) { Gem::Specification.load(File.expand_path('../../../../lex-llm.gemspec', __dir__)) }
 
@@ -22,4 +22,3 @@ RSpec.describe 'lex-llm.gemspec' do
     expect(gemspec.name).to eq('lex-llm')
   end
 end
-# rubocop:enable RSpec/DescribeClass

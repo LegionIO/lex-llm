@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.8.4 - 2026-08-25
+
+### Changed
+- **OpenAI-compatible transposer routes thinking through the canonical bridge.**
+  `Provider::OpenAICompatible#openai_reasoning_effort` now returns `nil` (omitting
+  `reasoning_effort`) when thinking is absent or `enabled: false`, and uses
+  `Thinking::Config#resolved_effort` instead of the raw `effort` — so a budget-only
+  request derives an effort instead of being silently dropped. Added spec coverage.
+- **`Responses::ToolArguments.parse!` accepts every legitimate wire form (10 U2).**
+  An already-decoded `Hash` passes through unchanged (it is the canonical Hash); a
+  `null`/empty/whitespace-only string and a JSON `null` resolve to `{}` (the documented
+  no-arguments default, not tolerance). Genuinely corrupt arguments — a non-object JSON
+  value or invalid JSON — still raise; they are never fabricated into `{}`.
+
+## 0.8.3 - 2026-08-25
+
+### Removed
+- **Removed `Canonical::Params#max_thinking_tokens`.** Thinking budget now lives solely
+  on `Thinking::Config#budget`. The redundant dual-home on Params is deleted from the
+  `Data.define` member list, `.build`, `.from_hash`, and the strict `.new` validation
+  block. Any wire payload carrying `max_thinking_tokens` in params will now fold into
+  `metadata` as an unknown key (04 L5).
+
+## 0.8.2 - 2026-08-25
+
+### Changed
+- **Expand `Thinking::Config` to the common superset shape.** The canonical struct
+  is now `Data.define(:enabled, :effort, :budget, :summary, :metadata)`:
+  - `enabled` — explicit Boolean (true/false). Default true when a Config is built;
+    nil request.thinking means "client said nothing"; `enabled: false` means explicit
+    OFF. Validated strictly (non-boolean raises).
+  - `effort` — closed 6-level enum: `none`, `low`, `medium`, `high`, `xhigh`, `max`
+    (downcased strings). Unknown values raise at construction.
+  - `budget` — positive Integer or nil. Zero and negatives rejected at construction
+    (off rides `enabled: false`; dynamic rides `enabled: true` + no axis).
+  - `summary` — closed enum `{nil, :auto, :none, :concise, :detailed}` for
+    thought-visibility; independent of the effort/budget axes.
+  - `metadata` — unchanged passthrough Hash.
+  - `EFFORT_BUDGET` extended to the full ladder:
+    `{'low'=>1024,'medium'=>8192,'high'=>16384,'xhigh'=>24576,'max'=>32768}`.
+    `none` resolves to nil budget. `resolved_budget` and `resolved_effort` only FILL
+    an axis the client didn't supply — never overwrite a supplied one.
+  - `enabled?` returns the `enabled` member directly.
+
+## 0.8.1 - 2026-08-25
+
+### Changed
+- **Extract `Thinking::Config` to its own file.** `Canonical::Thinking::Config` (the
+  `Data.define` type and its constants) now lives in `canonical/thinking_config.rb`
+  instead of being nested inside `canonical/thinking.rb`. Spec coverage split into a
+  matching `thinking_config_spec.rb`. Pure refactor — no behavior changes.
+
 ## 0.8.0 - 2026-08-20
 
 **The SSOT v4 contract cut.** This is a complete contract line, not a patch wave:
