@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.5 - 2026-10-29
+
+### Fixed
+- Restore TLS certificate and hostname verification in shared provider connections
+  by removing the insecure override. Both Typhoeus and Net::HTTP retain support
+  for explicitly trusted custom certificate authorities. (#50)
+- Correct asynchronous TCP probes that could report refused connections as open
+  on Darwin; inspect the completed socket's error status instead of reconnecting.
+
 ## 0.8.4 - 2026-08-25
 
 ### Changed

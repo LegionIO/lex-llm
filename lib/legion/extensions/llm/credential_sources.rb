@@ -114,11 +114,7 @@ module Legion
           rescue IO::WaitWritable
             return false unless sock.wait_writable(timeout)
 
-            begin
-              sock.connect_nonblock(addr)
-            rescue Errno::EISCONN
-              # already connected — success
-            end
+            return sock.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR).int.zero?
           end
           true
         rescue StandardError => e

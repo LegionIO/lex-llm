@@ -40,7 +40,6 @@ module Legion
           @config = config
 
           @connection ||= Faraday.new(provider.api_base) do |faraday|
-            faraday.ssl.verify = false
             setup_timeout(faraday)
             setup_logging(faraday)
             setup_retry(faraday)

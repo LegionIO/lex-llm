@@ -493,6 +493,24 @@ Key settings paths:
 - `extensions.llm.model_whitelist` / `model_blacklist` -- provider-level model filters
 - `extensions.llm.<family>.instance.<name>.model_whitelist` -- per-instance override
 
+### TLS verification and custom certificate authorities
+
+Shared provider connections verify HTTPS certificates and hostnames by default
+with both Typhoeus and Net::HTTP. An untrusted certificate or hostname mismatch
+fails before an authenticated HTTP request is sent.
+
+When constructing a shared connection for a private or corporate CA, configure
+the underlying Faraday SSL options before making the first request:
+
+```ruby
+connection = Legion::Extensions::Llm::Connection.new(provider, config)
+connection.connection.ssl.ca_file = '/path/to/trusted-ca-bundle.pem'
+```
+
+Trust the appropriate CA rather than disabling verification. Local HTTPS servers
+with self-signed certificates also need explicit trust; plain HTTP behavior is
+unchanged.
+
 ---
 
 ## Provider Dependencies
