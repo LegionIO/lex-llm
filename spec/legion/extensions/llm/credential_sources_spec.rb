@@ -247,7 +247,12 @@ RSpec.describe Legion::Extensions::Llm::CredentialSources do
     end
 
     it 'returns false when port is closed' do
-      expect(mod.socket_open?('127.0.0.1', 39_999, timeout: 0.05)).to be false
+      socket = Socket.new(:INET, :STREAM)
+      socket.bind(Socket.sockaddr_in(0, '127.0.0.1'))
+
+      expect(mod.socket_open?('127.0.0.1', socket.local_address.ip_port, timeout: 0.05)).to be false
+    ensure
+      socket&.close
     end
 
     it 'returns false when connection is refused' do
@@ -260,12 +265,16 @@ RSpec.describe Legion::Extensions::Llm::CredentialSources do
       expect(mod.socket_open?('192.0.2.1', 80, timeout: 0.05)).to be false
     end
 
-    it 'uses 0.1 second default timeout' do
-      server = TCPServer.new('127.0.0.1', 0)
-      port = server.addr[1]
-      expect(mod.socket_open?('127.0.0.1', port, timeout: 0.1)).to be true
-    ensure
-      server&.close
+    it 'returns false when an asynchronous connection completes with an error' do
+      socket_error = Socket::Option.int(Socket::AF_INET, Socket::SOL_SOCKET, Socket::SO_ERROR, Errno::ECONNREFUSED::Errno)
+      fake_sock = instance_double(Socket, setsockopt: nil, wait_writable: true, getsockopt: socket_error, close: nil)
+      allow(Socket).to receive(:new).and_return(fake_sock)
+      allow(fake_sock).to receive(:connect_nonblock).and_invoke(
+        ->(*) { raise IO::EINPROGRESSWaitWritable },
+        ->(*) { 0 }
+      )
+
+      expect(mod.socket_open?('192.0.2.1', 80, timeout: 0.05)).to be false
     end
   end
 

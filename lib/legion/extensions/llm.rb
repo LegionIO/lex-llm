@@ -156,6 +156,9 @@ module Legion
 
       def self.default_settings
         {
+          ssl: {
+            verify: false
+          },
           fleet: {
             consumer: {
               enabled: false,

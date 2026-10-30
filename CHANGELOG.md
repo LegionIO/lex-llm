@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.5 - 2026-10-29
+
+### Changed
+- Make shared provider TLS certificate and hostname verification configurable through
+  `Legion::Settings` at `extensions.llm.ssl.verify`, defaulting to `false`. Set it to
+  `true` to enable verification with Typhoeus or Net::HTTP; explicitly trusted custom
+  certificate authorities remain supported. (#50)
+
+### Fixed
+- Correct asynchronous TCP probes that could report refused connections as open
+  on Darwin; inspect the completed socket's error status instead of reconnecting.
+
 ## 0.8.4 - 2026-08-25
 
 ### Changed

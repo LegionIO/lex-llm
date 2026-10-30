@@ -489,9 +489,43 @@ Key settings paths:
 - `extensions.llm.fleet.endpoint` -- endpoint-style worker configuration
 - `extensions.llm.fleet.compliance.encrypt_fleet` -- encrypt fleet envelopes (default true)
 - `extensions.llm.fleet.auth.verify_issuer` -- validate JWT issuer (default true)
+- `extensions.llm.ssl.verify` -- verify provider HTTPS certificates and hostnames (default false)
 - `extensions.llm.security.credential_source_probing` -- gate credential probing (default true)
 - `extensions.llm.model_whitelist` / `model_blacklist` -- provider-level model filters
 - `extensions.llm.<family>.instance.<name>.model_whitelist` -- per-instance override
+
+### TLS verification and custom certificate authorities
+
+Shared provider connections read `extensions.llm.ssl.verify` from `Legion::Settings`
+when constructed. The default is `false` for both Typhoeus and Net::HTTP.
+With verification disabled, untrusted and wrong-host certificates are accepted,
+so credentials can be sent to an unauthenticated peer.
+
+Enable verification before creating provider connections:
+
+```json
+{
+  "extensions": {
+    "llm": {
+      "ssl": { "verify": true }
+    }
+  }
+}
+```
+
+With verification enabled, an untrusted certificate or hostname mismatch fails
+before an authenticated HTTP request is sent.
+
+When constructing a shared connection for a private or corporate CA, configure
+the underlying Faraday SSL options before making the first request:
+
+```ruby
+connection = Legion::Extensions::Llm::Connection.new(provider, config)
+connection.connection.ssl.ca_file = '/path/to/trusted-ca-bundle.pem'
+```
+
+When verification is enabled, private or self-signed HTTPS servers need explicit
+CA trust. Plain HTTP behavior is unchanged.
 
 ---
 
