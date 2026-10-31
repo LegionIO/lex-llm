@@ -55,6 +55,11 @@ contract error. `ContentBlock.image` explicitly defaults to `:base64`.
 Fleet workers rehydrate serialized messages through these same constructors before
 calling a provider, preserving media bytes, MIME type, ordering and image detail.
 
+Fleet publishers require `legion-transport >= 1.4.31`: they encode once, validate
+the final encrypted byte count, then publish those exact bytes with the matching
+encryption headers. HTTP response decoding uses `Legion::JSON` at the shared
+connection boundary and supports Faraday's positional and keyword parser APIs.
+
 `Provider::OpenAICompatible` translates canonical text/image blocks into OpenAI
 `text`/`image_url` parts, never raw canonical media fields. Provider-specific cache
 controls remain canonical metadata unless the selected provider supports them.

@@ -6,6 +6,7 @@
 - Normalize canonical image source types at construction and JSON rehydration so fleet execution preserves base64 and URL image meaning.
 - Render mixed text and images as OpenAI-compatible text/image_url parts through the real provider callable, preserving media bytes, order, and image detail.
 - Decode HTTP JSON responses through `Legion::JSON` at the shared connection boundary; Faraday's positional parser options no longer break JSON 3 responses.
+- Validate the exact encrypted fleet request/reply bytes once before publication using `legion-transport >= 1.4.31`, preserving their matching encryption headers.
 
 ### Added
 - Immutable shared `Routing::RequestRequirements` for request-owned routing facts; it validates contracts without consulting Inventory or choosing a provider.

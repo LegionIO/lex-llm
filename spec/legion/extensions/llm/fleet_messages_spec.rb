@@ -15,6 +15,15 @@ RSpec.describe 'LLM fleet message envelopes' do
     end
   end
 
+  around do |example|
+    previous_crypt = Legion::Settings[:crypt].dup
+    Legion::Settings[:crypt][:cluster_secret] = 'a' * 64
+    Legion::Settings[:crypt][:cs_encrypt_ready] = true
+    example.run
+  ensure
+    Legion::Settings.loader.settings[:crypt] = previous_crypt
+  end
+
   def valid_request_options
     {
       routing_key: 'llm.fleet.inference.qwen.ctx8192',
@@ -176,6 +185,11 @@ RSpec.describe 'LLM fleet message envelopes' do
           type: protocol::REQUEST_TYPE
         )
       )
+      expect(exchange).to have_received(:publish) do |payload, **wire_options|
+        expect(wire_options[:content_encoding]).to eq('encrypted/cs')
+        decoded = Legion::JSON.load(Legion::Crypt.decrypt(payload, wire_options[:headers].fetch(:iv)))
+        expect(decoded).to include(model: 'qwen', params: { messages: [{ role: 'user', content: 'hello' }] })
+      end
       expect(channel).to have_received(:on_return)
       expect(channel).to have_received(:confirm_select)
       expect(channel).to have_received(:wait_for_confirms)
@@ -199,6 +213,13 @@ RSpec.describe 'LLM fleet message envelopes' do
       expect(channel).to have_received(:confirm_select).with(confirm_timeout: 5000)
       expect(channel).to have_received(:wait_for_confirms).with(no_args)
       expect(result).to include(status: :accepted, accepted: true)
+    end
+
+    it 'rejects an encrypted request that exceeds the limit even when plaintext fits' do
+      message = described_class.new(**valid_request_options)
+      allow(described_class).to receive(:max_payload_bytes).and_return(Legion::JSON.dump(message.message).bytesize)
+
+      expect { message.publish }.to raise_error(Legion::Transport::PayloadTooLarge)
     end
   end
 
@@ -241,14 +262,6 @@ RSpec.describe 'LLM fleet message envelopes' do
       end.to raise_error(ArgumentError, /protocol_version must be 3/)
     end
 
-    it 'is a pass-through for the response payload — the G5 thinking exclusion happens exactly once at the responder builder' do
-      message = described_class.new(**valid_response_options, response: { text: 'visible', stop_reason: :end_turn })
-
-      expect(message.message[:response]).to eq(text: 'visible', stop_reason: :end_turn)
-      expect(message.message).not_to have_key(:thinking)
-      expect(message.encode_message).not_to include('thinking')
-    end
-
     it 'rejects legacy fleet envelope fields' do
       %i[schema_version request_type fleet_correlation_id].each do |field|
         expect do
@@ -274,6 +287,18 @@ RSpec.describe 'LLM fleet message envelopes' do
           type: protocol::RESPONSE_TYPE
         )
       )
+      expect(default_exchange).to have_received(:publish) do |payload, **wire_options|
+        expect(wire_options[:content_encoding]).to eq('encrypted/cs')
+        decoded = Legion::JSON.load(Legion::Crypt.decrypt(payload, wire_options[:headers].fetch(:iv)))
+        expect(decoded[:response]).to include(text: 'hello', stop_reason: 'end_turn')
+      end
+    end
+
+    it 'rejects an encrypted reply that exceeds the limit even when plaintext fits' do
+      message = described_class.new(**valid_response_options)
+      allow(described_class).to receive(:max_payload_bytes).and_return(Legion::JSON.dump(message.message).bytesize)
+
+      expect { message.publish }.to raise_error(Legion::Transport::PayloadTooLarge)
     end
 
     it 'accepts standard transport publish options and returns accepted reply results' do

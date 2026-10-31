@@ -55,13 +55,14 @@ module Legion
 
               requested_options = DEFAULT_PUBLISH_OPTIONS.merge(@options).merge(options || {})
               return_result = return_publish_result?(requested_options)
+              payload = encode_message
+              validate_payload_size(payload: payload)
               publish_options = request_publish_options(requested_options)
-              validate_payload_size
               exchange_dest = fleet_exchange
               return_state = {}
               install_return_listener(exchange_dest, requested_options, return_state)
               prepare_publisher_confirms(exchange_dest, requested_options)
-              exchange_dest.publish(encode_message, **publish_options)
+              exchange_dest.publish(payload, **publish_options)
               return nil unless return_result
 
               publish_result(exchange_dest, requested_options.merge(publish_options), return_state)
@@ -125,7 +126,7 @@ module Legion
               {
                 routing_key: routing_key || '',
                 content_type: options[:content_type] || content_type,
-                content_encoding: options[:content_encoding] || content_encoding,
+                content_encoding: @options[:content_encoding] || content_encoding,
                 type: options[:type] || type,
                 priority: options[:priority] || priority,
                 expiration: options[:expiration] || expiration,
