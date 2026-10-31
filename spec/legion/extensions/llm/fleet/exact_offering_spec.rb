@@ -143,6 +143,13 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
     end
 
     it 'rehydrates JSON-round-tripped messages before every message operation' do
+      content = [
+        Legion::Extensions::Llm::Canonical::ContentBlock.text('compare', cache_control: { type: 'ephemeral' }),
+        Legion::Extensions::Llm::Canonical::ContentBlock.image(data: 'AAA=', media_type: 'image/png', detail: 'high'),
+        Legion::Extensions::Llm::Canonical::ContentBlock.image(
+          data: 'https://example.org/image.png', media_type: nil, source_type: :url, detail: 'low'
+        )
+      ]
       raw_messages = [
         { role: 'system', content: 'follow the rules' },
         {
@@ -150,7 +157,7 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
           tool_calls: [{ id: 'call-1', name: 'lookup', arguments: { query: 'status' } }]
         },
         { role: 'tool', tool_call_id: 'call-1', content: 'clean' },
-        { role: 'user', content: 'continue' }
+        Legion::Extensions::Llm::Canonical::Message.build(role: :user, content: content)
       ]
 
       %w[chat stream_chat count_tokens].each do |operation|
@@ -166,6 +173,8 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
         expect(call[:messages].map(&:role)).to eq(%i[system assistant tool user])
         expect(call[:messages][1].tool_calls.first.name).to eq('lookup')
         expect(call[:messages][2].tool_call_id).to eq('call-1')
+        expect(call[:messages][3].content).to all(be_a(Legion::Extensions::Llm::Canonical::ContentBlock))
+        expect(call[:messages][3].content).to eq(content)
       end
     end
   end

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.6 - 2026-10-31
+
+### Fixed
+- Normalize canonical image source types at construction and JSON rehydration so fleet execution preserves base64 and URL image meaning.
+- Render mixed text and images as OpenAI-compatible text/image_url parts through the real provider callable, preserving media bytes, order, and image detail.
+- Decode HTTP JSON responses through `Legion::JSON` at the shared connection boundary; Faraday's positional parser options no longer break JSON 3 responses.
+
+### Added
+- Immutable shared `Routing::RequestRequirements` for request-owned routing facts; it validates contracts without consulting Inventory or choosing a provider.
+
 ## 0.8.5 - 2026-10-29
 
 ### Changed

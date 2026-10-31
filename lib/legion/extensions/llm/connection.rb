@@ -125,7 +125,9 @@ module Legion
         def setup_middleware(faraday)
           faraday.request :multipart
           faraday.request :json
-          faraday.response :json
+          faraday.response :json, parser_options: {
+            decoder: [->(body, _options) { Legion::JSON.parse(body, symbolize_names: false) }, :call]
+          }
           # Prefer typhoeus (libcurl) over net_http to avoid Ruby 4.0 + net-http-0.9.1 SSL issues
           begin
             require 'faraday/typhoeus'
