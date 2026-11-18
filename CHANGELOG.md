@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.7 - 2026-11-17
+
+### Fixed
+- Enforce the canonical system member as a String or absent across direct construction, builders, and JSON rehydration. Client block arrays must be translated at ingress instead of leaking into provider dispatch.
+
 ## 0.8.6 - 2026-10-31
 
 ### Fixed

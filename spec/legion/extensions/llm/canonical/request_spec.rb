@@ -102,6 +102,26 @@ RSpec.describe Legion::Extensions::Llm::Canonical::Request do
     end
   end
 
+  describe 'system member contract — String or absent' do
+    it 'accepts a String system' do
+      expect(described_class.build(system: 'be brief').system).to eq('be brief')
+    end
+
+    it 'accepts an absent system' do
+      expect(described_class.build.system).to be_nil
+    end
+
+    it 'rejects a block-array system from every construction path' do
+      blocks = [{ type: 'text', text: 'Rule A' }]
+      expect { described_class.build(system: blocks) }
+        .to raise_error(ArgumentError, /system expected String, got Array/)
+      expect { described_class.new(system: blocks) }
+        .to raise_error(ArgumentError, /system expected String, got Array/)
+      expect { described_class.from_hash(system: blocks) }
+        .to raise_error(ArgumentError, /system expected String, got Array/)
+    end
+  end
+
   it 'defaults stream false, routing {} and auto-generates req ids' do
     request = described_class.build(messages: [])
     expect(request.stream).to be(false)
