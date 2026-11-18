@@ -201,7 +201,7 @@ end
 | `Error` | `lib/.../error.rb` | Base error class for lex-llm. |
 | `Errors::UnsupportedCapability` | `lib/.../errors/unsupported_capability.rb` | Raised when a provider lacks a requested capability. |
 | `Utils` | `lib/.../utils.rb` | Shared utility methods. |
-| `VERSION` | `lib/.../version.rb` | Current gem version (`0.4.18`). |
+| `VERSION` | `lib/.../version.rb` | Current gem version (`0.8.8`). |
 
 ---
 

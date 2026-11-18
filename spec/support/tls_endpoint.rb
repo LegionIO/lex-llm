@@ -83,8 +83,8 @@ module SpecSupport
       @requests << request
       body = '{"status":"ok"}'
       socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}")
-    rescue OpenSSL::SSL::SSLError => e
-      Legion::Logging.debug("TLS fixture handshake rejected: #{e.class}")
+    rescue OpenSSL::SSL::SSLError, Errno::ECONNRESET => e
+      Legion::Logging.debug("TLS fixture peer rejected the connection: #{e.class}")
     ensure
       socket&.close
     end

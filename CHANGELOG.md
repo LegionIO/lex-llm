@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.8 - 2026-11-18
+
+### Fixed
+- Handle a peer connection reset in the local TLS test endpoint when a client rejects an untrusted certificate. Linux OpenSSL/curl may reset the socket after the server accepts it; the certificate-rejection and no-authenticated-request assertions remain unchanged.
+
 ## 0.8.7 - 2026-11-17
 
 ### Fixed
