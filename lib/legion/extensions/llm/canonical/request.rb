@@ -120,6 +120,11 @@ module Legion
           # delegate here.
           Strict.install_strict_new!(self) do |values, site|
             values[:messages] = normalize_messages!(values[:messages], site)
+            # The system string contract: a String (or absent) is the only
+            # canonical shape. Client dialects converge multi-part system
+            # wire at their own edge; a block array here is a client-edge
+            # defect leaking past the boundary — fail loud, never stringify.
+            values[:system] = Strict.expect_type!(values[:system], [::String], site, :system)
             values[:tools] = normalize_tools(values[:tools], site)
             values[:tool_choice] = values[:tool_choice].is_a?(::String) ? values[:tool_choice].to_sym : values[:tool_choice]
             values[:params] = normalize_params!(values[:params], site)

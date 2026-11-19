@@ -64,12 +64,37 @@ RSpec.describe Legion::Extensions::Llm::Canonical::ContentBlock do
     end
   end
 
-  describe 'T4 — member survival' do
-    it 'survives build → to_h → JSON → from_hash' do
-      block = described_class.image(data: 'AAA=', media_type: 'image/png', source_type: :base64)
-      round_tripped = described_class.from_hash(Legion::JSON.load(Legion::JSON.dump(block.to_h)))
-      expect(round_tripped.data).to eq('AAA=')
-      expect(round_tripped.media_type).to eq('image/png')
+  describe 'source semantics at construction and rehydration' do
+    it 'normalizes source enums through every constructor' do
+      %i[new build from_hash].each do |constructor|
+        %w[base64 url].each do |source_type|
+          block = described_class.public_send(constructor, type: :image, source_type: source_type)
+          expect(block.source_type).to eq(source_type.to_sym)
+        end
+      end
+    end
+
+    it 'rejects missing and unknown image source types through every constructor' do
+      %i[new build from_hash].each do |constructor|
+        expect { described_class.public_send(constructor, type: :image) }.to raise_error(ArgumentError, /source_type/)
+        expect { described_class.public_send(constructor, type: :image, source_type: :file) }
+          .to raise_error(ArgumentError, /Invalid source_type/)
+      end
+    end
+
+    it 'preserves typed ordered content and image meaning across message JSON rehydration' do
+      content = [
+        described_class.text('compare', cache_control: { type: 'ephemeral' }),
+        described_class.image(data: 'AAA=', media_type: 'image/png', detail: 'high'),
+        described_class.image(data: 'https://example.org/image.png', media_type: nil, source_type: :url, detail: 'low')
+      ]
+      message = Legion::Extensions::Llm::Canonical::Message.build(role: :user, content: content)
+      expect(message.content.first).to be(content.first)
+
+      restored = Legion::Extensions::Llm::Canonical::Message.from_hash(Legion::JSON.load(Legion::JSON.dump(message)))
+
+      expect(restored.content).to all(be_a(described_class))
+      expect(restored.content).to eq(content)
     end
   end
 

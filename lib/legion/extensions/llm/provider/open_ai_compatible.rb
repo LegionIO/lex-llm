@@ -85,7 +85,15 @@ module Legion
             return content.map { |block| openai_content(block) } if content.is_a?(::Array)
             return content.to_s if content.nil? || content.is_a?(::String)
 
-            return content.text.to_s if content.text?
+            return { type: 'text', text: content.text.to_s } if content.text?
+
+            if content.type == :image
+              url = content.source_type == :base64 ? "data:#{content.media_type};base64,#{content.data}" : content.data
+              return {
+                type: 'image_url',
+                image_url: { url: url, detail: content.detail }.compact
+              }.compact
+            end
 
             {
               type: content.type.to_s,
@@ -97,7 +105,8 @@ module Legion
               id: content.id,
               input: content.input,
               tool_use_id: content.tool_use_id,
-              is_error: content.is_error
+              is_error: content.is_error,
+              cache_control: content.cache_control
             }.compact
           end
 

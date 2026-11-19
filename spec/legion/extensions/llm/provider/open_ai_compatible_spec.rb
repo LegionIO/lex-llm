@@ -72,29 +72,41 @@ RSpec.describe Legion::Extensions::Llm::Provider::OpenAICompatible do
     end
   end
 
-  it 'renders content block arrays in the OpenAI wire shape' do
+  it 'sends ordered typed text and image_url parts through the callable HTTP boundary' do
     message = canonical::Message.build(
       role: :user,
-      content: [canonical::ContentBlock.text('look at this'),
-                canonical::ContentBlock.image(data: 'AAA=', media_type: 'image/png')]
+      content: [
+        canonical::ContentBlock.text('compare these', cache_control: { type: 'ephemeral' }),
+        canonical::ContentBlock.image(data: 'AAA=', media_type: 'image/png', detail: 'high'),
+        canonical::ContentBlock.text('with this'),
+        canonical::ContentBlock.build(type: :image, source_type: :url, data: 'https://example.org/image.png',
+                                      detail: 'low', cache_control: { type: 'ephemeral' })
+      ]
     )
+    stubs = Faraday::Adapter::Test::Stubs.new do |stub|
+      stub.post('/v1/chat/completions') do |env|
+        payload = Legion::JSON.load(env.body)
+        expect(payload[:messages]).to eq(
+          [{
+            role: 'user',
+            content: [
+              { type: 'text', text: 'compare these' },
+              { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA=', detail: 'high' } },
+              { type: 'text', text: 'with this' },
+              { type: 'image_url', image_url: { url: 'https://example.org/image.png', detail: 'low' } }
+            ]
+          }]
+        )
+        [200, { 'content-type' => 'application/json' }, Legion::JSON.dump(completion_body)]
+      end
+    end
+    provider.connection.connection.builder.adapter :test, stubs
 
-    payload = provider.send(
-      :render_payload,
-      [message],
-      tools: {},
-      model: model_id,
-      stream: false,
-      schema: nil,
-      thinking: nil,
-      tool_prefs: nil,
-      params: nil
-    )
+    response = provider.chat([message], model: model_id)
 
-    # Text blocks render as plain strings; non-text blocks as OpenAI content parts.
-    expect(payload[:messages].first[:content]).to eq(
-      ['look at this', { type: 'image', data: 'AAA=', media_type: 'image/png', source_type: :base64 }]
-    )
+    expect(response).to be_a(canonical::Response)
+    expect(response.text).to eq('hi')
+    stubs.verify_stubbed_calls
   end
 
   it 'parses chat completion responses to a Canonical::Response with usage and tool calls (08 R2)' do

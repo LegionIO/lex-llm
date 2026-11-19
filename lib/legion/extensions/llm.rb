@@ -61,6 +61,7 @@ module Legion
       require_relative 'llm/inventory/publisher'
       require_relative 'llm/inventory/probe_coordinator'
       require_relative 'llm/routing/records'
+      require_relative 'llm/routing/request_requirements'
       require_relative 'llm/routing/provider_outcome'
 
       # --- Base value objects (no internal deps) ---

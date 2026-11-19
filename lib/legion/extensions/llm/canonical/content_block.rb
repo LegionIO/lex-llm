@@ -59,6 +59,13 @@ module Legion
             Strict.enum!(type_sym, self::CONTENT_BLOCK_TYPES, site, :type)
           end
 
+          def self.normalize_source_type!(source_type, type, site)
+            raise ArgumentError, "#{site}: image source_type is required" if type == :image && source_type.nil?
+
+            source_type = source_type.to_sym if source_type.is_a?(::String)
+            Strict.enum!(source_type, self::SOURCE_TYPES, site, :source_type)
+          end
+
           # Build a text content block.
           def self.text(content, cache_control: nil)
             build(type: :text, text: content, cache_control:)
@@ -136,12 +143,14 @@ module Legion
           # delegate here.
           Strict.install_strict_new!(self) do |values, site|
             values[:type] = normalize_type!(values[:type], site)
+            values[:source_type] = normalize_source_type!(values[:source_type], values[:type], site)
             values[:metadata] = Strict.metadata!(values[:metadata], site)
             values
           end
         end
 
         ContentBlock::CONTENT_BLOCK_TYPES = %i[text thinking tool_use tool_result image audio video].freeze
+        ContentBlock::SOURCE_TYPES = %i[base64 url].freeze
         ContentBlock::BUILD_SITE = 'Canonical::ContentBlock.build'
         ContentBlock::FROM_HASH_SITE = 'Canonical::ContentBlock.from_hash'
         ContentBlock::NEW_SITE = 'Canonical::ContentBlock.new'
