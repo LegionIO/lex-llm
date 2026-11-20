@@ -41,7 +41,7 @@ gem 'lex-llm'
 Provider extensions should declare `lex-llm` as a gemspec dependency:
 
 ```ruby
-spec.add_dependency 'lex-llm', '>= 0.8.6'
+spec.add_dependency 'lex-llm', '>= 0.8.9'
 ```
 
 For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.
@@ -54,6 +54,10 @@ constructor, including `from_hash`; an image without an explicit source type is 
 contract error. `ContentBlock.image` explicitly defaults to `:base64`.
 Fleet workers rehydrate serialized messages through these same constructors before
 calling a provider, preserving media bytes, MIME type, ordering and image detail.
+For chat, streaming-chat, and token-count requests, the worker also rehydrates
+tool definitions, sampling parameters, and thinking controls through
+`Canonical::Request`'s shared normalizers. Headers, schemas, and tool preferences
+keep their existing shapes; embedding and media parameter hashes are unchanged.
 
 Fleet publishers require `legion-transport >= 1.4.31`: they encode once, validate
 the final encrypted byte count, then publish those exact bytes with the matching

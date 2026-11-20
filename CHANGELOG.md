@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.9 - 2026-11-20
+
+### Fixed
+- Rehydrate serialized tools, thinking controls, and sampling parameters at the shared fleet worker boundary before chat, streaming-chat, or token-count dispatch. Remote calls now preserve the same canonical controls as direct calls, while embedding and media parameters keep their existing contracts.
+- Reject malformed serialized controls as non-retryable fleet contract errors before provider execution, releasing the acquired callable lease.
+
 ## 0.8.8 - 2026-11-18
 
 ### Fixed

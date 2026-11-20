@@ -177,6 +177,52 @@ RSpec.describe Legion::Extensions::Llm::Fleet::ExactOffering do
         expect(call[:messages][3].content).to eq(content)
       end
     end
+
+    it 'rehydrates tools and controls for token counting through the same canonical constructors' do
+      params = {
+        messages: [], tools: { lookup: { name: 'lookup', parameters: { type: 'object', properties: {} } } },
+        thinking: { enabled: true, effort: 'high' }, params: { max_tokens: 512, temperature: 0.2 }
+      }
+      wire = Legion::JSON.load(Legion::JSON.dump(exact_envelope(operation: 'count_tokens', params: params)))
+
+      worker.call(envelope: wire, registry: inventory::Registry)
+
+      controls = recording_callable.calls.first[:rest]
+      expect(controls[:tools][:lookup]).to be_a(Legion::Extensions::Llm::Canonical::ToolDefinition)
+      expect(controls[:thinking]).to eq(Legion::Extensions::Llm::Canonical::Thinking::Config.build(effort: 'high'))
+      expect(controls[:params]).to eq(Legion::Extensions::Llm::Canonical::Params.build(max_tokens: 512, temperature: 0.2))
+      expect(handle_reference_count).to eq(0)
+    end
+
+    it 'preserves canonical control instances already present at the fleet boundary' do
+      tool = Legion::Extensions::Llm::Canonical::ToolDefinition.build(name: 'lookup')
+      thinking = Legion::Extensions::Llm::Canonical::Thinking::Config.build(enabled: false)
+      params = Legion::Extensions::Llm::Canonical::Params.build(max_tokens: 512)
+
+      worker.call(envelope: exact_envelope(params: { messages: [], tools: { lookup: tool }, thinking: thinking, params: params }),
+                  registry: inventory::Registry)
+
+      controls = recording_callable.calls.first[:rest]
+      expect(controls[:tools][:lookup]).to equal(tool)
+      expect(controls[:thinking]).to equal(thinking)
+      expect(controls[:params]).to equal(params)
+    end
+
+    it 'preserves embedding-specific params instead of coercing them into chat sampling controls' do
+      embedding_key = instance_key(family: 'vllm', instance: 'embedding')
+      claim_and_activate(key: embedding_key, callable: recording_callable, coordinator: probe_coordinator(embedding_key),
+                         supported: [:embed])
+      params = { encoding_format: 'base64', dimensions: 64 }
+      envelope = exact_envelope(
+        provider_instance: 'embedding', operation: 'embed',
+        offering_id: inventory::Registry.snapshot.lanes_for(instance_key: embedding_key).first.lane_id,
+        params: { text: 'hello', params: params }
+      )
+
+      worker.call(envelope: envelope, registry: inventory::Registry)
+
+      expect(recording_callable.calls.first[:rest][:params]).to equal(params)
+    end
   end
 
   describe 'TokenValidator exact signed claims' do
