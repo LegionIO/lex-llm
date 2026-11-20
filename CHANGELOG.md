@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.10 - 2026-11-20
+
+### Fixed
+- Preserve explicit OpenAI-compatible streaming finish reasons through canonical chunk parsing and accumulation, including empty terminal deltas and frames containing final content. The shared streaming wrapper emits exactly one final done with the complete trailing usage; missing or unknown reasons remain unconfirmed instead of fabricating successful completion. Add full provider/HTTP-stream regressions for stop, length, tool calls, content filtering, and trailing usage.
+
 ## 0.8.9 - 2026-11-20
 
 ### Fixed

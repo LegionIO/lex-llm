@@ -41,7 +41,7 @@ gem 'lex-llm'
 Provider extensions should declare `lex-llm` as a gemspec dependency:
 
 ```ruby
-spec.add_dependency 'lex-llm', '>= 0.8.9'
+spec.add_dependency 'lex-llm', '>= 0.8.10'
 ```
 
 For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.
@@ -67,6 +67,10 @@ connection boundary and supports Faraday's positional and keyword parser APIs.
 `Provider::OpenAICompatible` translates canonical text/image blocks into OpenAI
 `text`/`image_url` parts, never raw canonical media fields. Provider-specific cache
 controls remain canonical metadata unless the selected provider supports them.
+Its stream parser maps explicit finish reasons through the shared stop-reason
+vocabulary, even when the terminal delta is empty. The accumulator retains that
+reason while accepting trailing usage; the streaming wrapper emits exactly one
+final canonical `done`. Missing or unknown reasons remain absent.
 
 `Routing::RequestRequirements` is the shared immutable record for operation,
 capabilities, context/input/output bounds, modality, pins, hint disposition, routing

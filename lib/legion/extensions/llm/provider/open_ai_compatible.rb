@@ -246,6 +246,13 @@ module Legion
             chunks.concat(parse_streaming_tool_calls(delta['tool_calls']))
             canonical_usage = openai_usage_to_canonical(usage)
             chunks << Canonical::Chunk.usage_chunk(usage: canonical_usage, request_id: nil) if canonical_usage
+            # The accumulator records this reason without emitting the marker.
+            # Streaming emits the sole final done after trailing usage arrives.
+            if choice['finish_reason']
+              chunks << Legion::Extensions::Llm::Canonical::Chunk.done(
+                request_id: nil, stop_reason: stop_reason_lookup(choice['finish_reason'])
+              )
+            end
 
             if chunks.empty?
               nil
