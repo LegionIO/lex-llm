@@ -41,7 +41,7 @@ gem 'lex-llm'
 Provider extensions should declare `lex-llm` as a gemspec dependency:
 
 ```ruby
-spec.add_dependency 'lex-llm', '>= 0.8.6'
+spec.add_dependency 'lex-llm', '>= 0.8.11'
 ```
 
 For local development across LegionIO repos, prefer a local path override in the app or test `Gemfile`, not a permanent git dependency in the gemspec.
@@ -54,6 +54,10 @@ constructor, including `from_hash`; an image without an explicit source type is 
 contract error. `ContentBlock.image` explicitly defaults to `:base64`.
 Fleet workers rehydrate serialized messages through these same constructors before
 calling a provider, preserving media bytes, MIME type, ordering and image detail.
+For chat, streaming-chat, and token-count requests, the worker also rehydrates
+tool definitions, sampling parameters, and thinking controls through
+`Canonical::Request`'s shared normalizers. Headers, schemas, and tool preferences
+keep their existing shapes; embedding and media parameter hashes are unchanged.
 
 Fleet publishers require `legion-transport >= 1.4.31`: they encode once, validate
 the final encrypted byte count, then publish those exact bytes with the matching
@@ -63,6 +67,14 @@ connection boundary and supports Faraday's positional and keyword parser APIs.
 `Provider::OpenAICompatible` translates canonical text/image blocks into OpenAI
 `text`/`image_url` parts, never raw canonical media fields. Provider-specific cache
 controls remain canonical metadata unless the selected provider supports them.
+Providers can override `output_token_limit_key` for their protocol's output-limit
+spelling. The default is `:max_tokens`; a protocol using `:max_completion_tokens`
+receives the same canonical `Params#max_tokens` value under that single wire key.
+This hook does not change limits, infer model capabilities, or supply defaults.
+Its stream parser maps explicit finish reasons through the shared stop-reason
+vocabulary, even when the terminal delta is empty. The accumulator retains that
+reason while accepting trailing usage; the streaming wrapper emits exactly one
+final canonical `done`. Missing or unknown reasons remain absent.
 
 `Routing::RequestRequirements` is the shared immutable record for operation,
 capabilities, context/input/output bounds, modality, pins, hint disposition, routing

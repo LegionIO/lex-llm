@@ -2,10 +2,11 @@
 
 require 'concurrent'
 
-require_relative 'protocol'
-require_relative 'settings'
-require_relative 'token_validator'
-require_relative 'fleet_envelope'
+require 'legion/extensions/llm/fleet/protocol'
+require 'legion/extensions/llm/fleet/settings'
+require 'legion/extensions/llm/fleet/token_validator'
+require 'legion/extensions/llm/fleet/fleet_envelope'
+require 'legion/extensions/llm/canonical'
 require 'legion/extensions/llm/taxonomies'
 require 'legion/extensions/llm/inventory/errors'
 require 'legion/extensions/llm/inventory/identity'
@@ -183,7 +184,23 @@ module Legion
             end
           end
 
+          # Rehydrate message-operation controls at the same fleet boundary as
+          # messages. The canonical constructors own validation; providers see
+          # canonical values regardless of whether dispatch was local or remote.
+          # Other operation params retain their operation-specific wire contract.
+          def rehydrate_wire_controls(params:, **)
+            normalized = params.dup
+            normalized[:tools] = Legion::Extensions::Llm::Canonical::Request.normalize_tools(params[:tools], name) if params.key?(:tools)
+            normalized[:params] = Legion::Extensions::Llm::Canonical::Request.normalize_params!(params[:params], name) if params.key?(:params)
+            normalized[:thinking] = Legion::Extensions::Llm::Canonical::Request.normalize_thinking!(params[:thinking], name) if params.key?(:thinking)
+            normalized
+          rescue ArgumentError => e
+            raise Legion::Extensions::Llm::Fleet::ContractError, e.message, cause: e
+          end
+
           def dispatch_operation(callable, operation, model, params)
+            params = rehydrate_wire_controls(params: params) if %i[chat stream_chat count_tokens].include?(operation)
+
             case operation
             when :chat
               callable.chat(rehydrate_wire_messages(require_param!(params, :messages, operation)), model: model,

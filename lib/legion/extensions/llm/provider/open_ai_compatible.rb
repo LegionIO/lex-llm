@@ -12,6 +12,8 @@ module Legion
         # fields) lives here, at the edge (03 O03a).
         module OpenAICompatible
           def stream_usage_supported? = false
+          # Provider protocols choose the wire spelling, never a new limit value.
+          def output_token_limit_key = :max_tokens
           def completion_url = '/v1/chat/completions'
           def stream_url = completion_url
           def models_url = '/v1/models'
@@ -46,7 +48,7 @@ module Legion
             return {} unless params
 
             {
-              max_tokens: params.max_tokens,
+              output_token_limit_key => params.max_tokens,
               top_p: params.top_p,
               top_k: params.top_k,
               stop: params.stop_sequences,
@@ -246,6 +248,13 @@ module Legion
             chunks.concat(parse_streaming_tool_calls(delta['tool_calls']))
             canonical_usage = openai_usage_to_canonical(usage)
             chunks << Canonical::Chunk.usage_chunk(usage: canonical_usage, request_id: nil) if canonical_usage
+            # The accumulator records this reason without emitting the marker.
+            # Streaming emits the sole final done after trailing usage arrives.
+            if choice['finish_reason']
+              chunks << Legion::Extensions::Llm::Canonical::Chunk.done(
+                request_id: nil, stop_reason: stop_reason_lookup(choice['finish_reason'])
+              )
+            end
 
             if chunks.empty?
               nil

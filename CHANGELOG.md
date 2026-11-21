@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.11 - 2026-11-20
+
+### Fixed
+- Let OpenAI-compatible providers declare their protocol's output-limit wire key through `output_token_limit_key`. The shared payload builder emits one field with the unchanged canonical `Params#max_tokens` value; the default remains `max_tokens`, and protocols can select `max_completion_tokens` without model-name rules or parameter mutation. Cover default and overridden keys through real synchronous and streaming provider HTTP execution, including absent limits.
+
+## 0.8.10 - 2026-11-20
+
+### Fixed
+- Preserve explicit OpenAI-compatible streaming finish reasons through canonical chunk parsing and accumulation, including empty terminal deltas and frames containing final content. The shared streaming wrapper emits exactly one final done with the complete trailing usage; missing or unknown reasons remain unconfirmed instead of fabricating successful completion. Add full provider/HTTP-stream regressions for stop, length, tool calls, content filtering, and trailing usage.
+
+## 0.8.9 - 2026-11-20
+
+### Fixed
+- Rehydrate serialized tools, thinking controls, and sampling parameters at the shared fleet worker boundary before chat, streaming-chat, or token-count dispatch. Remote calls now preserve the same canonical controls as direct calls, while embedding and media parameters keep their existing contracts.
+- Reject malformed serialized controls as non-retryable fleet contract errors before provider execution, releasing the acquired callable lease.
+
 ## 0.8.8 - 2026-11-18
 
 ### Fixed
