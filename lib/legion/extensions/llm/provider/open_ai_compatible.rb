@@ -12,6 +12,8 @@ module Legion
         # fields) lives here, at the edge (03 O03a).
         module OpenAICompatible
           def stream_usage_supported? = false
+          # Provider protocols choose the wire spelling, never a new limit value.
+          def output_token_limit_key = :max_tokens
           def completion_url = '/v1/chat/completions'
           def stream_url = completion_url
           def models_url = '/v1/models'
@@ -46,7 +48,7 @@ module Legion
             return {} unless params
 
             {
-              max_tokens: params.max_tokens,
+              output_token_limit_key => params.max_tokens,
               top_p: params.top_p,
               top_k: params.top_k,
               stop: params.stop_sequences,

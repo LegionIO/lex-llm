@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.11 - 2026-11-20
+
+### Fixed
+- Let OpenAI-compatible providers declare their protocol's output-limit wire key through `output_token_limit_key`. The shared payload builder emits one field with the unchanged canonical `Params#max_tokens` value; the default remains `max_tokens`, and protocols can select `max_completion_tokens` without model-name rules or parameter mutation. Cover default and overridden keys through real synchronous and streaming provider HTTP execution, including absent limits.
+
 ## 0.8.10 - 2026-11-20
 
 ### Fixed
